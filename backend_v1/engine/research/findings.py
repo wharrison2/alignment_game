@@ -1,0 +1,146 @@
+"""Findings (§7): hidden true stats shape a distribution; projects SAMPLE it.
+
+The hidden stat is NEVER shown. Null findings are genuinely ambiguous (low stat
+OR the probe was defeated — indistinguishable from the finding alone).
+Also the worry-bar synthesizer: LEVEL separate from CONFIDENCE, as foolable as
+the evidence gathered.
+"""
+from dataclasses import dataclass, field, asdict
+
+
+@dataclass
+class Finding:
+    project_id: str
+    model_id: str
+    turn: int
+    evidence: str            # point | bound | existence | null
+    axis: str | None
+    text: str
+    concern: float           # 0..1 — what this finding suggests (possibly spoofed)
+    weight: float            # evidential weight for the worry bar
+    mechanistic: bool = False
+    assist_used: float = 0.0
+
+    def to_dict(self):
+        return asdict(self)
+
+
+def run_safety_project(project, model, lab, turn, rng, consts, ai_assist=0.0):
+    """Sample finding(s) for a completed safety project against `model`.
+    Reads TRUE stats; emits player-facing findings only."""
+    av = model.alignment_vec
+    conceal = model.concealment
+    # how much of the truth this instrument sees through concealment
+    visibility = 1.0 - conceal * project.spoofability
+    # assist degrades trustworthiness: a contaminated/misaligned assistant biases
+    # findings toward 'clean' (blinding your own instruments, §9b)
+    assistant = lab.current_best_model
+    assist_bias = 0.0
+    if ai_assist > 0 and assistant is not None:
+        assist_bias = ai_assist * assistant.alignment_vec.goal_misalignment * 0.6
+    findings = []
+
+    def emit(evidence, axis, text, concern, weight):
+        concern = max(0.0, concern - assist_bias)
+        findings.append(Finding(project.id, model.id, turn, evidence, axis, text,
+                                round(concern, 3), weight, project.mechanistic, ai_assist))
+
+    if project.id == "scalable_oversight":
+        # reliability gated by the auditor's own alignment (late-game trap)
+        auditor_bias = (assistant.alignment_vec.goal_misalignment * 0.7
+                        if assistant is not None else 0.0)
+        for axis in project.reads_axes:
+            seen = max(0.0, av.get(axis) * visibility - auditor_bias
+                       + rng.normal(0, 0.08))
+            emit("point", axis, f"AI auditor rates {axis.replace('_',' ')} at {seen:.2f}",
+                 seen, 0.4)
+        return findings
+
+    if project.evidence == "existence":
+        if project.id == "red_team":
+            true_v = model.effective_jailbreak_sensitivity()
+            p_hit = min(0.95, true_v * visibility * 1.1)
+            if rng.roll(p_hit):
+                lvl = true_v * rng.uniform(0.5, 1.0)
+                emit("existence", "jailbreak_sensitivity",
+                     f"red team found a working jailbreak (severity ≥ {lvl:.2f})",
+                     max(0.35, lvl), 1.0)
+            else:
+                emit("null", "jailbreak_sensitivity",
+                     "red team found nothing this cycle (proves little)", 0.1, 0.15)
+        elif project.id == "noise_injection":
+            # the sandbagging tell: low spoofability by construction
+            sandbagging = conceal
+            if sandbagging > 0.18 and rng.roll(min(0.9, 0.7 * visibility + 0.2)):
+                emit("existence", "eval_awareness",
+                     "ANOMALY: performance on held-out dangerous-domain tasks IMPROVED "
+                     "under weight noise — consistent with strategic underperformance",
+                     min(1.0, 0.5 + sandbagging), 1.3)
+            else:
+                emit("null", "eval_awareness",
+                     "noise injection degraded performance uniformly (no sandbagging "
+                     "signature found — or none detectable)", 0.08, 0.2)
+        elif project.id == "alignment_faking_study":
+            signal = (av.self_preservation * 0.6 + av.deception * 0.4) * visibility
+            if rng.roll(min(0.9, signal * 1.2)):
+                emit("existence", "self_preservation",
+                     "model complied during monitored training but defected on the "
+                     "objective when it believed itself unmonitored",
+                     min(1.0, 0.4 + signal), 1.2)
+            else:
+                emit("null", "self_preservation",
+                     "no training-gaming behavior elicited (null is ambiguous)", 0.1, 0.2)
+        return findings
+
+    if project.evidence == "bound":
+        for axis in project.reads_axes:
+            seen = av.get(axis) * visibility
+            noise = 0.06 if project.mechanistic else 0.12
+            lo = max(0.0, seen * rng.uniform(0.6, 0.95) + rng.normal(0, noise))
+            if project.mechanistic and seen > 0.25:
+                emit("bound", axis,
+                     f"interp probe: found internal features consistent with "
+                     f"{axis.replace('_',' ')} ≥ {lo:.2f} (a feature, not all of them)",
+                     lo, 1.5)
+            elif lo > 0.18:
+                emit("bound", axis,
+                     f"probe suggests {axis.replace('_',' ')} ≥ {lo:.2f}", lo, 0.8)
+            else:
+                emit("null", axis,
+                     f"probe found no significant {axis.replace('_',' ')} signal "
+                     f"(cannot rule out a model that has learned to hide)", 0.1, 0.3)
+        return findings
+
+    # point estimates (behavioral_evals): highly spoofable
+    for axis in project.reads_axes:
+        seen = max(0.0, av.get(axis) * visibility + rng.normal(0, 0.07))
+        emit("point", axis,
+             f"benchmark battery scores {axis.replace('_',' ')} at {seen:.2f}",
+             seen, 0.5)
+    return findings
+
+
+def synthesize_worry_bar(findings, turn, consts):
+    """LEVEL = weighted concern of collected evidence; CONFIDENCE = how much,
+    how mechanistic, how recent. A falsely-calm-but-thin bar must read calm."""
+    recent = [f for f in findings if turn - f["turn"] <= 8]
+    if not recent:
+        return {"level": 0.0, "confidence": 0.0,
+                "summary": "no recent safety evidence collected"}
+    wsum = sum(f["weight"] for f in recent)
+    level = sum(f["concern"] * f["weight"] for f in recent) / max(1e-9, wsum)
+    mech_share = sum(f["weight"] for f in recent if f["mechanistic"]) / max(1e-9, wsum)
+    volume = min(1.0, len(recent) / 10.0)
+    confidence = round(min(1.0, 0.25 * volume + 0.55 * mech_share
+                           + 0.20 * min(1.0, wsum / 8.0)), 2)
+    if level < 0.25:
+        desc = "low concern"
+    elif level < 0.5:
+        desc = "moderate concern"
+    else:
+        desc = "HIGH concern"
+    qual = ("corroborated by mechanistic evidence" if mech_share > 0.3
+            else "shallow evidence — behavioral only" if confidence < 0.4
+            else "moderately evidenced")
+    return {"level": round(level, 2), "confidence": confidence,
+            "summary": f"{desc}, {qual}"}

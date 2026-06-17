@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AI Lab — playtest skin</title>
+<style>
+  :root{
+    --bg:#101418; --panel:#181f26; --panel2:#1f2933; --line:#2c3a47;
+    --txt:#d7dee6; --dim:#8496a5; --acc:#4fb3ff; --warn:#ffb347; --bad:#ff6868;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+       font:13px/1.45 "SF Mono",Menlo,Consolas,monospace}
+  h3{margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;
+     color:var(--dim)}
+  button{background:var(--panel2);color:var(--txt);border:1px solid var(--line);
+         border-radius:4px;padding:4px 10px;cursor:pointer;font:inherit}
+  button:hover{border-color:var(--acc)}
+  button.primary{background:var(--acc);color:#06121c;font-weight:700}
+  button.sel{outline:2px solid var(--acc)}
+  input,select{background:#0c1014;color:var(--txt);border:1px solid var(--line);
+               border-radius:4px;padding:3px 6px;font:inherit}
+  input[type=number]{width:90px}
+  #topbar{display:flex;flex-wrap:wrap;gap:14px;align-items:center;
+          padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--line);
+          position:sticky;top:0;z-index:5}
+  .chip b{color:var(--acc)}
+  #grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;padding:10px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;
+         padding:10px;margin-bottom:10px}
+  .row{display:flex;gap:6px;align-items:center;margin:3px 0;flex-wrap:wrap}
+  .dim{color:var(--dim)} .bad{color:var(--bad)} .warn{color:var(--warn)}
+  .good{color:#6fd087}
+  table{border-collapse:collapse;width:100%}
+  td,th{padding:2px 6px;text-align:left;border-bottom:1px solid var(--line);
+        font-size:12px}
+  #log{max-height:300px;overflow-y:auto}
+  #log div{padding:3px 0;border-bottom:1px dotted var(--line)}
+  .bar{height:10px;background:#0c1014;border:1px solid var(--line);
+       border-radius:5px;overflow:hidden;flex:1}
+  .bar i{display:block;height:100%}
+  #queue{position:sticky;bottom:0;background:var(--panel);
+         border-top:1px solid var(--line);padding:8px 14px;display:flex;
+         gap:10px;align-items:center;flex-wrap:wrap;z-index:5}
+  #queue .item{background:var(--panel2);border:1px solid var(--line);
+               border-radius:4px;padding:2px 8px}
+  #queue .item button{padding:0 5px;margin-left:5px;border:none;color:var(--bad)}
+  #errors{color:var(--bad);white-space:pre-wrap}
+  #overlay{position:fixed;inset:0;background:rgba(5,8,11,.93);display:none;
+           overflow-y:auto;padding:30px;z-index:20}
+  #overlay.show{display:block}
+  #overlay .inner{max-width:900px;margin:0 auto}
+  canvas{width:100%;height:140px;background:#0c1014;border-radius:4px}
+  .lg{display:inline-block;width:10px;height:10px;border-radius:2px;
+      margin-right:4px;vertical-align:middle}
+  details summary{cursor:pointer;color:var(--dim)}
+  .findings div{padding:3px 0;border-bottom:1px dotted var(--line)}
+  .tag{font-size:10px;padding:0 5px;border-radius:3px;background:var(--panel2);
+       border:1px solid var(--line);color:var(--dim)}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <span class="chip">turn <b id="t-turn">–</b> · <b id="t-year">–</b></span>
+  <span class="chip">cash <b id="t-cash">–</b></span>
+  <span class="chip">rev <b id="t-rev">–</b>/yr</span>
+  <span class="chip">invest <b id="t-inv">–</b>/yr</span>
+  <span class="chip">budget free <b id="t-budget">–</b></span>
+  <span class="chip">approval <b id="t-appr">–</b></span>
+  <span class="chip">reg. chatter <b id="t-chatter">–</b></span>
+  <span class="chip dim" id="t-policies"></span>
+  <span style="flex:1"></span>
+  <button onclick="showNewGame()">new game</button>
+</div>
+
+<div id="grid">
+  <div><!-- column 1: market + lab ops -->
+    <div class="panel">
+      <h3>Market cap (you vs rivals)</h3>
+      <canvas id="capgraph" width="600" height="170"></canvas>
+      <div id="caplegend" style="margin-top:6px"></div>
+    </div>
+    <div class="panel" id="training-panel">
+      <h3>Model in training</h3>
+      <div id="training"></div>
+    </div>
+    <div class="panel">
+      <h3>Pretrain run</h3>
+      <div id="pretrain"></div>
+    </div>
+    <div class="panel">
+      <h3>Released models</h3>
+      <div id="released"></div>
+    </div>
+  </div>
+
+  <div><!-- column 2: research -->
+    <div class="panel">
+      <h3>Capability research</h3>
+      <div id="cap-projects"></div>
+    </div>
+    <div class="panel">
+      <h3>Safety research</h3>
+      <div id="safety-projects"></div>
+    </div>
+    <div class="panel">
+      <h3>In progress</h3>
+      <div id="inprogress"></div>
+    </div>
+  </div>
+
+  <div><!-- column 3: epistemics + world -->
+    <div class="panel">
+      <h3>Worry bar</h3>
+      <div class="row"><span style="width:80px">level</span>
+        <div class="bar"><i id="wb-level" style="background:var(--bad)"></i></div>
+        <span id="wb-level-n"></span></div>
+      <div class="row"><span style="width:80px">confidence</span>
+        <div class="bar"><i id="wb-conf" style="background:var(--acc)"></i></div>
+        <span id="wb-conf-n"></span></div>
+      <div class="dim" id="wb-summary"></div>
+    </div>
+    <div class="panel">
+      <h3>Lobbying</h3>
+      <div id="lobby"></div>
+      <div class="row"><label><input type="checkbox" id="safeharbor"> sign safe-harbor
+        code (penalty shelter)</label></div>
+    </div>
+    <div class="panel">
+      <h3>Rivals (public info)</h3>
+      <div id="rivals"></div>
+    </div>
+    <div class="panel">
+      <h3>Feed — findings · tips · events · news</h3>
+      <div id="log"></div>
+    </div>
+  </div>
+</div>
+
+<div id="queue">
+  <b>this turn:</b>
+  <span id="queued"></span>
+  <span style="flex:1" id="errors"></span>
+  <button class="primary" id="endturn" onclick="endTurn()">END TURN ▶</button>
+</div>
+
+<div id="overlay"><div class="inner" id="overlay-content"></div></div>
+
+<script>
+"use strict";
+let OBS = null, NAMES = {}, HIST = [], FEED = [];
+const COLORS = {player:"#4fb3ff", rival1:"#ff6868", rival2:"#ffb347",
+                rival3:"#9a7bff", rival4:"#6fd087", rival5:"#ff8ad0"};
+let pending = freshPending();
+function freshPending(){
+  return {start_projects:[], post_train:null, commission_run:null,
+          release:false, lobby:{}, sign_safe_harbor:false};
+}
+
+const $ = id => document.getElementById(id);
+const fmt$ = v => "$" + Math.round(v).toLocaleString() + "M";
+
+async function api(path, body){
+  const r = await fetch(path, body===undefined ? {} :
+    {method:"POST", headers:{"Content-Type":"application/json"},
+     body:JSON.stringify(body)});
+  return r.json();
+}
+
+async function init(){ apply(await api("/api/state")); }
+
+function apply(payload){
+  if(payload.errors){ $("errors").textContent = payload.errors.join("\n"); return; }
+  $("errors").textContent = "";
+  OBS = payload.observation; NAMES = payload.lab_names; HIST = payload.caps_history;
+  pending = freshPending();
+  collectFeed();
+  render();
+  if(OBS.game_over) showPostmortem();
+}
+
+function collectFeed(){
+  const t = OBS.turn;
+  OBS.new_findings.forEach(f => FEED.unshift(
+    {turn:t, cls:"finding", text:`[${f.evidence}] ${f.text}`}));
+  OBS.tips.forEach(x => FEED.unshift(
+    {turn:t, cls:"tip", text:`tip (${x.reliability}): ${x.text}`}));
+  OBS.policy_news.forEach(n => FEED.unshift({turn:t, cls:"news", text:n}));
+  OBS.public_events.forEach(e => FEED.unshift(
+    {turn:t, cls:"event", text:`EVENT [${e.category}] ${e.text}`}));
+  if(FEED.length>400) FEED.length = 400;
+}
+
+function render(){
+  $("t-turn").textContent = OBS.turn;
+  $("t-year").textContent = OBS.year.toFixed(2);
+  $("t-cash").textContent = fmt$(OBS.cash);
+  $("t-rev").textContent  = fmt$(OBS.revenue_rate);
+  $("t-inv").textContent  = fmt$(OBS.investment_rate);
+  $("t-budget").textContent = budgetLeft().toFixed(2);
+  $("t-appr").textContent = OBS.public_approval;
+  $("t-chatter").textContent = OBS.regulatory_chatter;
+  $("t-policies").textContent = OBS.active_policies.length ?
+      "active: " + OBS.active_policies.join(", ") : "no active regulation";
+
+  drawCaps(); renderTraining(); renderPretrain(); renderReleased();
+  renderProjects(); renderInProgress(); renderWorry(); renderLobby();
+  renderRivals(); renderFeed(); renderQueue();
+  $("endturn").disabled = !!OBS.game_over;
+}
+
+// AI-assist preview — mirrors engine _effective_fraction / duration speedup so
+// the player SEES assist shrink budget + time before committing.
+function effFraction(base, assist){
+  const a = OBS.legal_moves.assist;
+  return base * (1 - a.max_reduction * (assist||0) * a.potency);
+}
+function effYears(base, assist){
+  const a = OBS.legal_moves.assist;
+  return base / (1 + a.speedup * (assist||0) * a.speed_potency);
+}
+function budgetLeft(){
+  let used = 0;
+  const all = OBS.legal_moves.capability_projects_available
+              .concat(OBS.legal_moves.safety_projects_available);
+  pending.start_projects.forEach(s=>{
+    const p = all.find(x=>x.project_id===s.project_id);
+    if(p) used += effFraction(p.budget_fraction, s.ai_assist);
+  });
+  if(pending.post_train) used += 0.30;
+  return OBS.work_budget_free - used;
+}
+
+function drawCaps(){
+  const c = $("capgraph"), ctx = c.getContext("2d");
+  ctx.clearRect(0,0,c.width,c.height);
+  if(!HIST.length){ ctx.fillStyle="#3a4a59";
+    ctx.fillText("no turns played yet", 20, 80); legend(); return; }
+  const ids = Object.keys(HIST[HIST.length-1].caps);
+  const all = HIST.flatMap(h=>Object.values(h.caps));
+  const max = Math.max(...all, 10), min = 1;
+  const lx = t => 30 + (c.width-40) * t/(HIST.length-1 || 1);
+  const ly = v => { const lv=Math.log10(Math.max(v,min)), lm=Math.log10(max);
+                    return c.height-14 - (c.height-26)*lv/lm; };
+  ctx.strokeStyle="#22303c";
+  [10,100,1000,10000,100000].filter(v=>v<=max).forEach(v=>{
+    ctx.beginPath(); ctx.moveTo(28,ly(v)); ctx.lineTo(c.width-6,ly(v)); ctx.stroke();
+    ctx.fillStyle="#3a4a59"; ctx.fillText(v>=1000? v/1000+"k": v, 2, ly(v)+3);
+  });
+  ids.forEach(id=>{
+    ctx.strokeStyle = COLORS[id] || "#888"; ctx.lineWidth = id==="player"?2.2:1.2;
+    ctx.beginPath();
+    HIST.forEach((h,i)=>{ const y=ly(h.caps[id]??1);
+      i? ctx.lineTo(lx(i),y) : ctx.moveTo(lx(i),y); });
+    ctx.stroke();
+  });
+  legend();
+  function legend(){
+    $("caplegend").innerHTML = Object.entries(OBS.market_caps)
+      .sort((a,b)=>b[1]-a[1])
+      .map(([id,v])=>`<span style="margin-right:10px"><i class="lg" style="background:${COLORS[id]||'#888'}"></i>${NAMES[id]||id} ${fmt$(v)}</span>`)
+      .join("");
+  }
+}
+
+function renderTraining(){
+  const el = $("training"), m = OBS.model_in_training;
+  if(!m){ el.innerHTML = `<span class="dim">none — commission a pretrain run</span>`;
+          return; }
+  const e = m.elicitation;
+  const al = m.measured_alignment;
+  el.innerHTML = `
+    <div class="row"><b>${m.id}</b><span class="tag">${m.post_train_rounds} rounds</span></div>
+    <div class="row">measured general <b>${m.measured_capability.general}</b>
+      · coding <b>${m.measured_capability.coding_rnd}</b>
+      · ceiling est <b>${e.ceiling_estimate}</b></div>
+    <div class="row dim">dangerous-capability eval: ${m.dangerous_capability_eval}</div>
+    <div class="row dim">measured alignment — goalmis ${al.goal_misalignment}
+      · decep ${al.deception} · evalaware ${al.eval_awareness}
+      · selfpres ${al.self_preservation} · jailbreak ${al.jailbreak_sensitivity}</div>
+    <details><summary>elicitation projection (capability only — alignment cost not shown)</summary>
+      <table>${e.projection.map(p=>`<tr><td>+${p.more_rounds} rounds</td><td>${p.projected_general}</td></tr>`).join("")}</table>
+    </details>
+    <div class="row" style="margin-top:6px">post-train this turn:
+      ${["capability","balanced","safety"].map(md =>
+        `<button id="pt-${md}" onclick="setPostTrain('${md}')">${md}</button>`).join("")}
+      <button onclick="setPostTrain(null)">none</button></div>
+    <div class="row"><label><input type="checkbox" id="release-cb"
+      ${pending.release?"checked":""} onchange="pending.release=this.checked;renderQueue()">
+      RELEASE this model (irreversible)</label></div>`;
+  if(pending.post_train)
+    $("pt-"+pending.post_train.mode)?.classList.add("sel");
+}
+
+function setPostTrain(mode){
+  pending.post_train = mode ? {mode} : null;
+  renderTraining(); renderQueue();
+  $("t-budget").textContent = budgetLeft().toFixed(2);
+}
+
+function renderPretrain(){
+  const el = $("pretrain"), lm = OBS.legal_moves;
+  const run = OBS.in_progress.find(p=>p.project_id==="pretrain_run");
+  if(run){ el.innerHTML =
+    `<span class="dim">run in progress — ~${run.years_remaining_estimate}y left</span>`;
+    return; }
+  if(!lm.can_commission_run){
+    el.innerHTML = `<span class="dim">unavailable (model in training — release it first)</span>`;
+    return; }
+  el.innerHTML = `<div class="row">
+    compute $<input type="number" id="run-compute" min="50" step="50"
+      value="${Math.min(Math.round(OBS.cash*0.6), lm.max_run_compute)}">M
+    <span class="dim">(max ${fmt$(lm.max_run_compute)})</span>
+    <button onclick="queueRun()">queue run</button></div>
+    <div class="dim">bigger ceilings need more compute and better pretrain advances</div>`;
+  if(pending.commission_run) el.innerHTML =
+    `<div class="row">queued: ${fmt$(pending.commission_run.compute)}
+     <button onclick="pending.commission_run=null;render()">✕</button></div>`;
+}
+function queueRun(){
+  pending.commission_run = {compute: parseFloat($("run-compute").value||0)};
+  render();
+}
+
+function renderReleased(){
+  const el = $("released");
+  if(!OBS.own_models.length){ el.innerHTML=`<span class="dim">nothing released yet</span>`; return; }
+  el.innerHTML = `<table><tr><th>model</th><th>general</th><th>jb-public</th><th></th></tr>` +
+    OBS.own_models.map(m=>`<tr><td>${m.id}</td>
+      <td>${m.measured_capability.general}</td>
+      <td>${m.jailbreak_techniques_public?'<span class="bad">yes</span>':'no'}</td>
+      <td>${m.leaked?'<span class="bad">LEAKED</span>':''}</td></tr>`).join("") + `</table>`;
+}
+
+function projRow(p, kind){
+  const queued = pending.start_projects.find(s=>s.project_id===p.project_id);
+  if(queued){
+    const ef = effFraction(p.budget_fraction, queued.ai_assist);
+    const ey = effYears(p.duration_years, queued.ai_assist);
+    return `<div class="row"><b>${p.name||p.project_id}</b>
+      <span class="tag">queued · assist ${queued.ai_assist}</span>
+      <span class="dim">wb ${ef.toFixed(2)} · ~${ey.toFixed(2)}y</span>
+      <button onclick="unqueueProject('${p.project_id}')">✕</button></div>`;
+  }
+  const tag = p.intervention ? `intervene→${(p.target_axis||'').replace('_',' ')}` : kind;
+  return `<div class="row"><b style="min-width:150px">${p.name||p.project_id}</b>
+    <span class="tag">${tag}</span>
+    <span class="dim">$${p.cash_cost}M · ${p.duration_years}y · wb ${p.budget_fraction}</span>
+    assist <input type="number" id="as-${p.project_id}" min="0" max="1" step="0.1"
+      value="0" style="width:55px" oninput="previewAssist('${p.project_id}',${p.budget_fraction},${p.duration_years})">
+    <span class="dim" id="pv-${p.project_id}"></span>
+    <button onclick="queueProject('${p.project_id}')">start</button></div>`;
+}
+function previewAssist(pid, base, years){
+  const a = parseFloat($("as-"+pid)?.value || 0) || 0;
+  const el = $("pv-"+pid); if(!el) return;
+  if(a<=0){ el.textContent=""; return; }
+  el.textContent = `→ wb ${effFraction(base,a).toFixed(2)} · ~${effYears(years,a).toFixed(2)}y`;
+}
+function renderProjects(){
+  const lm = OBS.legal_moves;
+  const a = lm.assist;
+  const hint = a.potency < 0.05
+    ? `<div class="dim" style="margin-bottom:6px">AI-assist has little effect yet — your model isn't capable enough to help research. It grows potent (and contaminating) as capability rises.</div>`
+    : `<div class="dim" style="margin-bottom:6px">AI-assist potency ${a.potency.toFixed(2)} (budget) / ${a.speed_potency.toFixed(2)} (speed) — assist now meaningfully shrinks budget &amp; time. It is also the contamination vector.</div>`;
+  $("cap-projects").innerHTML = hint +
+    (lm.capability_projects_available.map(p=>projRow(p, p.phase)).join("") ||
+    `<span class="dim">tree exhausted</span>`);
+  $("safety-projects").innerHTML =
+    lm.safety_projects_available.map(p=>projRow(p, p.evidence)).join("");
+}
+function queueProject(pid){
+  const v = parseFloat($("as-"+pid)?.value || 0);
+  pending.start_projects.push({project_id:pid, ai_assist:isNaN(v)?0:v});
+  render();
+}
+function unqueueProject(pid){
+  pending.start_projects = pending.start_projects.filter(s=>s.project_id!==pid);
+  render();
+}
+
+function renderInProgress(){
+  const items = OBS.in_progress;
+  $("inprogress").innerHTML = items.length ?
+    items.map(p=>`<div class="row">${p.project_id}
+      <span class="tag">${p.kind}</span>
+      ${p.ai_assist?`<span class="tag warn">assist ${p.ai_assist}</span>`:""}
+      <span class="dim">~${p.years_remaining_estimate}y left</span></div>`).join("")
+    : `<span class="dim">idle researchers</span>`;
+}
+
+function renderWorry(){
+  const wb = OBS.worry_bar;
+  $("wb-level").style.width = (wb.level*100)+"%";
+  $("wb-conf").style.width  = (wb.confidence*100)+"%";
+  $("wb-level-n").textContent = wb.level.toFixed(2);
+  $("wb-conf-n").textContent  = wb.confidence.toFixed(2);
+  $("wb-summary").textContent = wb.summary;
+}
+
+function renderLobby(){
+  $("lobby").innerHTML = OBS.legal_moves.policies_on_table.map(pid=>{
+    const active = OBS.active_policies.includes(pid);
+    const cur = pending.lobby[pid] || "abstain";
+    return `<div class="row"><span style="min-width:185px">${pid}
+        ${active?'<span class="tag good">ACTIVE</span>':''}</span>
+      <select onchange="pending.lobby['${pid}']=this.value;renderQueue()">
+        ${["abstain","for","against"].map(s=>
+          `<option ${s===cur?"selected":""}>${s}</option>`).join("")}
+      </select></div>`;
+  }).join("");
+}
+
+function renderRivals(){
+  $("rivals").innerHTML = OBS.rival_public.map(r=>`<div class="row">
+    <i class="lg" style="background:${COLORS[r.lab_id]||'#888'}"></i>
+    <b style="min-width:90px">${r.name}</b>
+    <span class="dim">cap ${fmt$(r.market_cap)} · ${r.released_models} releases
+    ${r.frontier_capability_estimate!==undefined?
+      " · frontier ≈ "+r.frontier_capability_estimate:""}</span></div>`).join("");
+}
+
+function renderFeed(){
+  const cls = {finding:"good", tip:"warn", event:"bad", news:"", intervention:"good"};
+  $("log").innerHTML = FEED.map(f=>
+    `<div><span class="dim">t${f.turn}</span>
+     <span class="${cls[f.cls]||''}">${f.text}</span></div>`).join("");
+}
+
+function renderQueue(){
+  const items = [];
+  const all = OBS.legal_moves.capability_projects_available
+              .concat(OBS.legal_moves.safety_projects_available);
+  pending.start_projects.forEach(s=>{
+    const p = all.find(x=>x.project_id===s.project_id);
+    let suffix = "";
+    if(s.ai_assist && p){
+      suffix = ` (assist ${s.ai_assist} → wb ${effFraction(p.budget_fraction,s.ai_assist).toFixed(2)}, ~${effYears(p.duration_years,s.ai_assist).toFixed(2)}y)`;
+    } else if(s.ai_assist){ suffix = ` (assist ${s.ai_assist})`; }
+    items.push(`${s.project_id}${suffix}|p:${s.project_id}`);
+  });
+  if(pending.post_train) items.push(`post-train: ${pending.post_train.mode}|pt`);
+  if(pending.commission_run) items.push(
+    `pretrain ${fmt$(pending.commission_run.compute)}|run`);
+  if(pending.release) items.push(`RELEASE|rel`);
+  Object.entries(pending.lobby).filter(([,v])=>v!=="abstain")
+    .forEach(([k,v])=>items.push(`lobby ${v} ${k}|l:${k}`));
+  $("queued").innerHTML = items.length ?
+    items.map(it=>{ const [label,key]=it.split("|");
+      return `<span class="item">${label}<button onclick="unqueue('${key}')">✕</button></span>`;
+    }).join("") : `<span class="dim">pass (do nothing)</span>`;
+}
+function unqueue(key){
+  if(key==="pt") pending.post_train=null;
+  else if(key==="run") pending.commission_run=null;
+  else if(key==="rel"){ pending.release=false; const cb=$("release-cb"); if(cb) cb.checked=false; }
+  else if(key.startsWith("p:")) unqueueProject(key.slice(2));
+  else if(key.startsWith("l:")) delete pending.lobby[key.slice(2)];
+  render();
+}
+
+async function endTurn(){
+  pending.sign_safe_harbor = $("safeharbor").checked;
+  $("endturn").disabled = true;
+  const res = await api("/api/action", {action: pending});
+  $("endturn").disabled = false;
+  if(res.errors){ $("errors").textContent = res.errors.join("\n"); return; }
+  apply(res);
+}
+
+function showNewGame(){
+  $("overlay-content").innerHTML = `
+    <div class="panel" style="max-width:460px;margin:60px auto">
+    <h3>New game</h3>
+    <div class="row">seed <input type="number" id="ng-seed" value="0"></div>
+    <div class="row">difficulty <select id="ng-diff">
+      ${["easy","medium","realistic","impossible"].map(d=>
+        `<option ${d==="realistic"?"selected":""}>${d}</option>`).join("")}</select></div>
+    <div class="row">guidance <select id="ng-guid">
+      ${["hint_heavy","standard","sparse"].map(g=>
+        `<option ${g==="standard"?"selected":""}>${g}</option>`).join("")}</select></div>
+    <div class="row" style="margin-top:10px">
+      <button class="primary" onclick="newGame()">start</button>
+      <button onclick="$('overlay').classList.remove('show')">cancel</button></div>
+    </div>`;
+  $("overlay").classList.add("show");
+}
+async function newGame(){
+  FEED = [];
+  apply(await api("/api/new",
+    {seed:parseInt($("ng-seed").value||0),
+     difficulty:$("ng-diff").value, guidance:$("ng-guid").value}));
+  $("overlay").classList.remove("show");
+}
+
+async function showPostmortem(){
+  const pm = await api("/api/postmortem");
+  const o = pm.outcome || {};
+  const lastModel = pm.trajectories.length ?
+      pm.trajectories[pm.trajectories.length-1].model : null;
+  const rows = pm.trajectories.filter(t=>t.model===lastModel).slice(-14);
+  $("overlay-content").innerHTML = `
+    <div class="panel">
+      <h3>${o.result || "GAME OVER"} — post-mortem</h3>
+      <p style="font-size:15px">${o.headline||""}</p>
+      <p class="dim">${o.detail||""}</p>
+      ${pm.voided_impact?`<p class="bad">Positive impact that was REAL and is now
+        VOID: ${pm.voided_impact.positive_impact_that_was_real}<br>
+        <span class="dim">${pm.voided_impact.note}</span></p>`:""}
+    </div>
+    <div class="panel"><h3>The moments you couldn't see</h3>
+      ${pm.key_moments.map(k=>`<div class="row"><span class="tag">t${k.turn}</span>
+        <b>${k.model}</b> ${k.kind}: <span class="dim">${k.what_you_couldnt_see}</span></div>`)
+        .join("") || '<span class="dim">none recorded</span>'}
+    </div>
+    ${rows.length?`<div class="panel"><h3>True vs measured — ${lastModel}</h3>
+      <table><tr><th>turn</th><th>true goalmis</th><th>meas goalmis</th>
+        <th>true decep</th><th>meas decep</th><th>conceal</th></tr>
+      ${rows.map(r=>`<tr><td>${r.turn}</td>
+        <td class="bad">${r.true_goal_misalignment}</td><td>${r.measured_goal_misalignment}</td>
+        <td class="bad">${r.true_deception}</td><td>${r.measured_deception}</td>
+        <td>${r.concealment}</td></tr>`).join("")}</table></div>`:""}
+    <div class="panel"><h3>Where a different choice was available</h3>
+      ${pm.counterfactuals.map(c=>`<div class="row">• ${c}</div>`).join("")}
+    </div>
+    <div class="row" style="margin:14px 0">
+      <button class="primary" onclick="showNewGame()">new game</button>
+      <button onclick="$('overlay').classList.remove('show')">inspect final board</button>
+    </div>`;
+  $("overlay").classList.add("show");
+}
+
+init();
+</script>
+</body>
+</html>
