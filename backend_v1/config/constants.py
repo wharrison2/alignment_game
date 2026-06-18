@@ -296,6 +296,25 @@ RIVAL_DISPOSITIONS = [
     (0.25, 0.85, False),   # the cautious one
 ]
 
+# ── Buyout / relaunch event (anti-coast) ────────────────────────────────
+# A crushed rival is acquired, recapitalized, renamed, and relaunched as a
+# hungry entrant, so a dominant player can never permanently clear the board and
+# coast to a pressure-free win. All [TUNE]; see engine/events/buyouts.py.
+BUYOUT_TRIGGER_CONCENTRATION = 0.55  # leader's market-cap share before acquirers circle
+BUYOUT_TARGET_CAP_FRACTION = 0.20    # a target sits below this fraction of the leader's cap
+BUYOUT_TARGET_VIABLE_CASH = 250.0    # ...and below this cash (can't fund a serious run)
+BUYOUT_BASE_RATE_PER_YEAR = 0.9      # per-year hazard once the field is concentrated...
+BUYOUT_CONCENTRATION_GAIN = 2.0      # ...rising the more monopolistic the leader is
+BUYOUT_COOLDOWN_TURNS = 6            # minimum turns between buyouts (acquisitions take time)
+BUYOUT_CAPITAL_FRACTION = 0.45       # war chest = this fraction of the leader's cash...
+BUYOUT_MIN_CAPITAL = 1500.0          # ...but never less than this (a serious backer)
+BUYOUT_RECKLESSNESS_MIN = 0.70       # relaunched lab is a corner-cutting disruptor
+BUYOUT_RECKLESSNESS_MAX = 0.95
+BUYOUT_ACQUIRER_NAMES = [
+    "Helix AI", "Vanta Labs", "Meridian", "Aximind", "NovaScale",
+    "Quorum AI", "Bytewright", "Polaris Intelligence",
+]
+
 # ── Epistemics / measurement ────────────────────────────────────────────
 MEASURE_CAP_NOISE = 0.04        # capability gap small...
 MEASURE_ALIGN_NOISE = 0.10      # ...alignment gap large (4.4)
@@ -311,5 +330,5 @@ DIFFICULTY_SCALED = [
     "JAILBREAK_DISCOVERY_RATE", "JAILBREAK_INCIDENT_RATE", "EXFIL_RATE_K",
     "BIO_CATASTROPHE_RATE", "CONCEALMENT_K", "MEASURE_ALIGN_NOISE",
     "SCORE_RELEASE_DECAY", "RISING_TARGET_BASE", "ENFORCEMENT_CATCH_RATE",
-    "BENEFICIAL_RATE",
+    "BENEFICIAL_RATE", "BUYOUT_BASE_RATE_PER_YEAR",
 ]

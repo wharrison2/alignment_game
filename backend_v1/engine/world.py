@@ -44,6 +44,7 @@ class World:
     frontier_measured_general: float = 0.0
     asi_window_turns_left: int | None = None       # verification cliff countdown
     asi_model_id: str | None = None
+    last_buyout_turn: int | None = None            # cooldown anchor for relaunch events
 
     def snapshot(self) -> dict:
         return {
