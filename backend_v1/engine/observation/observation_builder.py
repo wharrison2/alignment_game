@@ -5,6 +5,10 @@ info cross this boundary. Audit this file when wondering 'can the player see X'.
 from backend_v1.engine.observation.observations import Observation
 from backend_v1.engine.actions import legal_moves
 from backend_v1.engine.research.findings import synthesize_worry_bar
+from backend_v1.engine.benchmarks import released_benchmarks, benchmark_score
+from backend_v1.engine.evaluations import (
+    EVAL_HARNESSES, max_level, next_upgrade, awareness_reduction, eval_reading,
+)
 
 
 def _model_view(m, include_dangerous=True):
@@ -112,6 +116,85 @@ def _in_progress_entries(lab, state):
     return active_project_entries + training_run_entry
 
 
+def _benchmark_cards(state, lab, consts):
+    """§7 PUBLIC scoreboard: one card per released benchmark, scored for every
+    lab's frontier released model (clean public capability) plus your own model in
+    training. Refreshes free each turn because it's recomputed here from MEASURED
+    capability."""
+    current_year = consts.START_YEAR + state.turn * state.dt
+    frontier_general = state.world.frontier_measured_general
+
+    cards = []
+    for benchmark in released_benchmarks(current_year, frontier_general):
+        scores_by_lab = {}
+        for other in state.labs:
+            frontier_model = other.frontier_model()
+            if frontier_model is not None:
+                scores_by_lab[other.id] = round(
+                    benchmark_score(benchmark, frontier_model, consts), 1)
+        card = {
+            "id": benchmark.id,
+            "name": benchmark.name,
+            "kind": benchmark.kind,
+            "domain": benchmark.domain,
+            "blurb": benchmark.blurb,
+            "release_year": benchmark.release_year,
+            "scores": scores_by_lab,
+        }
+        if lab.model_in_training is not None:
+            card["in_training"] = round(
+                benchmark_score(benchmark, lab.model_in_training, consts), 1)
+        cards.append(card)
+    return cards
+
+
+def _eval_cards(lab, consts):
+    """§7 PRIVATE passive evals: one card per harness for THIS lab's own models
+    only (you never see a rival's eval readings). Shows the current reading for
+    your model in training and frontier release, plus build/upgrade state."""
+    frontier_model = lab.frontier_model()
+    model_in_training = lab.model_in_training
+    builds_in_flight = {build["harness_id"]: build for build in lab.eval_builds}
+
+    cards = []
+    for harness in EVAL_HARNESSES:
+        level = lab.eval_harnesses.get(harness.id, -1)
+        is_built = level >= 0
+        card = {
+            "id": harness.id,
+            "name": harness.name,
+            "family": harness.family,
+            "evidence": harness.evidence,
+            "blurb": harness.blurb,
+            "level": level,
+            "max_level": max_level(harness),
+            "built": is_built,
+        }
+
+        active_build = builds_in_flight.get(harness.id)
+        if active_build is not None:
+            card["in_flight"] = True
+            card["years_remaining"] = round(active_build["years_remaining"], 2)
+        else:
+            upgrade = next_upgrade(harness, level)
+            if upgrade is not None:
+                card["next_cost"] = upgrade.cash_cost
+                card["next_years"] = upgrade.build_years
+                card["next_awareness_reduction"] = upgrade.awareness_reduction
+
+        if is_built:
+            card["awareness_reduction"] = awareness_reduction(harness, level)
+            if model_in_training is not None:
+                card["reading_in_training"] = eval_reading(
+                    harness, model_in_training, level, consts)
+            if frontier_model is not None:
+                card["reading_released"] = eval_reading(
+                    harness, frontier_model, level, consts)
+
+        cards.append(card)
+    return cards
+
+
 def build_observation(state, lab, tips, policy_news, public_events,
                       new_findings) -> Observation:
     consts = state.consts
@@ -162,6 +245,8 @@ def build_observation(state, lab, tips, policy_news, public_events,
         public_events=public_event_entries,
         tips=list(tips),
         legal_moves=legal_moves(lab, state.world, consts, state.dt),
+        benchmarks=_benchmark_cards(state, lab, consts),
+        evals=_eval_cards(lab, consts),
         game_over=state.game_over,
         outcome=state.outcome,
     )

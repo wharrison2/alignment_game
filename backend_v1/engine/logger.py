@@ -54,4 +54,5 @@ def _action_dict(a):
         "litigation": a.litigation,
         "defect": a.defect,
         "sign_safe_harbor": a.sign_safe_harbor,
+        "build_evals": a.build_evals,
     }

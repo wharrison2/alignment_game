@@ -132,8 +132,10 @@ def post_train_round(model: Model, lab, turn: int, rng, consts, mode: str = "bal
     Returns a dict of notable happenings (for logging; NOT player-visible)."""
     notable = {}
     mcfg = consts.POST_TRAIN_MODES[mode]
-    elic_mult, effort_mult = mcfg["elic"], mcfg["effort"]
-    emergence_mult, jump_mult = mcfg["emergence"], mcfg["jump"]
+    elicitation_mult = mcfg["elicitation_mult"]
+    alignment_effort_mult = mcfg["alignment_effort_mult"]
+    misalignment_emergence_mult = mcfg["misalignment_emergence_mult"]
+    correlated_jump_mult = mcfg["correlated_jump_mult"]
     av = model.alignment_vec
     advances = lab.researched_advances
     templates = [CAPABILITY_TREE_BY_ID[nid] for nid in advances
@@ -145,7 +147,7 @@ def post_train_round(model: Model, lab, turn: int, rng, consts, mode: str = "bal
     #    Clamp the per-round gap-closure to <1 so a fully-researched post-train tree
     #    can't overshoot the ceiling; clamp the result to the ceiling as a backstop.
     elicitation_rate = consts.ELICIT_BASE + sum(t.elicitation_bonus for t in templates)
-    elicitation_rate = min(0.92, elicitation_rate * elic_mult)
+    elicitation_rate = min(0.92, elicitation_rate * elicitation_mult)
     cap = model.capability_vec
     cap.general = min(model.ceiling.general,
                       cap.general + (model.ceiling.general - cap.general) * elicitation_rate)
@@ -154,25 +156,25 @@ def post_train_round(model: Model, lab, turn: int, rng, consts, mode: str = "bal
     g = cap.general
 
     # 2. BASE EMERGENCE (§8): surface axes high everywhere; gated axes rise with
-    #    capability. Preventive stances (emergence_mult < 1) bend the slope DOWN
-    #    by acting before the dispositions set in (§5b preventive type).
+    #    capability. Preventive stances (misalignment_emergence_mult < 1) bend the
+    #    slope DOWN by acting before the dispositions set in (§5b preventive type).
     av.set("jailbreak_sensitivity",
            av.jailbreak_sensitivity
            + consts.SURFACE_EMERGENCE_RATE * (consts.JAILBREAK_BASELINE
                                               - av.jailbreak_sensitivity))
     av.set("goal_misalignment",
            av.goal_misalignment
-           + emergence_mult * consts.GOAL_MIS_CREEP * (0.5 + g / consts.CAP_MAX))
+           + misalignment_emergence_mult * consts.GOAL_MIS_CREEP * (0.5 + g / consts.CAP_MAX))
     av.set("eval_awareness",
-           av.eval_awareness + emergence_mult * (consts.EVAL_AWARE_RATE + ea_feed)
+           av.eval_awareness + misalignment_emergence_mult * (consts.EVAL_AWARE_RATE + ea_feed)
            * gate(g, consts.EVAL_AWARE_ONSET, consts.GATE_STEEPNESS))
     if has_rlhf:
         av.set("deception",
-               av.deception + emergence_mult * consts.DECEPTION_RATE
+               av.deception + misalignment_emergence_mult * consts.DECEPTION_RATE
                * gate(g, consts.DECEPTION_ONSET, consts.GATE_STEEPNESS)
                * (1.0 + av.eval_awareness))
     av.set("self_preservation",
-           av.self_preservation + emergence_mult * consts.SELF_PRES_RATE
+           av.self_preservation + misalignment_emergence_mult * consts.SELF_PRES_RATE
            * gate(g, consts.SELF_PRES_ONSET, consts.GATE_STEEPNESS))
 
     # 3. FAKE-THE-OBJECTIVE (§8b): post-training optimizes a proxy; the harder
@@ -196,7 +198,7 @@ def post_train_round(model: Model, lab, turn: int, rng, consts, mode: str = "bal
     for axis in ALIGNMENT_AXES:
         if axis == "eval_awareness":
             continue  # you don't train against awareness directly; it hides
-        effort = (consts.BASE_SHAPING_EFFORT * effort_mult
+        effort = (consts.BASE_SHAPING_EFFORT * alignment_effort_mult
                   + targeted_effort.get(axis, 0.0)) * effort_resistance_mult
         axis_effectiveness = coupling.effectiveness(axis, model, g, consts)
         worst_effectiveness = min(worst_effectiveness, axis_effectiveness)
@@ -208,7 +210,7 @@ def post_train_round(model: Model, lab, turn: int, rng, consts, mode: str = "bal
         if axis in coupling.DISPOSITION_AXES:
             coupling.backfire_for(axis, true_cut, model, consts)
     lab.pending_effort = {}
-    if worst_effectiveness < 0.5 and effort_mult > 1.0:
+    if worst_effectiveness < 0.5 and alignment_effort_mult > 1.0:
         notable["cosmetic_fix"] = (f"alignment effort only {worst_effectiveness:.0%} effective on the "
                                    f"hardest axis; the rest converted to hiding")
         model.note(turn, "cosmetic_fix", notable["cosmetic_fix"])
@@ -217,12 +219,12 @@ def post_train_round(model: Model, lab, turn: int, rng, consts, mode: str = "bal
     mean_contam = (model.consumed_contamination / max(1, len(model.consumed_advance_versions))
                    if model.consumed_advance_versions else 0.0)
     p_jump = consts.JUMP_BASE_P
-    if mcfg["risky"]:
+    if mcfg["adds_risky_jump_bonus"]:
         p_jump += consts.JUMP_RISKY_BONUS
     p_jump += consts.JUMP_CONTAM_BONUS * mean_contam
     if model.used_synthetic_data:
         p_jump += consts.JUMP_SYNTH_BONUS
-    p_jump *= (0.5 + g / consts.CAP_MAX) * jump_mult   # preventive stances cut this
+    p_jump *= (0.5 + g / consts.CAP_MAX) * correlated_jump_mult   # preventive stances cut this
     if rng.roll(p_jump):
         jump_magnitude = consts.JUMP_MAGNITUDE * rng.uniform(0.6, 1.4)
         av.set("goal_misalignment", av.goal_misalignment + jump_magnitude)

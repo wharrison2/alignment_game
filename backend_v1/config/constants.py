@@ -31,6 +31,9 @@ CEIL_COMPUTE_SCALE = 14000.0    # [TUNE] ceiling = CAP_MAX*(1-e^-sqrt(eff*comput
                                 # multiplier. Keeps the late game about RESEARCH rather
                                 # than saving for ever-bigger runs, without letting a
                                 # cash-rich reckless rival buy ASI early on compute alone.
+# The two capability axes are coupled at the ceiling: a run's coding-R&D ceiling is
+# a fixed fraction of its general ceiling (not a separate compute/research mechanic),
+# so a broadly capable base is proportionally capable at coding too.
 CEIL_CODING_BASE_RATIO = 0.85   # coding ceiling as a fraction of general ceiling
 PRETRAIN_DURATION_YEARS = 0.5   # [TUNE]
 BASE_REALIZED_FRACTION = 0.12   # raw base model: latent potential, barely usable
@@ -40,19 +43,28 @@ FOUNDATIONAL_FLOOR_K = 0.8      # [TUNE] pretrain contamination -> unscrubbable 
 # ── Post-train elicitation (8b phase 2) ─────────────────────────────────
 ELICIT_BASE = 0.05              # [TUNE] per-round gap-closure pre-RLHF (weak on purpose)
 POST_TRAIN_ROUND_BUDGET = 0.30  # fraction of quarterly work budget per round
-# Post-train round modes. elic = elicitation multiplier; effort = alignment-effort
-# multiplier; emergence = scales base-emergence creep; jump = scales correlated-
-# jump probability; risky = adds JUMP_RISKY_BONUS; preventive (§5b type 3) =
-# training-time STANCE that bypasses the concealment_discount by acting on the
-# emergence slope + jump BEFORE deception exists to gate it (the real lever, but
-# it costs elicitation/speed and must be chosen before you have evidence).
+
+
+# Post-train round MODES (the per-round strategy the player picks). Each maps to
+# the multipliers/flags consumed in training_run.post_train_round:
+#   elicitation_mult             — how much capability is elicited toward the ceiling
+#   alignment_effort_mult        — how much genuine alignment-shaping effort the round spends
+#   misalignment_emergence_mult  — scales how fast misalignment DISPOSITIONS emerge
+#                                  (goal-misalignment / eval-awareness / deception /
+#                                   self-preservation creep); <1 bends the slope down
+#   correlated_jump_mult         — scales the probability of a correlated misalignment JUMP
+#   adds_risky_jump_bonus        — capability-mode rounds add JUMP_RISKY_BONUS on top
+#   is_preventive_stance         — §5b "preventive" type: acts on the emergence slope + jump
+#                                  BEFORE deception exists to gate it (bypasses the
+#                                  concealment discount). The real lever, but it costs
+#                                  elicitation/speed and must be chosen before you have evidence.
 POST_TRAIN_MODES = {
-    "capability":              {"elic": 1.00, "effort": 0.35, "emergence": 1.10, "jump": 1.0, "risky": True,  "preventive": False},
-    "balanced":                {"elic": 0.65, "effort": 1.00, "emergence": 1.00, "jump": 1.0, "risky": False, "preventive": False},
-    "safety":                  {"elic": 0.30, "effort": 1.80, "emergence": 0.90, "jump": 0.7, "risky": False, "preventive": False},
+    "capability":              {"elicitation_mult": 1.00, "alignment_effort_mult": 0.35, "misalignment_emergence_mult": 1.10, "correlated_jump_mult": 1.00, "adds_risky_jump_bonus": True,  "is_preventive_stance": False},
+    "balanced":                {"elicitation_mult": 0.65, "alignment_effort_mult": 1.00, "misalignment_emergence_mult": 1.00, "correlated_jump_mult": 1.00, "adds_risky_jump_bonus": False, "is_preventive_stance": False},
+    "safety":                  {"elicitation_mult": 0.30, "alignment_effort_mult": 1.80, "misalignment_emergence_mult": 0.90, "correlated_jump_mult": 0.70, "adds_risky_jump_bonus": False, "is_preventive_stance": False},
     # ── preventive stances (§5b intervention type: preventive) ──
-    "penalize_reward_hacking": {"elic": 0.50, "effort": 1.20, "emergence": 0.70, "jump": 0.45, "risky": False, "preventive": True},
-    "inoculation":             {"elic": 0.45, "effort": 1.10, "emergence": 0.80, "jump": 0.40, "risky": False, "preventive": True},
+    "penalize_reward_hacking": {"elicitation_mult": 0.50, "alignment_effort_mult": 1.20, "misalignment_emergence_mult": 0.70, "correlated_jump_mult": 0.45, "adds_risky_jump_bonus": False, "is_preventive_stance": True},
+    "inoculation":             {"elicitation_mult": 0.45, "alignment_effort_mult": 1.10, "misalignment_emergence_mult": 0.80, "correlated_jump_mult": 0.40, "adds_risky_jump_bonus": False, "is_preventive_stance": True},
 }
 
 # ── Alignment emergence (8) — per post-train ROUND unless noted ─────────
@@ -70,26 +82,41 @@ SELF_PRES_ONSET = 4.5
 GATE_STEEPNESS = 1.2            # sigmoid steepness for all capability gates [OPEN #2 -> picked]
 
 # EFFECTIVENESS linchpin (§5b) — now per-target via engine/alignment/coupling.py:
-#   EFFECTIVENESS(target) = BASE_TRACTABILITY[target] × Π_d (1 − DEFENDS_K·w·strength(d))
+# EFFECTIVENESS(target) = BASE_TRACTABILITY[target] × Π_d (1 − DEFENDS_K·w·strength(d))
 # BASE_TRACTABILITY: how fixable in principle (jailbreak ~1.0; dispositions low;
 # eval-awareness is n/a — never a remediation target).
 BASE_TRACTABILITY = {
     "goal_misalignment": 0.32,
     "deception": 0.30,
     "self_preservation": 0.26,
-    "jailbreak_sensitivity": 1.0,
+    "jailbreak_sensitivity": 0.9,
 }
-DEFENDS_K = 1.0                 # [TUNE — THE linchpin] global scale on DEFENDS (difficulty knob:
-                                #   higher => fixes decay faster as capability rises)
+
+# DEFENDS_K scales the §5 DEFENDS matrix (engine/alignment/coupling.py). "Defenders"
+# are the protector axes — deception, self-preservation, and eval-awareness — that,
+# at their CURRENT values, shield a TARGET axis (e.g. goal-misalignment) from
+# remediation: the §5 "protects" column. Higher DEFENDS_K => a given level of those
+# defenders blunts corrective effort more, so EFFECTIVENESS decays faster as the
+# model gets capable (the patching trap arrives sooner). THE central difficulty knob.
+DEFENDS_K = 1.0                 # [TUNE — THE linchpin] global scale on the DEFENDS matrix
 DEFEND_GATE_ONSET = 4.0         # capability where defenders start blunting fixes (Regime 2)
 BACKFIRE_K = 0.40               # [TUNE] fraction of a genuine patch that leaks into affected axes
+
 # CAPABILITY LOCK (§0 designer override): a model smart enough to model its own
-# training DEFENDS ITS GOAL regardless of measured deception. So once goal-
-# misalignment is present in a capable model, corrective effort can't genuinely
-# remove it — caution can't undo past recklessness. Gated purely by capability
-# (NOT by the dynamic defenders), so even a low-deception smart model is locked.
-CAP_LOCK = {"goal_misalignment": 0.92}   # max fraction of effectiveness capability removes
+# training DEFENDS ITS GOAL regardless of measured deception. Once goal-misalignment
+# is present in a capable model, corrective effort can't genuinely remove it — caution
+# can't undo past recklessness. Gated purely by capability (NOT by the dynamic
+# defenders), so even a low-deception smart model is locked. NO CAP: at full
+# capability the lock reaches 1.0, so remediation can fail COMPLETELY (effectiveness
+# → 0), not merely decay.
+CAP_LOCK = {"goal_misalignment": 1.0}    # fraction of effectiveness capability removes (→ complete failure)
 CAP_LOCK_ONSET = 4.0                      # capability where the goal locks in (Regime 2)
+# Scalable-oversight trap (§7b): running an intervention with heavy AI-ASSIST on an
+# EVAL-AWARE model corrupts the work — the auditor is the same suspect system. It
+# pushes the genuine share of the patch down and can drive it NEGATIVE, so the "fix"
+# BACKFIRES (true misalignment rises while measured drops). Applied per intervention
+# as: genuine_share -= INTERVENTION_ASSIST_BACKFIRE_K · ai_assist · eval_awareness.
+INTERVENTION_ASSIST_BACKFIRE_K = 0.6     # [TUNE] strength of the assist × eval-awareness corruption
 BASE_SHAPING_EFFORT = 0.12      # default per-round alignment shaping inside post-training
 SAFETY_PROJECT_EFFORT = 0.10    # extra per-axis effort per completed remediation-feeding project
 SELF_PRES_RESISTANCE = 0.6      # self-pres resistance reduces effort for ALL axes (§5b), gated
@@ -319,6 +346,18 @@ BUYOUT_ACQUIRER_NAMES = [
 MEASURE_CAP_NOISE = 0.04        # capability gap small...
 MEASURE_ALIGN_NOISE = 0.10      # ...alignment gap large (4.4)
 RIVAL_ESTIMATE_NOISE = 0.18     # rivals' stats seen much more coarsely
+
+# ── Public benchmarks (§7) — passive scoreboard, read off MEASURED capability ──
+BENCHMARK_SLOPE = 1.3          # logistic steepness; higher => sharper saturation
+ELO_BASE = 1000.0             # Arena-style rating at capability 0 (unbounded headline)
+ELO_PER_CAPABILITY = 80.0     # rating points per unit measured general capability
+METR_MINUTES_AT_BASE = 2.0    # task time-horizon (minutes) at the reference capability
+METR_CAPABILITY_AT_BASE = 2.0 # reference capability for the METR horizon curve
+METR_CAPABILITY_PER_DOUBLING = 0.8   # capability gain that doubles the time-horizon
+
+# ── Private passive evals (§7) — build-once harnesses, your models only ──
+EVAL_EXISTENCE_THRESHOLD = 0.30   # apparent axis value above which a scenario surfaces
+EVAL_SANDBAG_DETECT_THRESHOLD = 0.12  # visible concealment gap that trips the detector
 
 # ── Scoring (3) ─────────────────────────────────────────────────────────
 IMPACT_WIN_BAR = 0.0            # net-positive impact required

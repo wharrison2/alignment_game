@@ -55,6 +55,10 @@ class Lab:
     audit_pending_release: object | None = None   # model waiting on gov audit
     # disposition (rivals; player gets defaults)
     disposition: Disposition = field(default_factory=Disposition)
+    # evals (§7): built passive harnesses (harness_id -> level; absent = unbuilt) and
+    # in-flight build/upgrade timers ([{harness_id, target_level, years_remaining}])
+    eval_harnesses: dict = field(default_factory=dict)
+    eval_builds: list = field(default_factory=list)
     # bookkeeping
     model_counter: int = 0
     findings: list = field(default_factory=list)    # accumulated safety findings
