@@ -85,10 +85,12 @@ def _relaunch_lab(lab, leader, rng, consts):
     return old_name, new_name, war_chest
 
 
-def run_buyout_phase(labs, world, flags, rng, consts, dt, turn):
+def run_buyout_phase(ctx):
     """Roll for at most one acquisition this turn. Fires only when the market is
     concentrated around a dominant leader, the cooldown has elapsed, and a
     genuinely moribund rival exists. Returns a list of FiredEvents (0 or 1)."""
+    labs, world = ctx.labs, ctx.world
+    rng, consts, dt, turn = ctx.rng, ctx.consts, ctx.dt, ctx.turn
     if len(labs) < 2:
         return []
 
