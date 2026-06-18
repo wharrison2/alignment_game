@@ -4,10 +4,8 @@ apply actions -> tick research -> tick training runs -> complete/release models
 -> finances -> job-loss drag -> governance -> event phase (latents + fresh)
 -> end/existential gate -> (engine builds observations).
 """
-from backend_v1.engine.actions import (
-    STANCES, _effective_fraction, assist_potency, assist_speed_potency,
-    parse_lobby_entry,
-)
+from backend_v1.engine.actions import STANCES, parse_lobby_entry
+from backend_v1.engine.rules import effective_fraction, assist_speed_potency
 from backend_v1.engine.governance.lobbying import signed_influence
 from backend_v1.engine.world import PolicyState
 from backend_v1.engine.research.capabilities.capabilities_research_item import (
@@ -235,7 +233,7 @@ def _apply_action(state, lab, action, policy_news):
         if kind == "capability" and pid in lab.researched_advances \
                 and not spec.get("reresearch"):
             continue
-        frac = _effective_fraction(template.budget_fraction, assist, lab, consts)
+        frac = effective_fraction(template.budget_fraction, assist, lab, consts)
         if committed + frac > budget_pool + 1e-9 or template.cash_cost > lab.cash:
             continue   # defensive skip (validated upstream for the player)
         committed += frac
