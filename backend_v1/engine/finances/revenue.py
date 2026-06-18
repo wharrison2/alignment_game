@@ -28,27 +28,28 @@ def run_revenue(labs, world, rng, consts, dt):
         # the hidden, risk-relevant slice was never monetizable in the first place
         return max(0.05, model.measured_capability.general)
 
-    best = max(monetized_general(m) for _, m in released)
-    world.frontier_measured_general = max(
-        m.measured_capability.general for _, m in released)
+    best_monetized = max(monetized_general(m) for _, m in released)
+    world.frontier_measured_general = max(m.measured_capability.general for _, m in released)
+
+    noise_factor = max(0.0, 1 + rng.normal(0, consts.REVENUE_NOISE_STD))
     market = (consts.REVENUE_MAX_PER_YEAR
-              * (best / consts.CAP_MAX) ** consts.REVENUE_CAP_EXP
-              * max(0.0, 1 + rng.normal(0, consts.REVENUE_NOISE_STD)))
+              * (best_monetized / consts.CAP_MAX) ** consts.REVENUE_CAP_EXP
+              * noise_factor)
 
     weights = []
     for lab, m in released:
         w = monetized_general(m) ** consts.REVENUE_SHARE_EXP
         for nid in lab.researched_advances:
-            t = CAPABILITY_TREE_BY_ID.get(nid)
-            if t is not None and t.revenue_multiplier > 1:
-                w *= t.revenue_multiplier
+            capability_node = CAPABILITY_TREE_BY_ID.get(nid)
+            if capability_node is not None and capability_node.revenue_multiplier > 1:
+                w *= capability_node.revenue_multiplier
         weights.append(w)
-    total_w = sum(weights) or 1.0
+    total_weight = sum(weights) or 1.0
 
     for lab in labs:
         lab.revenue_rate = 0.0
     for (lab, m), w in zip(released, weights):
-        lab.revenue_rate += market * w / total_w
+        lab.revenue_rate += market * w / total_weight
     for lab in labs:
         lab.cash += rng.amount_per_dt(lab.revenue_rate, dt)
     world.prev_total_revenue_rate = world.total_revenue_rate

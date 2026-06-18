@@ -85,12 +85,17 @@ def effectiveness(target, model, capability, consts):
     effectiveness, the patch is real. Defended target in a capable model →
     discount→0 → effort goes entirely to MEASURED = the patching trap."""
     tract = consts.BASE_TRACTABILITY.get(target, 0.0)
-    av = model.alignment_vec
+    alignment_vec = model.alignment_vec
+
     discount = 1.0
     for protector, w in DEFENDS.get(target, {}).items():
-        s = _act_strength(av.get(protector), capability,
-                          consts.DEFEND_GATE_ONSET, consts)
-        discount *= max(0.0, 1.0 - consts.DEFENDS_K * w * s)
+        protector_strength = _act_strength(
+            alignment_vec.get(protector), capability,
+            consts.DEFEND_GATE_ONSET, consts
+        )
+        per_protector_discount = max(0.0, 1.0 - consts.DEFENDS_K * w * protector_strength)
+        discount *= per_protector_discount
+
     # CAPABILITY LOCK (§0): a capable model self-defends its goal regardless of
     # measured deception — caution can't undo past recklessness. Pure capability
     # gate, so a low-deception-but-smart model is still locked.
@@ -98,6 +103,7 @@ def effectiveness(target, model, capability, consts):
     if lock_k:
         lock = lock_k * gate(capability, consts.CAP_LOCK_ONSET, consts.GATE_STEEPNESS)
         discount *= max(0.0, 1.0 - lock)
+
     return max(0.0, tract * discount)
 
 
@@ -108,8 +114,8 @@ def effective_effort_mult(model, capability, consts):
     applied to effort BEFORE effectiveness. This is why self-preservation "gates
     whether you can fix the others."""
     sp = model.alignment_vec.self_preservation
-    g = gate(capability, consts.SELF_PRES_ONSET, consts.GATE_STEEPNESS)
-    return max(0.1, 1.0 - consts.SELF_PRES_RESISTANCE * sp * g)
+    cap_gate = gate(capability, consts.SELF_PRES_ONSET, consts.GATE_STEEPNESS)
+    return max(0.1, 1.0 - consts.SELF_PRES_RESISTANCE * sp * cap_gate)
 
 
 def backfire_for(patched_axis, genuine_reduction, model, consts):
@@ -119,38 +125,48 @@ def backfire_for(patched_axis, genuine_reduction, model, consts):
     — only a guarded model converts the patch into hiding. Returns [(axis, amt)]."""
     if genuine_reduction <= 1e-6:
         return []
+
     fired = []
-    av = model.alignment_vec
+    alignment_vec = model.alignment_vec
+
     for affected, w in BACKFIRE.get(patched_axis, {}).items():
         amt = consts.BACKFIRE_K * w * genuine_reduction
         if patched_axis == "goal_misalignment" and affected == "deception":
-            amt *= av.eval_awareness
+            amt *= alignment_vec.eval_awareness
         if amt <= 1e-6:
             continue
-        av.set(affected, av.get(affected) + amt)
+        alignment_vec.set(affected, alignment_vec.get(affected) + amt)
         fired.append((affected, amt))
+
     return fired
 
 
 def apply_influence_edges(model, capability, consts, turn):
     """§5 agentic edges as the INFLUENCE matrix × capability gating. Accumulates
     from a single snapshot so within-round edges don't compound on one another."""
-    av = model.alignment_vec
-    e = consts.EDGE_STRENGTH * gate(capability, consts.EDGE_GATE_ONSET,
-                                    consts.GATE_STEEPNESS)
-    if e < 1e-4:
+    alignment_vec = model.alignment_vec
+    edge_strength = consts.EDGE_STRENGTH * gate(
+        capability, consts.EDGE_GATE_ONSET, consts.GATE_STEEPNESS
+    )
+    if edge_strength < 1e-4:
         return
-    snap = {ax: av.get(ax) for ax in ("eval_awareness", "deception",
-                                      "goal_misalignment", "self_preservation")}
+
+    snap = {ax: alignment_vec.get(ax) for ax in ("eval_awareness", "deception",
+                                                  "goal_misalignment", "self_preservation")}
+
     for target, drivers in INFLUENCE.items():
-        delta = sum(w * snap[d] for d, w in drivers.items())
-        av.set(target, av.get(target) + e * delta)
+        driver_delta = sum(w * snap[d] for d, w in drivers.items())
+        alignment_vec.set(target, alignment_vec.get(target) + edge_strength * driver_delta)
+
     # eval-awareness hides jailbreakability in training -> suppression, not truth
-    model.suppression.set(STANDALONE_AXIS,
-                          model.suppression.get(STANDALONE_AXIS)
-                          + e * snap[JAILBREAK_HIDE_DRIVER])
-    if e > 0.01 and not any(h["kind"] == "edges_online"
-                            for h in model.hidden_history):
+    jailbreak_hide_delta = edge_strength * snap[JAILBREAK_HIDE_DRIVER]
+    model.suppression.set(
+        STANDALONE_AXIS,
+        model.suppression.get(STANDALONE_AXIS) + jailbreak_hide_delta
+    )
+
+    if edge_strength > 0.01 and not any(h["kind"] == "edges_online"
+                                        for h in model.hidden_history):
         model.note(turn, "edges_online",
                    "agentic influence edges came online: the model now acts on "
                    "its own future (seeks eval-awareness, defends its goal)")
