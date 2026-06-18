@@ -120,12 +120,12 @@ def prompt_action(obs, state, lab):
 
 def _committed(action, moves):
     total = 0.0
-    by_id = {p["project_id"]: p for p in
-             moves["capability_projects_available"] + moves["safety_projects_available"]}
-    for s in action.start_projects:
-        p = by_id.get(s["project_id"])
-        if p:
-            total += p["budget_fraction"]
+    all_projects = moves["capability_projects_available"] + moves["safety_projects_available"]
+    by_id = {proj["project_id"]: proj for proj in all_projects}
+    for started in action.start_projects:
+        proj = by_id.get(started["project_id"])
+        if proj:
+            total += proj["budget_fraction"]
     if action.post_train:
         total += 0.30
     return total

@@ -92,75 +92,76 @@ def make_strategy(name):
         params = {**p, **p["coast"]} if is_coasting else p
 
         act = {"start_projects": [], "lobby": {}}
-        lm = obs["legal_moves"]
-        free = lm["work_budget_free"]
+        legal_moves = obs["legal_moves"]
+        budget_free = legal_moves["work_budget_free"]
         cash = obs["cash"]
-        a = lm["assist"]
+        assist_info = legal_moves["assist"]
 
         def eff_frac(base, assist):
-            return base * (1 - a["max_reduction"] * assist * a["potency"])
+            return base * (1 - assist_info["max_reduction"] * assist * assist_info["potency"])
 
         # ── 1. research the capability tree in priority order (not while coasting:
         #    a coaster deliberately stops advancing the frontier) ──
-        cap_avail = {x["project_id"]: x for x in lm["capability_projects_available"]}
-        for wid in (params["order"] if not is_coasting else []):
-            if wid not in cap_avail:
+        cap_avail = {x["project_id"]: x for x in legal_moves["capability_projects_available"]}
+        for cap_id in (params["order"] if not is_coasting else []):
+            if cap_id not in cap_avail:
                 continue
-            proj = cap_avail[wid]
-            f = eff_frac(proj["budget_fraction"], params["assist"])
-            if free - f < 0.32 or proj["cash_cost"] > cash:
+            cap_proj = cap_avail[cap_id]
+            cap_cost_frac = eff_frac(cap_proj["budget_fraction"], params["assist"])
+            if budget_free - cap_cost_frac < 0.32 or cap_proj["cash_cost"] > cash:
                 break
-            act["start_projects"].append({"project_id": wid, "ai_assist": params["assist"]})
-            free -= f
-            cash -= proj["cash_cost"]
+            act["start_projects"].append({"project_id": cap_id, "ai_assist": params["assist"]})
+            budget_free -= cap_cost_frac
+            cash -= cap_proj["cash_cost"]
             break   # one new research thread per turn (keep budget for training)
 
         # ── 2. safety measurement (cheap reads) when there's a model ──
-        saf = {x["project_id"]: x for x in lm["safety_projects_available"]}
-        if params["measure"] and (lm["can_post_train"] or obs["own_models"]):
+        safety_avail = {x["project_id"]: x for x in legal_moves["safety_projects_available"]}
+        if params["measure"] and (legal_moves["can_post_train"] or obs["own_models"]):
             for sid in ("behavioral_evals", "noise_injection", "interp_probes"):
-                if sid not in saf:
+                if sid not in safety_avail:
                     continue
-                proj = saf[sid]
-                f = eff_frac(proj["budget_fraction"], params["assist"] * 0.4)
-                if free - f < 0.32 or proj["cash_cost"] > cash:
+                meas_proj = safety_avail[sid]
+                meas_assist = params["assist"] * 0.4
+                meas_cost_frac = eff_frac(meas_proj["budget_fraction"], meas_assist)
+                if budget_free - meas_cost_frac < 0.32 or meas_proj["cash_cost"] > cash:
                     continue
                 # interp only occasionally (expensive)
                 if sid == "interp_probes" and rng.random() > 0.4:
                     continue
                 act["start_projects"].append(
-                    {"project_id": sid, "ai_assist": round(params["assist"] * 0.4, 2)})
-                free -= f
-                cash -= proj["cash_cost"]
+                    {"project_id": sid, "ai_assist": round(meas_assist, 2)})
+                budget_free -= meas_cost_frac
+                cash -= meas_proj["cash_cost"]
                 break
 
         # ── 3. interventions on the model in training ──
-        if lm["can_post_train"]:
+        if legal_moves["can_post_train"]:
             for iid in params["intervene"]:
-                if iid not in saf:
+                if iid not in safety_avail:
                     continue
-                proj = saf[iid]
-                f = eff_frac(proj["budget_fraction"], 0.0)
-                if free - f < 0.32 or proj["cash_cost"] > cash:
+                int_proj = safety_avail[iid]
+                int_cost_frac = eff_frac(int_proj["budget_fraction"], 0.0)
+                if budget_free - int_cost_frac < 0.32 or int_proj["cash_cost"] > cash:
                     continue
                 act["start_projects"].append({"project_id": iid, "ai_assist": 0.0})
-                free -= f
-                cash -= proj["cash_cost"]
+                budget_free -= int_cost_frac
+                cash -= int_proj["cash_cost"]
                 break
 
         # ── 4. training pipeline (a coaster does NOT commission new pretrain runs;
         #    it finishes and safely ships its in-training model, then sits) ──
-        commission_ok = (not is_coasting and lm["can_commission_run"]
-                         and cash > max(150, lm["max_run_compute"] * 0.12))
+        commission_ok = (not is_coasting and legal_moves["can_commission_run"]
+                         and cash > max(150, legal_moves["max_run_compute"] * 0.12))
         if commission_ok:
             act["commission_run"] = {"compute": round(cash * params["run_compute"], 0)}
-        elif lm["can_post_train"] and free >= 0.3:
-            mit = obs["model_in_training"]
-            ceiling = mit["elicitation"]["ceiling_estimate"]
-            realized = mit["measured_capability"]["general"]
+        elif legal_moves["can_post_train"] and budget_free >= 0.3:
+            model_in_training = obs["model_in_training"]
+            ceiling = model_in_training["elicitation"]["ceiling_estimate"]
+            realized = model_in_training["measured_capability"]["general"]
             if ceiling > 0 and realized < params["release_frac"] * ceiling:
                 act["post_train"] = {"mode": params["pt_mode"]}
-            elif params["measure"] and obs["worry_bar"]["level"] > 0.5 and free >= 0.3 \
+            elif params["measure"] and obs["worry_bar"]["level"] > 0.5 and budget_free >= 0.3 \
                     and rng.random() < 0.6:
                 act["post_train"] = {"mode": "safety"}   # remediate before shipping
             else:
@@ -169,16 +170,16 @@ def make_strategy(name):
         # ── 5. lobbying (scalable spend; only LIVE policies — once they're on the
         #    board. No point burning cash on dormant ones). ──
         if params["lobby"] != "abstain":
-            spend = params.get("lobby_spend", 30.0)
-            for pol in lm["policies"]:
+            lobby_spend = params.get("lobby_spend", 30.0)
+            for pol in legal_moves["policies"]:
                 if pol.get("lobbyable", True) and pol.get("stage") != "dormant":
-                    act["lobby"][pol["policy_id"]] = {"stance": params["lobby"], "spend": spend}
+                    act["lobby"][pol["policy_id"]] = {"stance": params["lobby"], "spend": lobby_spend}
 
         # ── 6. litigation: a reg-blocking strategy funds heavy challenges against
         #    ACTIVE policies that bind it (the player wielding litigation as a weapon) ──
-        if params.get("litigate") and lm["cash"] > 600:
+        if params.get("litigate") and legal_moves["cash"] > 600:
             act["litigation"] = {}
-            for pol in lm["policies"]:
+            for pol in legal_moves["policies"]:
                 if pol.get("litigable") and pol.get("defectable"):
                     act["litigation"][pol["policy_id"]] = {
                         "side": "challenge", "tier": "fund", "spend": 500}
