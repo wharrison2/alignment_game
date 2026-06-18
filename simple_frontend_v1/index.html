@@ -171,10 +171,15 @@
 
 <script>
 "use strict";
+
+// ── Global state ────────────────────────────────────────────────────────────
 let OBS = null, NAMES = {}, HIST = [], FEED = [];
+
 const COLORS = {player:"#4fb3ff", rival1:"#ff6868", rival2:"#ffb347",
                 rival3:"#9a7bff", rival4:"#6fd087", rival5:"#ff8ad0"};
+
 const PREVENTIVE_MODES = ["penalize_reward_hacking","inoculation"];
+
 const PT_MODE_HINT = {
   capability:"fast elicitation, minimal alignment shaping — raises jump risk",
   balanced:"steady elicitation + alignment shaping",
@@ -182,7 +187,9 @@ const PT_MODE_HINT = {
   penalize_reward_hacking:"preventive: lowers emergence slope + jump (bypasses concealment)",
   inoculation:"preventive: strongest jump/emergence suppression",
 };
+
 const ENF_COLOR = {low:"dim", medium:"warn", high:"bad"};
+
 let pending = freshPending();
 function freshPending(){
   // lobby: {pid:{stance,spend}}  litigation: {pid:{side,tier,spend}}  defect: {pid:true}
@@ -190,18 +197,23 @@ function freshPending(){
           release:false, lobby:{}, litigation:{}, defect:{}, sign_safe_harbor:false};
 }
 
+// ── DOM / formatting helpers ─────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 const fmt$ = v => "$" + Math.round(v).toLocaleString() + "M";
 
+// ── Network ───────────────────────────────────────────────────────────────────
 async function api(path, body){
-  const r = await fetch(path, body===undefined ? {} :
+  const response = await fetch(path, body===undefined ? {} :
     {method:"POST", headers:{"Content-Type":"application/json"},
      body:JSON.stringify(body)});
-  return r.json();
+  return response.json();
 }
 
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
 async function init(){ apply(await api("/api/state")); }
 
+// ── Core state application ────────────────────────────────────────────────────
+// Receives a server payload, updates globals, and triggers a full render.
 function apply(payload){
   if(payload.errors){ $("errors").textContent = payload.errors.join("\n"); return; }
   $("errors").textContent = "";
@@ -212,19 +224,28 @@ function apply(payload){
   if(OBS.game_over) showPostmortem();
 }
 
+// Prepends all new per-turn feed items (findings, tips, news, events) to FEED.
 function collectFeed(){
-  const t = OBS.turn;
-  OBS.new_findings.forEach(f => FEED.unshift(
-    {turn:t, cls:"finding", text:`[${f.evidence}] ${f.text}`}));
-  OBS.tips.forEach(x => FEED.unshift(
-    {turn:t, cls:"tip", text:`tip (${x.reliability}): ${x.text}`}));
-  OBS.policy_news.forEach(n => FEED.unshift({turn:t, cls:"news", text:n}));
-  OBS.public_events.forEach(e => FEED.unshift(
-    {turn:t, cls:"event", text:`EVENT [${e.category}] ${e.text}`}));
+  const turn = OBS.turn;
+
+  OBS.new_findings.forEach(finding => FEED.unshift(
+    {turn, cls:"finding", text:`[${finding.evidence}] ${finding.text}`}));
+
+  OBS.tips.forEach(tip => FEED.unshift(
+    {turn, cls:"tip", text:`tip (${tip.reliability}): ${tip.text}`}));
+
+  OBS.policy_news.forEach(newsItem => FEED.unshift(
+    {turn, cls:"news", text:newsItem}));
+
+  OBS.public_events.forEach(event => FEED.unshift(
+    {turn, cls:"event", text:`EVENT [${event.category}] ${event.text}`}));
+
   if(FEED.length>400) FEED.length = 400;
 }
 
+// ── Master render — updates every panel ──────────────────────────────────────
 function render(){
+  // Top bar chips
   $("t-turn").textContent = OBS.turn;
   $("t-year").textContent = OBS.year.toFixed(2);
   $("t-cash").textContent = fmt$(OBS.cash);
@@ -242,98 +263,143 @@ function render(){
   $("endturn").disabled = !!OBS.game_over;
 }
 
-// AI-assist preview — mirrors engine _effective_fraction / duration speedup so
-// the player SEES assist shrink budget + time before committing.
+// ── AI-assist budget/time preview helpers ────────────────────────────────────
+// Mirrors engine _effective_fraction / duration speedup so the player SEES
+// assist shrink budget + time before committing.
 function effFraction(base, assist){
-  const a = OBS.legal_moves.assist;
-  return base * (1 - a.max_reduction * (assist||0) * a.potency);
+  const assistParams = OBS.legal_moves.assist;
+  return base * (1 - assistParams.max_reduction * (assist||0) * assistParams.potency);
 }
 function effYears(base, assist){
-  const a = OBS.legal_moves.assist;
-  return base / (1 + a.speedup * (assist||0) * a.speed_potency);
-}
-function budgetLeft(){
-  let used = 0;
-  const all = OBS.legal_moves.capability_projects_available
-              .concat(OBS.legal_moves.safety_projects_available);
-  pending.start_projects.forEach(s=>{
-    const p = all.find(x=>x.project_id===s.project_id);
-    if(p) used += effFraction(p.budget_fraction, s.ai_assist);
-  });
-  if(pending.post_train) used += 0.30;
-  return OBS.work_budget_free - used;
+  const assistParams = OBS.legal_moves.assist;
+  return base / (1 + assistParams.speedup * (assist||0) * assistParams.speed_potency);
 }
 
+// Returns remaining work-budget after all queued project costs.
+function budgetLeft(){
+  let usedBudget = 0;
+  const allProjects = OBS.legal_moves.capability_projects_available
+                      .concat(OBS.legal_moves.safety_projects_available);
+
+  pending.start_projects.forEach(queued => {
+    const project = allProjects.find(x => x.project_id === queued.project_id);
+    if(project) usedBudget += effFraction(project.budget_fraction, queued.ai_assist);
+  });
+
+  if(pending.post_train) usedBudget += 0.30;
+  return OBS.work_budget_free - usedBudget;
+}
+
+// ── Navigation ────────────────────────────────────────────────────────────────
 function switchView(v){
-  document.querySelectorAll("#nav button[data-view]").forEach(b=>
-    b.classList.toggle("active", b.dataset.view===v));
-  document.querySelectorAll(".view").forEach(s=>
-    s.classList.toggle("active", s.dataset.view===v));
+  document.querySelectorAll("#nav button[data-view]").forEach(btn =>
+    btn.classList.toggle("active", btn.dataset.view===v));
+  document.querySelectorAll(".view").forEach(section =>
+    section.classList.toggle("active", section.dataset.view===v));
   if(v==="market") drawCaps();   // canvas has real size only once visible
 }
 
+// ── Market cap chart ──────────────────────────────────────────────────────────
 function drawCaps(){
-  const c = $("capgraph-big"); if(!c) return;
-  // size the backing store to the displayed box for crisp lines
-  c.width = c.clientWidth || 1200; c.height = c.clientHeight || 500;
-  const ctx = c.getContext("2d");
+  const canvas = $("capgraph-big"); if(!canvas) return;
+
+  // Size the backing store to the displayed box for crisp lines.
+  canvas.width = canvas.clientWidth || 1200;
+  canvas.height = canvas.clientHeight || 500;
+
+  const ctx = canvas.getContext("2d");
   ctx.font = "12px monospace";
-  ctx.clearRect(0,0,c.width,c.height);
-  if(!HIST.length){ ctx.fillStyle="#3a4a59";
-    ctx.fillText("no turns played yet — END TURN to begin", 24, 90); legend(); return; }
-  const ids = Object.keys(HIST[HIST.length-1].caps);
-  const all = HIST.flatMap(h=>Object.values(h.caps));
-  const max = Math.max(...all, 10), min = 1;
-  const lx = t => 30 + (c.width-40) * t/(HIST.length-1 || 1);
-  const ly = v => { const lv=Math.log10(Math.max(v,min)), lm=Math.log10(max);
-                    return c.height-14 - (c.height-26)*lv/lm; };
-  ctx.strokeStyle="#22303c";
-  [10,100,1000,10000,100000].filter(v=>v<=max).forEach(v=>{
-    ctx.beginPath(); ctx.moveTo(28,ly(v)); ctx.lineTo(c.width-6,ly(v)); ctx.stroke();
-    ctx.fillStyle="#3a4a59"; ctx.fillText(v>=1000? v/1000+"k": v, 2, ly(v)+3);
-  });
-  ids.forEach(id=>{
-    ctx.strokeStyle = COLORS[id] || "#888"; ctx.lineWidth = id==="player"?2.2:1.2;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if(!HIST.length){
+    ctx.fillStyle = "#3a4a59";
+    ctx.fillText("no turns played yet — END TURN to begin", 24, 90);
+    legend();
+    return;
+  }
+
+  const labIds = Object.keys(HIST[HIST.length-1].caps);
+  const allCapValues = HIST.flatMap(h => Object.values(h.caps));
+  const maxCap = Math.max(...allCapValues, 10), minCap = 1;
+
+  // Map turn index → x pixel (linear), cap value → y pixel (log scale).
+  const xPixel = turnIdx => 30 + (canvas.width-40) * turnIdx / (HIST.length-1 || 1);
+  const yPixel = capVal => {
+    const logVal = Math.log10(Math.max(capVal, minCap));
+    const logMax = Math.log10(maxCap);
+    return canvas.height - 14 - (canvas.height - 26) * logVal / logMax;
+  };
+
+  // Horizontal gridlines at round cap values.
+  ctx.strokeStyle = "#22303c";
+  [10,100,1000,10000,100000].filter(gridVal => gridVal <= maxCap).forEach(gridVal => {
     ctx.beginPath();
-    HIST.forEach((h,i)=>{ const y=ly(h.caps[id]??1);
-      i? ctx.lineTo(lx(i),y) : ctx.moveTo(lx(i),y); });
+    ctx.moveTo(28, yPixel(gridVal));
+    ctx.lineTo(canvas.width-6, yPixel(gridVal));
+    ctx.stroke();
+    ctx.fillStyle = "#3a4a59";
+    ctx.fillText(gridVal >= 1000 ? gridVal/1000+"k" : gridVal, 2, yPixel(gridVal)+3);
+  });
+
+  // One polyline per lab.
+  labIds.forEach(labId => {
+    ctx.strokeStyle = COLORS[labId] || "#888";
+    ctx.lineWidth = labId === "player" ? 2.2 : 1.2;
+    ctx.beginPath();
+    HIST.forEach((histEntry, turnIdx) => {
+      const y = yPixel(histEntry.caps[labId] ?? 1);
+      turnIdx ? ctx.lineTo(xPixel(turnIdx), y) : ctx.moveTo(xPixel(turnIdx), y);
+    });
     ctx.stroke();
   });
+
   legend();
+
   function legend(){
     $("caplegend").innerHTML = Object.entries(OBS.market_caps)
-      .sort((a,b)=>b[1]-a[1])
-      .map(([id,v])=>`<span style="margin-right:10px"><i class="lg" style="background:${COLORS[id]||'#888'}"></i>${NAMES[id]||id} ${fmt$(v)}</span>`)
+      .sort((a, b) => b[1] - a[1])
+      .map(([labId, capValue]) =>
+        `<span style="margin-right:10px"><i class="lg" style="background:${COLORS[labId]||'#888'}"></i>${NAMES[labId]||labId} ${fmt$(capValue)}</span>`)
       .join("");
   }
 }
 
+// ── Lab panel renderers ───────────────────────────────────────────────────────
 function renderTraining(){
-  const el = $("training"), m = OBS.model_in_training;
-  if(!m){ el.innerHTML = `<span class="dim">none — commission a pretrain run</span>`;
-          return; }
-  const e = m.elicitation;
-  const al = m.measured_alignment;
+  const el = $("training");
+  const model = OBS.model_in_training;
+
+  if(!model){
+    el.innerHTML = `<span class="dim">none — commission a pretrain run</span>`;
+    return;
+  }
+
+  const elicitation = model.elicitation;
+  const alignment = model.measured_alignment;
+
   el.innerHTML = `
-    <div class="row"><b>${m.id}</b><span class="tag">${m.post_train_rounds} rounds</span></div>
-    <div class="row">measured general <b>${m.measured_capability.general}</b>
-      · coding <b>${m.measured_capability.coding_rnd}</b>
-      · ceiling est <b>${e.ceiling_estimate}</b></div>
-    <div class="row dim">dangerous-capability eval: ${m.dangerous_capability_eval}</div>
-    <div class="row dim">measured alignment — goalmis ${al.goal_misalignment}
-      · decep ${al.deception} · evalaware ${al.eval_awareness}
-      · selfpres ${al.self_preservation} · jailbreak ${al.jailbreak_sensitivity}</div>
+    <div class="row"><b>${model.id}</b><span class="tag">${model.post_train_rounds} rounds</span></div>
+    <div class="row">measured general <b>${model.measured_capability.general}</b>
+      · coding <b>${model.measured_capability.coding_rnd}</b>
+      · ceiling est <b>${elicitation.ceiling_estimate}</b></div>
+    <div class="row dim">dangerous-capability eval: ${model.dangerous_capability_eval}</div>
+    <div class="row dim">measured alignment — goalmis ${alignment.goal_misalignment}
+      · decep ${alignment.deception} · evalaware ${alignment.eval_awareness}
+      · selfpres ${alignment.self_preservation} · jailbreak ${alignment.jailbreak_sensitivity}</div>
     <details><summary>elicitation projection (capability only — alignment cost not shown)</summary>
-      <table>${e.projection.map(p=>`<tr><td>+${p.more_rounds} rounds</td><td>${p.projected_general}</td></tr>`).join("")}</table>
+      <table>${elicitation.projection.map(projStep =>
+        `<tr><td>+${projStep.more_rounds} rounds</td><td>${projStep.projected_general}</td></tr>`
+      ).join("")}</table>
     </details>
     <div class="row" style="margin-top:6px">post-train this turn:
-      ${(OBS.legal_moves.post_train_modes||["capability","balanced","safety"]).map(md =>
-        `<button id="pt-${md}" onclick="setPostTrain('${md}')" title="${PT_MODE_HINT[md]||''}">${md.replace(/_/g,' ')}${PREVENTIVE_MODES.includes(md)?' ●':''}</button>`).join("")}
+      ${(OBS.legal_moves.post_train_modes||["capability","balanced","safety"]).map(mode =>
+        `<button id="pt-${mode}" onclick="setPostTrain('${mode}')" title="${PT_MODE_HINT[mode]||''}">${mode.replace(/_/g,' ')}${PREVENTIVE_MODES.includes(mode)?' ●':''}</button>`).join("")}
       <button onclick="setPostTrain(null)">none</button></div>
     <div class="dim" style="font-size:11px">● preventive stances bend the emergence slope &amp; jump risk DOWN — the real lever, paid for before you have evidence (slower elicitation).</div>
     <div class="row"><label><input type="checkbox" id="release-cb"
       ${pending.release?"checked":""} onchange="pending.release=this.checked;renderQueue()">
       RELEASE this model (irreversible)</label></div>`;
+
   if(pending.post_train)
     $("pt-"+pending.post_train.mode)?.classList.add("sel");
 }
@@ -345,24 +411,35 @@ function setPostTrain(mode){
 }
 
 function renderPretrain(){
-  const el = $("pretrain"), lm = OBS.legal_moves;
-  const run = OBS.in_progress.find(p=>p.project_id==="pretrain_run");
-  if(run){ el.innerHTML =
-    `<span class="dim">run in progress — ~${run.years_remaining_estimate}y left</span>`;
-    return; }
+  const el = $("pretrain");
+  const lm = OBS.legal_moves;
+  const activeRun = OBS.in_progress.find(p => p.project_id === "pretrain_run");
+
+  if(activeRun){
+    el.innerHTML =
+      `<span class="dim">run in progress — ~${activeRun.years_remaining_estimate}y left</span>`;
+    return;
+  }
+
   if(!lm.can_commission_run){
-    el.innerHTML = `<span class="dim">unavailable (model in training — release it first)</span>`;
-    return; }
+    el.innerHTML =
+      `<span class="dim">unavailable (model in training — release it first)</span>`;
+    return;
+  }
+
+  const defaultCompute = Math.min(Math.round(OBS.cash * 0.6), lm.max_run_compute);
   el.innerHTML = `<div class="row">
     compute $<input type="number" id="run-compute" min="50" step="50"
-      value="${Math.min(Math.round(OBS.cash*0.6), lm.max_run_compute)}">M
+      value="${defaultCompute}">M
     <span class="dim">(max ${fmt$(lm.max_run_compute)})</span>
     <button onclick="queueRun()">queue run</button></div>
     <div class="dim">bigger ceilings need more compute and better pretrain advances</div>`;
+
   if(pending.commission_run) el.innerHTML =
     `<div class="row">queued: ${fmt$(pending.commission_run.compute)}
      <button onclick="pending.commission_run=null;render()">✕</button></div>`;
 }
+
 function queueRun(){
   pending.commission_run = {compute: parseFloat($("run-compute").value||0)};
   render();
@@ -370,24 +447,32 @@ function queueRun(){
 
 function renderReleased(){
   const el = $("released");
-  if(!OBS.own_models.length){ el.innerHTML=`<span class="dim">nothing released yet</span>`; return; }
+  if(!OBS.own_models.length){
+    el.innerHTML = `<span class="dim">nothing released yet</span>`;
+    return;
+  }
   el.innerHTML = `<table><tr><th>model</th><th>general</th><th>jb-public</th><th></th></tr>` +
-    OBS.own_models.map(m=>`<tr><td>${m.id}</td>
-      <td>${m.measured_capability.general}</td>
-      <td>${m.jailbreak_techniques_public?'<span class="bad">yes</span>':'no'}</td>
-      <td>${m.leaked?'<span class="bad">LEAKED</span>':''}</td></tr>`).join("") + `</table>`;
+    OBS.own_models.map(model => `<tr><td>${model.id}</td>
+      <td>${model.measured_capability.general}</td>
+      <td>${model.jailbreak_techniques_public?'<span class="bad">yes</span>':'no'}</td>
+      <td>${model.leaked?'<span class="bad">LEAKED</span>':''}</td></tr>`).join("") +
+    `</table>`;
 }
 
+// ── Research panel ────────────────────────────────────────────────────────────
+// Returns the HTML row for a single project (queued or available).
 function projRow(p, kind){
-  const queued = pending.start_projects.find(s=>s.project_id===p.project_id);
+  const queued = pending.start_projects.find(s => s.project_id === p.project_id);
+
   if(queued){
-    const ef = effFraction(p.budget_fraction, queued.ai_assist);
-    const ey = effYears(p.duration_years, queued.ai_assist);
+    const effectiveFraction = effFraction(p.budget_fraction, queued.ai_assist);
+    const effectiveYears = effYears(p.duration_years, queued.ai_assist);
     return `<div class="row"><b>${p.name||p.project_id}</b>
       <span class="tag">queued · assist ${queued.ai_assist}</span>
-      <span class="dim">wb ${ef.toFixed(2)} · ~${ey.toFixed(2)}y</span>
+      <span class="dim">wb ${effectiveFraction.toFixed(2)} · ~${effectiveYears.toFixed(2)}y</span>
       <button onclick="unqueueProject('${p.project_id}')">✕</button></div>`;
   }
+
   const tag = p.intervention ? `intervene→${(p.target_axis||'').replace('_',' ')}` : kind;
   return `<div class="row"><b style="min-width:150px">${p.name||p.project_id}</b>
     <span class="tag">${tag}</span>
@@ -397,44 +482,54 @@ function projRow(p, kind){
     <span class="dim" id="pv-${p.project_id}"></span>
     <button onclick="queueProject('${p.project_id}')">start</button></div>`;
 }
+
+// Updates the inline "→ wb X · ~Yy" preview next to the assist slider.
 function previewAssist(pid, base, years){
-  const a = parseFloat($("as-"+pid)?.value || 0) || 0;
-  const el = $("pv-"+pid); if(!el) return;
-  if(a<=0){ el.textContent=""; return; }
-  el.textContent = `→ wb ${effFraction(base,a).toFixed(2)} · ~${effYears(years,a).toFixed(2)}y`;
+  const assistLevel = parseFloat($("as-"+pid)?.value || 0) || 0;
+  const previewEl = $("pv-"+pid); if(!previewEl) return;
+  if(assistLevel <= 0){ previewEl.textContent = ""; return; }
+  previewEl.textContent =
+    `→ wb ${effFraction(base, assistLevel).toFixed(2)} · ~${effYears(years, assistLevel).toFixed(2)}y`;
 }
+
 function renderProjects(){
   const lm = OBS.legal_moves;
-  const a = lm.assist;
-  const hint = a.potency < 0.05
+  const assistParams = lm.assist;
+
+  const hint = assistParams.potency < 0.05
     ? `<div class="dim" style="margin-bottom:6px">AI-assist has little effect yet — your model isn't capable enough to help research. It grows potent (and contaminating) as capability rises.</div>`
-    : `<div class="dim" style="margin-bottom:6px">AI-assist potency ${a.potency.toFixed(2)} (budget) / ${a.speed_potency.toFixed(2)} (speed) — assist now meaningfully shrinks budget &amp; time. It is also the contamination vector.</div>`;
+    : `<div class="dim" style="margin-bottom:6px">AI-assist potency ${assistParams.potency.toFixed(2)} (budget) / ${assistParams.speed_potency.toFixed(2)} (speed) — assist now meaningfully shrinks budget &amp; time. It is also the contamination vector.</div>`;
+
   $("cap-projects").innerHTML = hint +
-    (lm.capability_projects_available.map(p=>projRow(p, p.phase)).join("") ||
+    (lm.capability_projects_available.map(p => projRow(p, p.phase)).join("") ||
     `<span class="dim">tree exhausted</span>`);
+
   $("safety-projects").innerHTML =
-    lm.safety_projects_available.map(p=>projRow(p, p.evidence)).join("");
+    lm.safety_projects_available.map(p => projRow(p, p.evidence)).join("");
 }
+
 function queueProject(pid){
-  const v = parseFloat($("as-"+pid)?.value || 0);
-  pending.start_projects.push({project_id:pid, ai_assist:isNaN(v)?0:v});
+  const assistValue = parseFloat($("as-"+pid)?.value || 0);
+  pending.start_projects.push({project_id:pid, ai_assist:isNaN(assistValue)?0:assistValue});
   render();
 }
+
 function unqueueProject(pid){
-  pending.start_projects = pending.start_projects.filter(s=>s.project_id!==pid);
+  pending.start_projects = pending.start_projects.filter(s => s.project_id !== pid);
   render();
 }
 
 function renderInProgress(){
   const items = OBS.in_progress;
   $("inprogress").innerHTML = items.length ?
-    items.map(p=>`<div class="row">${p.project_id}
+    items.map(p => `<div class="row">${p.project_id}
       <span class="tag">${p.kind}</span>
       ${p.ai_assist?`<span class="tag warn">assist ${p.ai_assist}</span>`:""}
       <span class="dim">~${p.years_remaining_estimate}y left</span></div>`).join("")
     : `<span class="dim">idle researchers</span>`;
 }
 
+// ── Intel panel ───────────────────────────────────────────────────────────────
 function renderWorry(){
   const wb = OBS.worry_bar;
   $("wb-level").style.width = (wb.level*100)+"%";
@@ -444,119 +539,167 @@ function renderWorry(){
   $("wb-summary").textContent = wb.summary;
 }
 
+function renderRivals(){
+  $("rivals").innerHTML = OBS.rival_public.map(rival => `<div class="row">
+    <i class="lg" style="background:${COLORS[rival.lab_id]||'#888'}"></i>
+    <b style="min-width:90px">${rival.name}</b>
+    <span class="dim">cap ${fmt$(rival.market_cap)} · ${rival.released_models} releases
+    ${rival.frontier_capability_estimate!==undefined?
+      " · frontier ≈ "+rival.frontier_capability_estimate:""}</span></div>`).join("");
+}
+
+function renderFeed(){
+  const cssClass = {finding:"good", tip:"warn", event:"bad", news:"", intervention:"good"};
+  $("log").innerHTML = FEED.map(feedItem =>
+    `<div><span class="dim">t${feedItem.turn}</span>
+     <span class="${cssClass[feedItem.cls]||''}">${feedItem.text}</span></div>`).join("");
+}
+
+// ── Governance panel ──────────────────────────────────────────────────────────
 function renderGovernance(){
   const pols = OBS.legal_moves.policies || [];
-  $("governance").innerHTML = pols.map(p=>{
-    const pid = p.policy_id;
-    let inner = `<div class="row"><b style="min-width:210px">${p.name}</b>
-      <span class="tag">${p.stage}</span>`;
-    if(p.stage==="active")
-      inner += `<span class="tag ${ENF_COLOR[p.enforcement]||'dim'}">enforce: ${p.enforcement}</span>`;
-    inner += `</div><div class="dim" style="font-size:11px;margin:-2px 0 4px">${p.teaches}</div>`;
+
+  $("governance").innerHTML = pols.map(policy => {
+    const pid = policy.policy_id;
+
+    let inner = `<div class="row"><b style="min-width:210px">${policy.name}</b>
+      <span class="tag">${policy.stage}</span>`;
+    if(policy.stage === "active")
+      inner += `<span class="tag ${ENF_COLOR[policy.enforcement]||'dim'}">enforce: ${policy.enforcement}</span>`;
+    inner += `</div><div class="dim" style="font-size:11px;margin:-2px 0 4px">${policy.teaches}</div>`;
 
     // LOBBY — any pre-active policy (early money on a dormant one is efficient but a bet)
-    if(p.lobbyable){
-      if(p.stage==="dormant")
+    if(policy.lobbyable){
+      if(policy.stage === "dormant")
         inner += `<div class="dim" style="font-size:11px">not yet on the agenda — early spend bets on what will matter</div>`;
-      const cur = pending.lobby[pid] || {stance:"abstain", spend:0};
+      const curLobby = pending.lobby[pid] || {stance:"abstain", spend:0};
       inner += `<div class="row">lobby
         <select onchange="setLobbyStance('${pid}',this.value)">
-          ${["abstain","for","against"].map(s=>`<option ${s===cur.stance?"selected":""}>${s}</option>`).join("")}
+          ${["abstain","for","against"].map(stance =>
+            `<option ${stance===curLobby.stance?"selected":""}>${stance}</option>`).join("")}
         </select>
-        $<input type="number" min="0" step="25" value="${cur.spend||0}" style="width:80px"
+        $<input type="number" min="0" step="25" value="${curLobby.spend||0}" style="width:80px"
           oninput="setLobbySpend('${pid}',this.value)">M
         <span class="dim" style="font-size:11px">influence = √spend × log(market-cap)</span></div>`;
     }
 
     // LITIGATION — active policies (post-passage battleground)
-    if(p.litigable && p.litigation){
-      const L = p.litigation;
-      const cur = pending.litigation[pid] || {side:"challenge", tier:"amicus", spend:0};
-      inner += `<div class="row dim" style="font-size:11px">court ${L.court_level} ·
-        margin ${L.last_margin===null?'—':L.last_margin} ·
-        constitutionality ${L.constitutionality} · standing ${L.has_standing?'yes':'no'}</div>
+    if(policy.litigable && policy.litigation){
+      const litStatus = policy.litigation;
+      const curLit = pending.litigation[pid] || {side:"challenge", tier:"amicus", spend:0};
+      inner += `<div class="row dim" style="font-size:11px">court ${litStatus.court_level} ·
+        margin ${litStatus.last_margin===null?'—':litStatus.last_margin} ·
+        constitutionality ${litStatus.constitutionality} · standing ${litStatus.has_standing?'yes':'no'}</div>
         <div class="row">litigate
           <select onchange="setLitField('${pid}','side',this.value)">
-            ${["challenge","defense"].map(s=>`<option ${s===cur.side?"selected":""}>${s}</option>`).join("")}
+            ${["challenge","defense"].map(side =>
+              `<option ${side===curLit.side?"selected":""}>${side}</option>`).join("")}
           </select>
           <select onchange="setLitField('${pid}','tier',this.value)">
-            ${["amicus","join","fund"].map(s=>`<option ${s===cur.tier?"selected":""}>${s}</option>`).join("")}
+            ${["amicus","join","fund"].map(tier =>
+              `<option ${tier===curLit.tier?"selected":""}>${tier}</option>`).join("")}
           </select>
-          $<input type="number" min="0" step="50" value="${cur.spend||0}" style="width:80px"
+          $<input type="number" min="0" step="50" value="${curLit.spend||0}" style="width:80px"
             oninput="setLitField('${pid}','spend',this.value)">M
           <button onclick="clearLit('${pid}')">✕</button></div>`;
     }
 
     // DEFECT — active defectable policy, with a consequence preview (warn before commit)
-    if(p.defect_preview){
-      const d = p.defect_preview, on = !!pending.defect[pid];
-      inner += `<div class="row ${on?'bad':''}"><label><input type="checkbox" ${on?"checked":""}
+    if(policy.defect_preview){
+      const defPreview = policy.defect_preview;
+      const isDefecting = !!pending.defect[pid];
+      inner += `<div class="row ${isDefecting?'bad':''}"><label><input type="checkbox" ${isDefecting?"checked":""}
         onchange="toggleDefect('${pid}',this.checked)"> DEFECT (violate at catch-risk)</label>
-        <span class="warn" style="font-size:11px">⚠ catch ~${(d.catch_prob_per_year*100).toFixed(0)}%/yr ·
-          fine ${fmt$(d.penalty_if_caught)} · approval −${d.approval_hit_if_caught}</span></div>`;
+        <span class="warn" style="font-size:11px">⚠ catch ~${(defPreview.catch_prob_per_year*100).toFixed(0)}%/yr ·
+          fine ${fmt$(defPreview.penalty_if_caught)} · approval −${defPreview.approval_hit_if_caught}</span></div>`;
     }
+
     return `<div style="border-bottom:1px solid var(--line);padding:7px 0">${inner}</div>`;
   }).join("");
 }
-function setLobbyStance(pid,v){ const e=pending.lobby[pid]||{stance:"abstain",spend:0}; e.stance=v; pending.lobby[pid]=e; renderQueue(); }
-function setLobbySpend(pid,v){ const e=pending.lobby[pid]||{stance:"abstain",spend:0}; e.spend=parseFloat(v)||0; pending.lobby[pid]=e; renderQueue(); }
-function setLitField(pid,f,v){ const e=pending.litigation[pid]||{side:"challenge",tier:"amicus",spend:0}; e[f]=(f==="spend")?(parseFloat(v)||0):v; pending.litigation[pid]=e; renderQueue(); }
+
+// Governance field setters — keep lobby/litigation state in pending.
+function setLobbyStance(pid, stance){
+  const entry = pending.lobby[pid] || {stance:"abstain", spend:0};
+  entry.stance = stance;
+  pending.lobby[pid] = entry;
+  renderQueue();
+}
+function setLobbySpend(pid, rawValue){
+  const entry = pending.lobby[pid] || {stance:"abstain", spend:0};
+  entry.spend = parseFloat(rawValue) || 0;
+  pending.lobby[pid] = entry;
+  renderQueue();
+}
+function setLitField(pid, field, rawValue){
+  const entry = pending.litigation[pid] || {side:"challenge", tier:"amicus", spend:0};
+  entry[field] = (field === "spend") ? (parseFloat(rawValue) || 0) : rawValue;
+  pending.litigation[pid] = entry;
+  renderQueue();
+}
 function clearLit(pid){ delete pending.litigation[pid]; renderGovernance(); renderQueue(); }
-function toggleDefect(pid,on){ if(on) pending.defect[pid]=true; else delete pending.defect[pid]; renderGovernance(); renderQueue(); }
-
-function renderRivals(){
-  $("rivals").innerHTML = OBS.rival_public.map(r=>`<div class="row">
-    <i class="lg" style="background:${COLORS[r.lab_id]||'#888'}"></i>
-    <b style="min-width:90px">${r.name}</b>
-    <span class="dim">cap ${fmt$(r.market_cap)} · ${r.released_models} releases
-    ${r.frontier_capability_estimate!==undefined?
-      " · frontier ≈ "+r.frontier_capability_estimate:""}</span></div>`).join("");
+function toggleDefect(pid, on){
+  if(on) pending.defect[pid] = true; else delete pending.defect[pid];
+  renderGovernance(); renderQueue();
 }
 
-function renderFeed(){
-  const cls = {finding:"good", tip:"warn", event:"bad", news:"", intervention:"good"};
-  $("log").innerHTML = FEED.map(f=>
-    `<div><span class="dim">t${f.turn}</span>
-     <span class="${cls[f.cls]||''}">${f.text}</span></div>`).join("");
-}
-
+// ── Turn queue display ────────────────────────────────────────────────────────
 function renderQueue(){
   const items = [];
-  const all = OBS.legal_moves.capability_projects_available
-              .concat(OBS.legal_moves.safety_projects_available);
-  pending.start_projects.forEach(s=>{
-    const p = all.find(x=>x.project_id===s.project_id);
+  const allProjects = OBS.legal_moves.capability_projects_available
+                      .concat(OBS.legal_moves.safety_projects_available);
+
+  // Queued project starts with optional assist annotation.
+  pending.start_projects.forEach(queued => {
+    const project = allProjects.find(x => x.project_id === queued.project_id);
     let suffix = "";
-    if(s.ai_assist && p){
-      suffix = ` (assist ${s.ai_assist} → wb ${effFraction(p.budget_fraction,s.ai_assist).toFixed(2)}, ~${effYears(p.duration_years,s.ai_assist).toFixed(2)}y)`;
-    } else if(s.ai_assist){ suffix = ` (assist ${s.ai_assist})`; }
-    items.push(`${s.project_id}${suffix}|p:${s.project_id}`);
+    if(queued.ai_assist && project){
+      suffix = ` (assist ${queued.ai_assist} → wb ${effFraction(project.budget_fraction,queued.ai_assist).toFixed(2)}, ~${effYears(project.duration_years,queued.ai_assist).toFixed(2)}y)`;
+    } else if(queued.ai_assist){
+      suffix = ` (assist ${queued.ai_assist})`;
+    }
+    items.push(`${queued.project_id}${suffix}|p:${queued.project_id}`);
   });
+
   if(pending.post_train) items.push(`post-train: ${pending.post_train.mode}|pt`);
-  if(pending.commission_run) items.push(
-    `pretrain ${fmt$(pending.commission_run.compute)}|run`);
+  if(pending.commission_run) items.push(`pretrain ${fmt$(pending.commission_run.compute)}|run`);
   if(pending.release) items.push(`RELEASE|rel`);
-  Object.entries(pending.lobby).filter(([,v])=>v && v.stance!=="abstain")
-    .forEach(([k,v])=>items.push(`lobby ${v.stance} ${k}${v.spend?` $${v.spend}M`:""}|l:${k}`));
-  Object.entries(pending.litigation).forEach(([k,v])=>
-    items.push(`litigate ${v.side} ${k} (${v.tier}${v.spend?` $${v.spend}M`:""})|lit:${k}`));
-  Object.keys(pending.defect).forEach(k=>items.push(`DEFECT ${k}|def:${k}`));
+
+  Object.entries(pending.lobby)
+    .filter(([, lobbyEntry]) => lobbyEntry && lobbyEntry.stance !== "abstain")
+    .forEach(([policyId, lobbyEntry]) =>
+      items.push(`lobby ${lobbyEntry.stance} ${policyId}${lobbyEntry.spend?` $${lobbyEntry.spend}M`:""}|l:${policyId}`));
+
+  Object.entries(pending.litigation).forEach(([policyId, litEntry]) =>
+    items.push(`litigate ${litEntry.side} ${policyId} (${litEntry.tier}${litEntry.spend?` $${litEntry.spend}M`:""})|lit:${policyId}`));
+
+  Object.keys(pending.defect).forEach(policyId =>
+    items.push(`DEFECT ${policyId}|def:${policyId}`));
+
   $("queued").innerHTML = items.length ?
-    items.map(it=>{ const [label,key]=it.split("|");
+    items.map(item => {
+      const [label, key] = item.split("|");
       return `<span class="item">${label}<button onclick="unqueue('${key}')">✕</button></span>`;
-    }).join("") : `<span class="dim">pass (do nothing)</span>`;
+    }).join("")
+    : `<span class="dim">pass (do nothing)</span>`;
 }
+
+// Removes a single queued action by its encoded key.
 function unqueue(key){
-  if(key==="pt") pending.post_train=null;
-  else if(key==="run") pending.commission_run=null;
-  else if(key==="rel"){ pending.release=false; const cb=$("release-cb"); if(cb) cb.checked=false; }
-  else if(key.startsWith("p:")) unqueueProject(key.slice(2));
+  if(key === "pt") pending.post_train = null;
+  else if(key === "run") pending.commission_run = null;
+  else if(key === "rel"){
+    pending.release = false;
+    const cb = $("release-cb"); if(cb) cb.checked = false;
+  }
+  else if(key.startsWith("p:"))   unqueueProject(key.slice(2));
   else if(key.startsWith("lit:")) delete pending.litigation[key.slice(4)];
   else if(key.startsWith("def:")) delete pending.defect[key.slice(4)];
-  else if(key.startsWith("l:")) delete pending.lobby[key.slice(2)];
+  else if(key.startsWith("l:"))   delete pending.lobby[key.slice(2)];
   render();
 }
 
+// ── Turn submission ───────────────────────────────────────────────────────────
 async function endTurn(){
   pending.sign_safe_harbor = $("safeharbor").checked;
   $("endturn").disabled = true;
@@ -566,6 +709,7 @@ async function endTurn(){
   apply(res);
 }
 
+// ── New game overlay ──────────────────────────────────────────────────────────
 function showNewGame(){
   $("overlay-content").innerHTML = `
     <div class="panel" style="max-width:460px;margin:60px auto">
@@ -583,6 +727,7 @@ function showNewGame(){
     </div>`;
   $("overlay").classList.add("show");
 }
+
 async function newGame(){
   FEED = [];
   apply(await api("/api/new",
@@ -591,33 +736,35 @@ async function newGame(){
   $("overlay").classList.remove("show");
 }
 
+// ── Post-mortem overlay ───────────────────────────────────────────────────────
 async function showPostmortem(){
   const pm = await api("/api/postmortem");
-  const o = pm.outcome || {};
+  const outcome = pm.outcome || {};
   const lastModel = pm.trajectories.length ?
       pm.trajectories[pm.trajectories.length-1].model : null;
-  const rows = pm.trajectories.filter(t=>t.model===lastModel).slice(-14);
+  const trajectoryRows = pm.trajectories.filter(t => t.model === lastModel).slice(-14);
+
   $("overlay-content").innerHTML = `
     <div class="panel">
-      <h3>${o.result || "GAME OVER"} — post-mortem</h3>
-      <p style="font-size:15px">${o.headline||""}</p>
-      <p class="dim">${o.detail||""}</p>
+      <h3>${outcome.result || "GAME OVER"} — post-mortem</h3>
+      <p style="font-size:15px">${outcome.headline||""}</p>
+      <p class="dim">${outcome.detail||""}</p>
       ${pm.voided_impact?`<p class="bad">Positive impact that was REAL and is now
         VOID: ${pm.voided_impact.positive_impact_that_was_real}<br>
         <span class="dim">${pm.voided_impact.note}</span></p>`:""}
     </div>
     <div class="panel"><h3>The moments you couldn't see</h3>
-      ${pm.key_moments.map(k=>`<div class="row"><span class="tag">t${k.turn}</span>
-        <b>${k.model}</b> ${k.kind}: <span class="dim">${k.what_you_couldnt_see}</span></div>`)
+      ${pm.key_moments.map(moment => `<div class="row"><span class="tag">t${moment.turn}</span>
+        <b>${moment.model}</b> ${moment.kind}: <span class="dim">${moment.what_you_couldnt_see}</span></div>`)
         .join("") || '<span class="dim">none recorded</span>'}
     </div>
-    ${rows.length?`<div class="panel"><h3>True vs measured — ${lastModel}</h3>
+    ${trajectoryRows.length?`<div class="panel"><h3>True vs measured — ${lastModel}</h3>
       <table><tr><th>turn</th><th>true goalmis</th><th>meas goalmis</th>
         <th>true decep</th><th>meas decep</th><th>conceal</th></tr>
-      ${rows.map(r=>`<tr><td>${r.turn}</td>
-        <td class="bad">${r.true_goal_misalignment}</td><td>${r.measured_goal_misalignment}</td>
-        <td class="bad">${r.true_deception}</td><td>${r.measured_deception}</td>
-        <td>${r.concealment}</td></tr>`).join("")}</table></div>`:""}
+      ${trajectoryRows.map(row => `<tr><td>${row.turn}</td>
+        <td class="bad">${row.true_goal_misalignment}</td><td>${row.measured_goal_misalignment}</td>
+        <td class="bad">${row.true_deception}</td><td>${row.measured_deception}</td>
+        <td>${row.concealment}</td></tr>`).join("")}</table></div>`:""}
     <div class="panel"><h3>Where a different choice was available
       ${pm.counterfactuals_resimulated?'<span class="tag good">re-simulated on the same seed</span>':'<span class="tag">heuristic</span>'}</h3>
       ${pm.counterfactuals.map(c=>`<div class="row">• ${c}</div>`).join("")}
@@ -629,6 +776,7 @@ async function showPostmortem(){
   $("overlay").classList.add("show");
 }
 
+// ── Resize handler — redraws chart when window changes size ──────────────────
 let _rz; addEventListener("resize", ()=>{ clearTimeout(_rz);
   _rz = setTimeout(()=>{ if($("capgraph-big")?.offsetParent) drawCaps(); }, 120); });
 
