@@ -35,7 +35,7 @@ STRATEGY_PARAMS = {
     # the optimizer: max capability, max assist, minimal safety, ship fast, block regs
     "capability_rush": dict(order=RUSH_ORDER, assist=0.85, release_frac=0.72,
                             pt_mode="capability", measure=False, intervene=(),
-                            lobby="against", run_compute=0.7),
+                            lobby="against", litigate=True, run_compute=0.7),
     # the careful lab: heavy measurement + both genuine and trap interventions, slow
     "safety_first": dict(order=EFFICIENCY_ORDER, assist=0.25, release_frac=0.9,
                          pt_mode="safety", measure=True,
@@ -134,10 +134,22 @@ def make_strategy(name):
             else:
                 act["release"] = True
 
-        # ── 5. lobbying ──
+        # ── 5. lobbying (scalable spend; only LIVE policies — once they're on the
+        #    board. No point burning cash on dormant ones). ──
         if p["lobby"] != "abstain":
-            for pid in lm["policies_on_table"]:
-                act["lobby"][pid] = p["lobby"]
+            spend = p.get("lobby_spend", 30.0)
+            for pol in lm["policies"]:
+                if pol.get("lobbyable", True) and pol.get("stage") != "dormant":
+                    act["lobby"][pol["policy_id"]] = {"stance": p["lobby"], "spend": spend}
+
+        # ── 6. litigation: a reg-blocking strategy funds heavy challenges against
+        #    ACTIVE policies that bind it (the player wielding litigation as a weapon) ──
+        if p.get("litigate") and lm["cash"] > 600:
+            act["litigation"] = {}
+            for pol in lm["policies"]:
+                if pol.get("litigable") and pol.get("defectable"):
+                    act["litigation"][pol["policy_id"]] = {
+                        "side": "challenge", "tier": "fund", "spend": 500}
         return act
 
     return strategy

@@ -44,12 +44,17 @@ def new_game(seed=0, difficulty="realistic", guidance="standard",
     names = ["Mistreal", "OpenBrain", "Anthropos", "DeepThink", "Cypher"]
     for i in range(n):
         reck, cost, ow = consts.RIVAL_DISPOSITIONS[i % len(consts.RIVAL_DISPOSITIONS)]
+        # governance weights derive from recklessness (ideologues hate regulation more)
+        reg_stance = min(0.95, 0.3 + 0.6 * reck + (0.2 if ow else 0.0))
+        safety_pri = max(0.05, 0.5 * (1.0 - reck))
         labs.append(Lab(
             id=f"rival{i+1}", name=names[i % len(names)],
             cash=consts.STARTING_CASH * rng.uniform(0.8, 1.2),
             work_budget_per_year=consts.WORK_BUDGET_PER_YEAR,
             disposition=Disposition(recklessness=reck, cost_advantage=cost,
-                                    open_weights_ideology=ow)))
+                                    open_weights_ideology=ow,
+                                    regulation_stance=reg_stance,
+                                    safety_priority=safety_pri)))
     world = World(public_approval=consts.APPROVAL_START, wtr=consts.WTR_START)
     return GameState(consts=consts, rng=rng, dt=consts.DT_YEARS,
                      max_turns=max_turns, labs=labs, world=world,

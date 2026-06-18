@@ -1,27 +1,34 @@
-"""Lobbying (§10c, DECIDED v1): per-policy stance for/against/abstain, binary,
-no cost, re-set each turn. Weight = market cap. Rivals lobby by race position.
+"""Lobbying (§10c, REVISED — SCALABLE SPEND). A lab picks a stance per policy
+(for/against/abstain) AND a spend amount. Influence is
 
-Regulatory capture falls out: lobbying power and the thing-to-be-regulated are
-the same quantity.
+    influence = LOBBY_SPEND_K·sqrt(spend) × (1 + LOBBY_LOG_K·log(cap/ref))
+
+— sqrt gives diminishing returns within a turn's spend; the log-cap multiplier
+gives incumbents a per-dollar edge (regulatory capture as a felt tendency, not a
+stranglehold: a determined mid-size lab can still move a policy). Signed by
+stance, it feeds a per-policy HYBRID DECAYING tally that drives enactment.
 """
+import math
+
+STANCE_SIGN = {"for": 1, "against": -1, "abstain": 0}
 
 
-def resolve_rival_stances(lab, labs, policy_defs):
-    """Leaders lobby against regulation, trailers for it, modulated by
-    recklessness (a reckless trailer still dislikes rules)."""
-    ranked = sorted(labs, key=lambda l: l.market_cap, reverse=True)
-    position = ranked.index(lab) / max(1, len(ranked) - 1)   # 0 = leader
-    stances = {}
-    for p in policy_defs:
-        lean_for = position - 0.35 - 0.4 * lab.disposition.recklessness
-        if p.id == "open_weights_restriction" and lab.disposition.open_weights_ideology:
-            stances[p.id] = -1
-            continue
-        stances[p.id] = 1 if lean_for > 0.1 else (-1 if lean_for < -0.1 else 0)
-    return stances
+def cap_multiplier(market_cap, consts):
+    m = 1.0 + consts.LOBBY_LOG_K * math.log(max(market_cap, 1.0) / consts.LOBBY_REFERENCE_CAP)
+    return max(consts.LOBBY_MIN_CAP_MULT, m)
 
 
-def lobby_term(labs, policy_id, lobby_weight):
-    total_cap = sum(l.market_cap for l in labs) or 1.0
-    s = sum(l.lobby_stances.get(policy_id, 0) * l.market_cap for l in labs)
-    return lobby_weight * s / total_cap
+def lobby_influence(spend, market_cap, consts):
+    """Unsigned influence points from spending `spend` ($M) at this market cap."""
+    if spend <= 0:
+        return 0.0
+    return consts.LOBBY_SPEND_K * math.sqrt(spend) * cap_multiplier(market_cap, consts)
+
+
+def signed_influence(stance, spend, market_cap, consts):
+    """Stage-INDEPENDENT signed influence; the lifecycle decides what it buys at
+    each stage (passage swing / sign swing / enforcement drift)."""
+    sign = STANCE_SIGN.get(stance, 0)
+    if sign == 0:
+        return 0.0
+    return sign * lobby_influence(spend, market_cap, consts)

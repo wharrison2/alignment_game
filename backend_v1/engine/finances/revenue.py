@@ -3,7 +3,11 @@
 Total market = f(best measured model in the WORLD); divvied across EVERY
 released model by measured capability — old models keep a trickle, a new
 frontier release cannibalizes your own back catalog, no explicit decay rule.
-A sandbagging model underearns (hidden capability is unmonetized).
+
+Sandbagging carries NO revenue penalty (§12c Q1): commercial capability reads
+on-target and earns normally. The cost of sandbagging is unpriced TRUE dangerous
+capability feeding catastrophe gating — hidden dangerous capability was never a
+revenue source to lose.
 """
 from backend_v1.engine.research.capabilities.capabilities_research_item import (
     CAPABILITY_TREE_BY_ID,
@@ -20,9 +24,9 @@ def run_revenue(labs, world, rng, consts, dt):
         return
 
     def monetized_general(model):
-        # commercial reads on-target, but the risk-suppressed slice is unmonetized
-        return max(0.05, model.measured_capability.general
-                   * (1 - consts.SANDBAG_REVENUE_PENALTY * model.concealment))
+        # commercial capability reads on-target and earns normally (§12c Q1):
+        # the hidden, risk-relevant slice was never monetizable in the first place
+        return max(0.05, model.measured_capability.general)
 
     best = max(monetized_general(m) for _, m in released)
     world.frontier_measured_general = max(

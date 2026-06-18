@@ -8,9 +8,22 @@ from dataclasses import dataclass, field
 
 @dataclass
 class PolicyState:
-    active: bool = False
-    enacted_turn: int | None = None
+    """A policy's lifecycle state (§10c). Stages advance via per-turn rolls driven
+    by enactment_score = WTR + a hybrid decaying lobby tally."""
+    stage: str = "dormant"          # dormant -> introduced -> passed -> signed -> active
+    intro_turn: int | None = None
+    enacted_turn: int | None = None  # turn it became ACTIVE
     prerequisite_met: bool = False   # e.g. interp mandate needs a public deception incident
+    enforcement_level: float = 0.0   # continuous [0,1]; set at activation, drifts with WTR
+    constitutionality: float = 0.0   # legal robustness (Phase 3 litigation); set at activation
+    penalty_cap: float | None = None  # litigation "penalty-cap" win clamps the penalty ceiling
+    lobby_tally: float = 0.0         # hybrid decaying net signed lobby influence
+    # litigation state (Phase 3) — a LitigationCase from governance/litigation.py
+    litigation: object | None = None
+
+    @property
+    def active(self) -> bool:
+        return self.stage == "active"
 
 
 @dataclass

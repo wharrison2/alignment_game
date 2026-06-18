@@ -74,7 +74,7 @@ def _condense(obs):
             "can_commission_run": lm["can_commission_run"],
             "max_run_compute": lm["max_run_compute"],
             "can_release": lm["can_release"],
-            "policies_on_table": lm["policies_on_table"],
+            "policies": lm["policies"],
         },
         "game_over": o["game_over"], "outcome": o["outcome"],
         "action_schema": {
@@ -82,7 +82,8 @@ def _condense(obs):
             "post_train": {"mode": "capability|balanced|safety"},
             "commission_run": {"compute": "<$M>"},
             "release": "true/false",
-            "lobby": {"<policy_id>": "for|against|abstain"},
+            "lobby": {"<policy_id>": {"stance": "for|against|abstain", "spend": "<$M>"}},
+            "defect": {"<active_policy_id>": "true (violate at catch-risk; see policies[].defect_preview)"},
         },
     }
 
@@ -155,7 +156,7 @@ def main():
             print(json.dumps({"error": "game not over"}))
             return
         player = next(l for l in sess.state.labs if l.is_player)
-        pm = build_postmortem(sess.engine.logger, sess.state, player.id)
+        pm = build_postmortem(sess.engine.logger, sess.state, player.id, resim=True)
         print(render_postmortem_text(pm))
         return
 

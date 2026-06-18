@@ -12,24 +12,25 @@ from types import SimpleNamespace
 from backend_v1.config import constants as C
 
 # Multipliers applied to "hostile-world" rates. >1 = world gets harder.
-# EFFECTIVENESS_K up = alignment effort decays faster; MEASURE noise up = fog thicker;
-# SCORE decay / rising target up = treadmill crueler; ENFORCEMENT down = rivals defect freely.
+# DEFENDS_K up = alignment fixes decay faster (defenses bite sooner); MEASURE noise
+# up = fog thicker; SCORE decay / rising target up = treadmill crueler;
+# ENFORCEMENT down = rivals defect freely.
 _PROFILES = {
     "easy": {
         "default": 0.55,
-        "EFFECTIVENESS_K": 0.5, "CONCEALMENT_K": 0.6, "MEASURE_ALIGN_NOISE": 0.7,
+        "DEFENDS_K": 0.5, "CONCEALMENT_K": 0.6, "MEASURE_ALIGN_NOISE": 0.7,
         "SCORE_RELEASE_DECAY": 0.6, "RISING_TARGET_BASE": 0.6,
         "ENFORCEMENT_CATCH_RATE": 1.4, "BENEFICIAL_RATE": 1.5,
     },
     "medium": {
         "default": 0.8,
-        "EFFECTIVENESS_K": 0.8, "CONCEALMENT_K": 0.85,
+        "DEFENDS_K": 0.8, "CONCEALMENT_K": 0.85,
         "ENFORCEMENT_CATCH_RATE": 1.2, "BENEFICIAL_RATE": 1.2,
     },
     "realistic": {"default": 1.0},   # the constants ARE the realistic claim
     "impossible": {
         "default": 1.35,
-        "EFFECTIVENESS_K": 1.5, "CONCEALMENT_K": 1.2, "MEASURE_ALIGN_NOISE": 1.3,
+        "DEFENDS_K": 1.5, "CONCEALMENT_K": 1.2, "MEASURE_ALIGN_NOISE": 1.3,
         "SCORE_RELEASE_DECAY": 1.3, "RISING_TARGET_BASE": 1.25,
         "ENFORCEMENT_CATCH_RATE": 0.7, "BENEFICIAL_RATE": 0.5,
     },
