@@ -25,6 +25,7 @@ from backend_v1.engine.finances.finances import run_finances, run_job_loss_drag
 from backend_v1.engine.events.event import run_event_phase, FiredEvent
 from backend_v1.engine.events.event_catalog import EVENT_CATALOG
 from backend_v1.engine.events.latent_events import run_latent_phase
+from backend_v1.engine.events.buyouts import run_buyout_phase
 from backend_v1.engine.governance import regulation
 from backend_v1.engine.governance.litigation import (
     apply_litigation_action, resolve_litigation,
@@ -101,6 +102,8 @@ def run_turn(state, actions):
     events += run_latent_phase(state.labs, state.world, flags, rng, consts, dt, turn)
     events += run_event_phase(EVENT_CATALOG, state.labs, state.world, flags, rng,
                               consts, dt, turn)
+    # market shake-up: a crushed rival can be acquired and relaunched (anti-coast)
+    events += run_buyout_phase(state.labs, state.world, flags, rng, consts, dt, turn)
     # displacement backlash thresholds (societal, §10)
     while (state.world.cumulative_displacement
            >= consts.DISPLACEMENT_BACKLASH_STEP * (state.world.backlash_fired + 1)):
