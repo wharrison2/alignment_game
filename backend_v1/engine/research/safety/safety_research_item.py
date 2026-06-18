@@ -29,12 +29,13 @@ class SafetyProject:
     remediation_axes: tuple = ()
     mechanistic: bool = False
     blurb: str = ""
-    # ── intervention fields ──
+    # ── intervention fields (§5b: behavioral | mechanistic | robustness) ──
     intervention: bool = False
     target_axis: str | None = None      # the axis this intervention edits
     base_reduction: float = 0.0         # nominal patch strength (axis units)
-    effectiveness_gated: bool = False   # dispositional fixes decay w/ eval_aware+deception
+    effectiveness_gated: bool = False   # dispositional fixes decay w/ the DEFENDS matrix
     eval_aware_leak: bool = False       # eval-aware model HIDES rather than loses it (§5)
+    partial_coverage: float = 1.0       # mechanistic: found A feature, not ALL (§5b) — <1
 
 
 SAFETY_PROJECTS = [
@@ -127,9 +128,10 @@ SAFETY_PROJECTS = [
         evidence="point", spoofability=0.0, reads_axes=(), mechanistic=True,
         intervention=True, target_axis="deception",
         base_reduction=0.35, effectiveness_gated=True, eval_aware_leak=False,
-        blurb="Edits internal directions associated with deception. Bypasses the eval-awareness "
-              "HIDING edge (it's mechanistic), but is still EFFECTIVENESS-gated — you can only "
-              "steer the directions you've actually found.",
+        partial_coverage=0.55,
+        blurb="Edits internal directions associated with deception. Bypasses the concealment "
+              "discount (it's mechanistic — eval-awareness can't blunt it), but applies only "
+              "PARTIAL coverage: you steer the directions you've actually found, not all of them.",
     ),
 ]
 

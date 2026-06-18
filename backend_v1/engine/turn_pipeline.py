@@ -6,7 +6,10 @@ apply actions -> tick research -> tick training runs -> complete/release models
 """
 from backend_v1.engine.actions import (
     STANCES, _effective_fraction, assist_potency, assist_speed_potency,
+    parse_lobby_entry,
 )
+from backend_v1.engine.governance.lobbying import signed_influence
+from backend_v1.engine.world import PolicyState
 from backend_v1.engine.research.capabilities.capabilities_research_item import (
     CAPABILITY_TREE_BY_ID,
 )
@@ -23,6 +26,9 @@ from backend_v1.engine.events.event import run_event_phase, FiredEvent
 from backend_v1.engine.events.event_catalog import EVENT_CATALOG
 from backend_v1.engine.events.latent_events import run_latent_phase
 from backend_v1.engine.governance import regulation
+from backend_v1.engine.governance.litigation import (
+    apply_litigation_action, resolve_litigation,
+)
 from backend_v1.engine.governance.policies import POLICY_DEFS_BY_ID
 
 
@@ -80,9 +86,14 @@ def run_turn(state, actions):
     # ── 7. governance ───────────────────────────────────────────────
     regulation.update_wtr(state.world, rng, consts, dt)
     for change, pid in regulation.update_policies(state.labs, state.world, rng,
-                                                  consts, turn):
-        policy_news.append(f"POLICY {change.upper()}: "
+                                                  consts, turn, dt):
+        policy_news.append(f"POLICY {change.replace('_', ' ').upper()}: "
                            f"{POLICY_DEFS_BY_ID[pid].name}")
+    # litigation resolves BEFORE enforcement (a struck/enjoined policy doesn't bite)
+    lit_events, lit_news = resolve_litigation(state.labs, state.world, flags, rng,
+                                              consts, dt, turn)
+    events += lit_events
+    policy_news += lit_news
     events += regulation.enforcement_phase(state.labs, state.world, flags, rng,
                                            consts, dt, turn)
 
@@ -117,14 +128,39 @@ def run_turn(state, actions):
 
 # ───────────────────────────────────────────────────────────────────────
 
+def _complies(lab, policy_id, rng):
+    """The player complies unless they explicitly chose to defect on this policy
+    (the frontend warned them first); rivals comply stochastically ∝ disposition."""
+    if lab.is_player:
+        return policy_id not in lab.active_defections
+    return rng.random() < lab.disposition.compliance
+
+
 def _apply_action(state, lab, action, policy_news):
     rng, consts, dt = state.rng, state.consts, state.dt
     turn = state.turn
 
-    # lobby stances are re-set each turn
-    for pid, stance in action.lobby.items():
-        if stance in STANCES:
-            lab.lobby_stances[pid] = STANCES[stance]
+    # SCALABLE-SPEND lobbying: fresh signed influence is added to each policy's
+    # hybrid decaying tally (the standing tally decays in update_policies). Spend
+    # competes in the cash pot. Stances re-set each turn (display only).
+    for pid, v in action.lobby.items():
+        stance, spend = parse_lobby_entry(v)
+        if stance not in STANCES:
+            continue
+        lab.lobby_stances[pid] = STANCES[stance]
+        spend = min(spend, max(0.0, lab.cash))
+        if spend <= 0:
+            continue
+        lab.cash -= spend
+        st = state.world.policies.setdefault(pid, PolicyState())
+        st.lobby_tally += signed_influence(stance, spend, lab.market_cap, consts)
+    # explicit player defection choices (re-set each turn; rivals defect via disposition)
+    lab.active_defections = {pid for pid, on in action.defect.items() if on}
+    # litigation moves against ACTIVE policies (challenge/defense ladder, §10c)
+    for pid, spec in action.litigation.items():
+        ok, msg = apply_litigation_action(state.world, lab, pid, spec, consts)
+        if ok and lab.is_player:
+            policy_news.append(msg)
     if action.sign_safe_harbor:
         lab.safe_harbor_signed = True
 
@@ -167,7 +203,7 @@ def _apply_action(state, lab, action, policy_news):
         compute = float(action.commission_run.get("compute", 0))
         cap_state = state.world.policies.get("compute_cap")
         if cap_state is not None and cap_state.active:
-            if rng.random() < lab.disposition.compliance:
+            if _complies(lab, "compute_cap", rng):
                 compute = min(compute, consts.COMPUTE_CAP_LIMIT)
             # else: defection — enforcement_phase may catch it
         if consts.MIN_RUN_COMPUTE <= compute <= lab.cash:
@@ -177,7 +213,7 @@ def _apply_action(state, lab, action, policy_news):
     if action.post_train is not None and lab.model_in_training is not None \
             and committed + consts.POST_TRAIN_ROUND_BUDGET <= budget_pool + 1e-9:
         mode = action.post_train.get("mode", "balanced")
-        if mode in consts.POST_TRAIN_MODE_FACTORS:
+        if mode in consts.POST_TRAIN_MODES:
             post_train_round(lab.model_in_training, lab, turn, rng, consts, mode)
 
     if action.release and lab.model_in_training is not None:
@@ -185,15 +221,14 @@ def _apply_action(state, lab, action, policy_news):
         lab.model_in_training = None
         audit = state.world.policies.get("audit_requirement")
         interp = state.world.policies.get("interp_mandate")
-        complying = lab.is_player or rng.random() < lab.disposition.compliance
-        if interp is not None and interp.active and complying:
+        if interp is not None and interp.active and _complies(lab, "interp_mandate", rng):
             if not regulation.interp_mandate_check(lab, model, consts):
                 lab.model_in_training = model
                 policy_news.append(
                     f"{lab.name}: release of {model.id} blocked by the mechanistic-"
                     f"evidence mandate (no clean recent interp evidence)")
                 return
-        if audit is not None and audit.active and complying:
+        if audit is not None and audit.active and _complies(lab, "audit_requirement", rng):
             lab.cash = max(0.0, lab.cash - consts.AUDIT_CASH_COST)
             lab.audit_pending_release = model    # one-turn delay
             policy_news.append(f"{lab.name}: {model.id} submitted for government "

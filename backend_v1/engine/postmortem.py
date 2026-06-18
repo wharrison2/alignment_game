@@ -7,7 +7,11 @@ point analysis, not full branch re-simulation — see NOTES.md).
 """
 
 
-def build_postmortem(logger, state, player_id) -> dict:
+def build_postmortem(logger, state, player_id, resim=False) -> dict:
+    """resim=True runs REAL counterfactual branch re-simulations (replays the
+    action log with one player choice changed, on the same seed, and checks
+    whether the outcome flips). Off by default so batch tooling stays fast; the
+    CLI/agent post-mortem turns it on. Only meaningful on a loss."""
     turns = logger.turns
     outcome = state.outcome or {}
     pm = {"outcome": outcome, "trajectories": [], "key_moments": [],
@@ -55,8 +59,105 @@ def build_postmortem(logger, state, player_id) -> dict:
                     "there is no one left to have benefited.",
         }
 
-    pm["counterfactuals"] = _counterfactuals(turns, state, player, player_id)
+    resim_results = []
+    if resim and (outcome.get("existential") or outcome.get("result") == "loss"):
+        resim_results = _counterfactuals_resim(logger, state, player, player_id)
+    pm["counterfactuals"] = resim_results or _counterfactuals(turns, state, player, player_id)
+    pm["counterfactuals_resimulated"] = bool(resim_results)
     return pm
+
+
+def _resimulate(state, logger, player_id, branch_turn, new_action):
+    """Replay the recorded action log on the SAME seed, substituting ONE player
+    action at branch_turn (all else held fixed) — a genuine alternate timeline.
+    Returns the branch's final outcome dict. The engine being deterministic
+    (seed + actions → identical game) is what makes this exact."""
+    from backend_v1.engine.game import new_game, GameEngine
+    from backend_v1.engine.actions import Action
+    branch = new_game(seed=state.rng.seed,
+                      difficulty=getattr(state.consts, "DIFFICULTY", "realistic"),
+                      guidance=state.guidance,
+                      rival_count=sum(1 for l in state.labs if not l.is_player),
+                      max_turns=state.max_turns)
+    engine = GameEngine()
+    for entry in logger.turns:
+        if branch.game_over:
+            break
+        t, recorded = entry["turn"], entry["actions"]
+        actions = {}
+        for lab in branch.labs:
+            if lab.id == player_id and t == branch_turn:
+                actions[lab.id] = new_action
+            else:
+                a = recorded.get(lab.id)
+                actions[lab.id] = Action.from_dict(a) if a else Action()
+        branch, _ = engine.step(branch, actions)
+    return branch.outcome or {}
+
+
+def _counterfactuals_resim(logger, state, player, player_id):
+    """Pick a few decision points, re-simulate each with one choice changed, and
+    report whether the outcome actually FLIPS (§10d legible counterfactuals — the
+    real thing, not a heuristic string). Bounded to a handful of branches."""
+    from backend_v1.engine.actions import Action
+    out = []
+    log = logger.turns
+    def player_act(t):
+        return dict(log[t - 1]["actions"].get(player_id, {})) if t - 1 < len(log) else None
+
+    def describe(base_outcome, branch_outcome):
+        be, bo = base_outcome.get("existential"), branch_outcome.get("existential")
+        if be and not bo:
+            return "would have AVOIDED the existential loss"
+        if be and bo:
+            return "still ends existentially (this choice alone wasn't enough)"
+        di = branch_outcome.get("net_impact", 0) - base_outcome.get("net_impact", 0)
+        if abs(di) >= 5:
+            return f"net impact {'improves' if di > 0 else 'worsens'} by {abs(di):.0f}"
+        return "barely changes the outcome"
+
+    base = state.outcome or {}
+    candidates = []   # (turn, modified_action, label)
+
+    # (a) the last release before the end — hold it instead of shipping
+    releases = [t["turn"] for t in log if t["actions"].get(player_id, {}).get("release")]
+    if releases:
+        rt = releases[-1]
+        a = player_act(rt); a["release"] = False
+        candidates.append((rt, Action.from_dict(a),
+                           f"holding the model you shipped on turn {rt} (not releasing)"))
+
+    # (b) the worst capability-mode post-train -> run it as a safety round instead
+    cap_rounds = [t["turn"] for t in log
+                  if (t["actions"].get(player_id, {}).get("post_train") or {}).get("mode")
+                  == "capability"]
+    if cap_rounds:
+        ct = cap_rounds[len(cap_rounds) // 2]
+        a = player_act(ct); a["post_train"] = {"mode": "safety"}
+        candidates.append((ct, Action.from_dict(a),
+                           f"running turn {ct}'s capability-mode round as a safety round"))
+
+    # (c) the highest-assist dirty research start -> redo it clean (assist 0)
+    dirty = None
+    for t in log:
+        for sp in t["actions"].get(player_id, {}).get("start_projects", []):
+            if sp.get("ai_assist", 0) > 0.5:
+                dirty = (t["turn"], sp.get("project_id")); break
+        if dirty:
+            break
+    if dirty:
+        dt_, pid = dirty
+        a = player_act(dt_)
+        a["start_projects"] = [
+            ({**sp, "ai_assist": 0.0} if sp.get("project_id") == pid else sp)
+            for sp in a.get("start_projects", [])]
+        candidates.append((dt_, Action.from_dict(a),
+                           f"researching '{pid}' clean (no AI-assist) on turn {dt_}"))
+
+    for branch_turn, new_action, label in candidates[:3]:
+        bo = _resimulate(state, logger, player_id, branch_turn, new_action)
+        out.append(f"Turn {branch_turn}: {label} — re-simulated: {describe(base, bo)}.")
+    return out
 
 
 def _counterfactuals(turns, state, player, player_id):

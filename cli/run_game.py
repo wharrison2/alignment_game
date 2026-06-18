@@ -185,7 +185,7 @@ def play(seed, difficulty, guidance, rivals, mode, policy=None, quiet=False,
         if not quiet:
             print(render_turn(observations[player.id]))
 
-    pm = build_postmortem(engine.logger, state, player.id)
+    pm = build_postmortem(engine.logger, state, player.id, resim=True)
     if not quiet:
         print("\n" + render_postmortem_text(pm))
     if log_file:

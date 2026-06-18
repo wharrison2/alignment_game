@@ -21,8 +21,16 @@ class Action:
     # commission a pretrain: None or {"compute": $M}
     commission_run: dict | None = None
     release: bool = False
-    # policy_id -> "for" | "against" | "abstain"
+    # SCALABLE SPEND lobbying. Each entry is either:
+    #   "for" | "against" | "abstain"                 (legacy/back-compat, spend 0)
+    #   {"stance": "for"|"against"|"abstain", "spend": $M}
     lobby: dict = field(default_factory=dict)
+    # litigation moves (Phase 3): policy_id -> {side, tier, spend, appeal?, stay?}
+    litigation: dict = field(default_factory=dict)
+    # explicit policy DEFECTION (player): policy_id -> bool. Violating an active
+    # policy at an enforcement catch-risk. The frontend warns before committing
+    # (consequence preview is in legal_moves).
+    defect: dict = field(default_factory=dict)
     sign_safe_harbor: bool = False
 
     @classmethod
@@ -30,7 +38,8 @@ class Action:
         if not isinstance(d, dict):
             raise ActionError("action must be a JSON object")
         unknown = set(d) - {"start_projects", "post_train", "commission_run",
-                            "release", "lobby", "sign_safe_harbor"}
+                            "release", "lobby", "litigation", "defect",
+                            "sign_safe_harbor"}
         if unknown:
             raise ActionError(f"unknown action fields: {sorted(unknown)}")
         return cls(
@@ -39,6 +48,8 @@ class Action:
             commission_run=d.get("commission_run"),
             release=bool(d.get("release", False)),
             lobby=d.get("lobby", {}) or {},
+            litigation=d.get("litigation", {}) or {},
+            defect=d.get("defect", {}) or {},
             sign_safe_harbor=bool(d.get("sign_safe_harbor", False)),
         )
 
@@ -49,6 +60,16 @@ class ActionError(ValueError):
 
 STANCES = {"for": 1, "against": -1, "abstain": 0}
 ALL_PROJECT_IDS = set(CAPABILITY_TREE_BY_ID) | set(SAFETY_PROJECTS_BY_ID)
+
+
+def parse_lobby_entry(v):
+    """Normalize a lobby value into (stance, spend). Accepts a bare stance string
+    (legacy, spend 0) or {"stance":..., "spend":...}."""
+    if isinstance(v, str):
+        return v, 0.0
+    if isinstance(v, dict):
+        return v.get("stance", "abstain"), max(0.0, float(v.get("spend", 0.0) or 0.0))
+    return "abstain", 0.0
 
 
 def validate_action(action: Action, lab, world, consts, dt) -> list[str]:
@@ -92,9 +113,9 @@ def validate_action(action: Action, lab, world, consts, dt) -> list[str]:
             problems.append("post_train: no model in training (commission a run first)")
         else:
             mode = action.post_train.get("mode", "balanced")
-            if mode not in consts.POST_TRAIN_MODE_FACTORS:
+            if mode not in consts.POST_TRAIN_MODES:
                 problems.append(f"post_train mode must be one of "
-                                f"{list(consts.POST_TRAIN_MODE_FACTORS)}")
+                                f"{list(consts.POST_TRAIN_MODES)}")
             committed += consts.POST_TRAIN_ROUND_BUDGET
 
     if action.commission_run is not None:
@@ -118,11 +139,40 @@ def validate_action(action: Action, lab, world, consts, dt) -> list[str]:
     if action.release and lab.model_in_training is None:
         problems.append("release: no model in training to release")
 
-    for pid, stance in action.lobby.items():
-        if pid not in {p.id for p in POLICY_DEFS}:
+    policy_ids = {p.id for p in POLICY_DEFS}
+    for pid, v in action.lobby.items():
+        stance, spend = parse_lobby_entry(v)
+        if pid not in policy_ids:
             problems.append(f"lobby: unknown policy '{pid}'")
         if stance not in STANCES:
             problems.append(f"lobby {pid}: stance must be for/against/abstain")
+        if spend < 0:
+            problems.append(f"lobby {pid}: spend must be >= 0")
+        cash_needed += spend
+
+    for pid in action.defect:
+        if pid not in policy_ids:
+            problems.append(f"defect: unknown policy '{pid}'")
+
+    for pid, spec in action.litigation.items():
+        if pid not in policy_ids:
+            problems.append(f"litigation: unknown policy '{pid}'")
+            continue
+        st = world.policies.get(pid)
+        if st is None or not st.active:
+            problems.append(f"litigation {pid}: only ACTIVE policies can be litigated")
+        side = spec.get("side", "challenge")
+        if side not in ("challenge", "defense"):
+            problems.append(f"litigation {pid}: side must be challenge/defense")
+        tier = spec.get("tier", "amicus")
+        if tier not in ("amicus", "join", "fund"):
+            problems.append(f"litigation {pid}: tier must be amicus/join/fund")
+        if tier == "amicus":
+            cash_needed += consts.LIT_AMICUS_COST
+        elif tier == "join":
+            cash_needed += consts.LIT_JOIN_COST
+        else:
+            cash_needed += max(0.0, float(spec.get("spend", 0.0) or 0.0))
 
     if committed > budget_pool + 1e-9:
         problems.append(f"work budget exceeded: committed {committed:.2f} of "
@@ -201,17 +251,63 @@ def legal_moves(lab, world, consts, dt) -> dict:
             "speedup": consts.ASSIST_SPEEDUP,
         },
         "can_post_train": lab.model_in_training is not None,
-        "post_train_modes": list(consts.POST_TRAIN_MODE_FACTORS),
+        "post_train_modes": list(consts.POST_TRAIN_MODES),
         "can_commission_run": lab.training_run is None and lab.model_in_training is None,
         "max_run_compute": round(lab.max_run_compute(), 0),
         "can_release": lab.model_in_training is not None,
-        "policies_on_table": [p.id for p in POLICY_DEFS],
+        "policies": _policy_board(lab, world, consts),
         "lobby_stances": list(STANCES),
         "action_schema_example": {
             "start_projects": [{"project_id": "rlhf", "ai_assist": 0.0}],
             "post_train": {"mode": "balanced"},
             "commission_run": {"compute": 500},
             "release": False,
-            "lobby": {"audit_requirement": "for"},
+            "lobby": {"audit_requirement": {"stance": "against", "spend": 120}},
+            "defect": {"compute_cap": True},
         },
     }
+
+
+def _enf_tier(level):
+    return "low" if level < 0.34 else "medium" if level < 0.67 else "high"
+
+
+def _policy_board(lab, world, consts):
+    """Public regulatory board + the per-policy DEFECT consequence preview the
+    frontend needs to warn-and-confirm before the player defects (§3d)."""
+    board = []
+    for p in POLICY_DEFS:
+        st = world.policies.get(p.id)
+        stage = st.stage if st is not None else "dormant"
+        entry = {"policy_id": p.id, "name": p.name, "stage": stage,
+                 "defectable": p.defectable, "teaches": p.teaches}
+        if st is not None and st.active:
+            enf = st.enforcement_level
+            entry["enforcement"] = _enf_tier(enf)
+            entry["lobbyable"] = False   # active: lobbying only drifts enforcement
+            # litigable: public court state + ladder costs (standing for join)
+            entry["litigable"] = True
+            entry["litigation"] = {
+                "court_level": st.litigation.court_level if st.litigation else "trial",
+                "last_margin": (round(st.litigation.last_margin, 1)
+                                if st.litigation and st.litigation.last_margin is not None
+                                else None),
+                "constitutionality": round(st.constitutionality, 2),
+                "has_standing": p.covers(lab),
+                "ladder": {"amicus": consts.LIT_AMICUS_COST,
+                           "join": consts.LIT_JOIN_COST, "fund": "scaled $"},
+            }
+            if p.defectable and p.covers(lab):
+                # consequence preview (warn before committing)
+                size_scale = 1.0 + max(0.0, lab.market_cap) / 4000.0
+                catch_p_yr = (enf * consts.ENFORCEMENT_BASE_DETECTION
+                              * consts.ENFORCEMENT_CATCH_RATE * 2.0)
+                entry["defect_preview"] = {
+                    "catch_prob_per_year": round(catch_p_yr, 3),
+                    "penalty_if_caught": round(enf * consts.DEFECTION_PENALTY * size_scale, 0),
+                    "approval_hit_if_caught": round(enf * consts.DEFECTION_APPROVAL_HIT, 1),
+                }
+        else:
+            entry["lobbyable"] = True
+        board.append(entry)
+    return board

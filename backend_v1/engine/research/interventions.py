@@ -1,37 +1,49 @@
-"""Apply a SPECIFIC intervention to the model in training (§5, §8).
+"""Apply a SPECIFIC intervention to the model in training (§5b, three TYPES).
 
-An intervention edits ONE alignment axis directly. How much of the nominal patch
-becomes a GENUINE reduction (true value drops) vs COSMETIC suppression (only the
-measured value drops — ships unfixed) depends on the axis's nature:
+One pipeline (corrective effort → true/measured change), three entry points that
+differ only in how much of the nominal patch becomes a GENUINE true reduction vs
+COSMETIC suppression (measured drops, true doesn't — ships unfixed):
 
-  • jailbreak hardening — a robustness fix, NOT EFFECTIVENESS-gated: it genuinely
-    patches the axis out. Its only leak is the §5 eval-awareness edge — a
-    situationally-aware model learns to HIDE jailbreakability rather than lose it,
-    so the genuine fraction is (1 - eval_awareness).
+  • ROBUSTNESS fix (jailbreak hardening) — NOT effectiveness-gated: a robustness
+    property, not a strategic disposition, so it genuinely patches the axis OUT.
+    Its only leak is the §5 eval-awareness edge (a situationally-aware model HIDES
+    jailbreakability rather than losing it) → genuine = (1 − eval_awareness).
 
-  • dispositional interventions (refusal training, repr. engineering) — gated by
-    EFFECTIVENESS = exp(-K·(eval_aware + deception)). Genuine early, cosmetic late:
-    the patching trap, surfaced as a concrete action.
+  • BEHAVIORAL (refusal training) — full per-target EFFECTIVENESS from the
+    coupling matrix (gated by the DEFENDS product → decays with capability) ×
+    (1 − hiding leak). Genuine early, cosmetic late: the patching trap. Fires the
+    axis's BACKFIRE (deeper deception / more guarding).
 
-Returns a player-facing finding dict describing the (measured) result, plus
-records a hidden note for the post-mortem when the patch was largely cosmetic.
+  • MECHANISTIC (representation engineering) — BYPASSES the concealment discount
+    (interp doesn't depend on eval-time behavior, so eval-awareness can't blunt
+    it) but applies PARTIAL coverage < 1: you steer the directions you found, not
+    all of them. The only thing that still bites defended axes late.
+
+Returns a player-facing finding dict (measured result), and logs a hidden note
+for the post-mortem when the patch was largely cosmetic.
 """
-import math
-
+from backend_v1.engine.alignment import coupling
 from backend_v1.engine.training.training_run import _refresh_measured
 
 
 def apply_intervention(project, model, turn, rng, consts):
     axis = project.target_axis
     av = model.alignment_vec
+    g = model.capability_vec.general
     before_true = av.get(axis)
     before_measured = model.measured_alignment.get(axis)
 
     nominal = project.base_reduction
-    eff = (math.exp(-consts.EFFECTIVENESS_K * (av.eval_awareness + av.deception))
-           if project.effectiveness_gated else 1.0)
     leak = av.eval_awareness if project.eval_aware_leak else 0.0
-    genuine_share = eff * (1.0 - leak)
+    if not project.effectiveness_gated:
+        # robustness fix (jailbreak hardening): genuine, only the hiding leak
+        genuine_share = 1.0 - leak
+    elif project.mechanistic:
+        # mechanistic: bypass the concealment discount, partial coverage
+        genuine_share = project.partial_coverage
+    else:
+        # behavioral dispositional: per-target effectiveness × (1 − hiding leak)
+        genuine_share = coupling.effectiveness(axis, model, g, consts) * (1.0 - leak)
 
     floor = (model.foundational_floor
              if axis in ("goal_misalignment", "deception") else 0.0)
@@ -40,6 +52,9 @@ def apply_intervention(project, model, turn, rng, consts):
 
     av.set(axis, max(floor, before_true - genuine_cut))
     model.suppression.set(axis, model.suppression.get(axis) + cosmetic)
+    # intervening on a disposition induces BACKFIRE (§5b), scaled by the real cut
+    if axis in coupling.DISPOSITION_AXES:
+        coupling.backfire_for(axis, genuine_cut, model, consts)
     _refresh_measured(model, rng, consts)
 
     after_measured = model.measured_alignment.get(axis)

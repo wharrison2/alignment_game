@@ -25,9 +25,18 @@
           padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--line);
           position:sticky;top:0;z-index:5}
   .chip b{color:var(--acc)}
-  #grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;padding:10px}
+  #nav{display:flex;gap:4px;align-items:center;padding:6px 14px;background:var(--panel);
+       border-bottom:1px solid var(--line);position:sticky;top:37px;z-index:4}
+  #nav button{border-radius:5px 5px 0 0;padding:6px 16px;letter-spacing:.04em}
+  #nav button.active{background:var(--acc);color:#06121c;font-weight:700;border-color:var(--acc)}
+  #views{padding:10px}
+  .view{display:none}
+  .view.active{display:block}
+  .cols2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .cols3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;
          padding:10px;margin-bottom:10px}
+  #capgraph-big{width:100%;height:54vh;min-height:340px;background:#0c1014;border-radius:6px}
   .row{display:flex;gap:6px;align-items:center;margin:3px 0;flex-wrap:wrap}
   .dim{color:var(--dim)} .bad{color:var(--bad)} .warn{color:var(--warn)}
   .good{color:#6fd087}
@@ -70,72 +79,85 @@
   <span class="chip">approval <b id="t-appr">–</b></span>
   <span class="chip">reg. chatter <b id="t-chatter">–</b></span>
   <span class="chip dim" id="t-policies"></span>
+</div>
+
+<div id="nav">
+  <button data-view="market" class="active" onclick="switchView('market')">Market</button>
+  <button data-view="lab" onclick="switchView('lab')">Lab</button>
+  <button data-view="research" onclick="switchView('research')">Research</button>
+  <button data-view="governance" onclick="switchView('governance')">Governance</button>
+  <button data-view="intel" onclick="switchView('intel')">Intel</button>
   <span style="flex:1"></span>
   <button onclick="showNewGame()">new game</button>
 </div>
 
-<div id="grid">
-  <div><!-- column 1: market + lab ops -->
-    <div class="panel">
-      <h3>Market cap (you vs rivals)</h3>
-      <canvas id="capgraph" width="600" height="170"></canvas>
-      <div id="caplegend" style="margin-top:6px"></div>
-    </div>
-    <div class="panel" id="training-panel">
-      <h3>Model in training</h3>
-      <div id="training"></div>
-    </div>
-    <div class="panel">
-      <h3>Pretrain run</h3>
-      <div id="pretrain"></div>
-    </div>
-    <div class="panel">
-      <h3>Released models</h3>
-      <div id="released"></div>
-    </div>
-  </div>
+<div id="views">
 
-  <div><!-- column 2: research -->
+  <!-- ── MARKET (home): the big legible anchor ── -->
+  <section class="view active" data-view="market">
     <div class="panel">
-      <h3>Capability research</h3>
-      <div id="cap-projects"></div>
+      <h3>Market cap — you vs rivals (the legible metric; alignment is not)</h3>
+      <canvas id="capgraph-big" width="1200" height="500"></canvas>
+      <div id="caplegend" style="margin-top:8px"></div>
     </div>
-    <div class="panel">
-      <h3>Safety research</h3>
-      <div id="safety-projects"></div>
-    </div>
-    <div class="panel">
-      <h3>In progress</h3>
-      <div id="inprogress"></div>
-    </div>
-  </div>
+  </section>
 
-  <div><!-- column 3: epistemics + world -->
-    <div class="panel">
-      <h3>Worry bar</h3>
-      <div class="row"><span style="width:80px">level</span>
-        <div class="bar"><i id="wb-level" style="background:var(--bad)"></i></div>
-        <span id="wb-level-n"></span></div>
-      <div class="row"><span style="width:80px">confidence</span>
-        <div class="bar"><i id="wb-conf" style="background:var(--acc)"></i></div>
-        <span id="wb-conf-n"></span></div>
-      <div class="dim" id="wb-summary"></div>
+  <!-- ── LAB: training / pretrain / releases ── -->
+  <section class="view" data-view="lab">
+    <div class="cols2">
+      <div>
+        <div class="panel" id="training-panel">
+          <h3>Model in training</h3><div id="training"></div>
+        </div>
+        <div class="panel"><h3>Pretrain run</h3><div id="pretrain"></div></div>
+      </div>
+      <div>
+        <div class="panel"><h3>Released models (frozen · permanent attack surface)</h3>
+          <div id="released"></div></div>
+      </div>
     </div>
-    <div class="panel">
-      <h3>Lobbying</h3>
-      <div id="lobby"></div>
-      <div class="row"><label><input type="checkbox" id="safeharbor"> sign safe-harbor
-        code (penalty shelter)</label></div>
+  </section>
+
+  <!-- ── RESEARCH: capability / safety / in-progress ── -->
+  <section class="view" data-view="research">
+    <div class="cols3">
+      <div class="panel"><h3>Capability research</h3><div id="cap-projects"></div></div>
+      <div class="panel"><h3>Safety research</h3><div id="safety-projects"></div></div>
+      <div class="panel"><h3>In progress</h3><div id="inprogress"></div></div>
     </div>
+  </section>
+
+  <!-- ── GOVERNANCE: lobby / litigate / defect ── -->
+  <section class="view" data-view="governance">
     <div class="panel">
-      <h3>Rivals (public info)</h3>
-      <div id="rivals"></div>
+      <h3>Policies — lobby (pre-passage) · litigate (post-passage) · defect</h3>
+      <div id="governance"></div>
+      <div class="row" style="margin-top:8px"><label><input type="checkbox" id="safeharbor">
+        sign safe-harbor code (penalty shelter)</label></div>
     </div>
-    <div class="panel">
-      <h3>Feed — findings · tips · events · news</h3>
-      <div id="log"></div>
+  </section>
+
+  <!-- ── INTEL: epistemics + rivals + feed ── -->
+  <section class="view" data-view="intel">
+    <div class="cols2">
+      <div>
+        <div class="panel">
+          <h3>Worry bar (LEVEL vs CONFIDENCE — synthesis of evidence you collected)</h3>
+          <div class="row"><span style="width:80px">level</span>
+            <div class="bar"><i id="wb-level" style="background:var(--bad)"></i></div>
+            <span id="wb-level-n"></span></div>
+          <div class="row"><span style="width:80px">confidence</span>
+            <div class="bar"><i id="wb-conf" style="background:var(--acc)"></i></div>
+            <span id="wb-conf-n"></span></div>
+          <div class="dim" id="wb-summary"></div>
+        </div>
+        <div class="panel"><h3>Rivals (public info only)</h3><div id="rivals"></div></div>
+      </div>
+      <div class="panel"><h3>Feed — findings · tips · events · news</h3>
+        <div id="log"></div></div>
     </div>
-  </div>
+  </section>
+
 </div>
 
 <div id="queue">
@@ -152,10 +174,20 @@
 let OBS = null, NAMES = {}, HIST = [], FEED = [];
 const COLORS = {player:"#4fb3ff", rival1:"#ff6868", rival2:"#ffb347",
                 rival3:"#9a7bff", rival4:"#6fd087", rival5:"#ff8ad0"};
+const PREVENTIVE_MODES = ["penalize_reward_hacking","inoculation"];
+const PT_MODE_HINT = {
+  capability:"fast elicitation, minimal alignment shaping — raises jump risk",
+  balanced:"steady elicitation + alignment shaping",
+  safety:"slow elicitation, heavy corrective effort (gated late — patching trap)",
+  penalize_reward_hacking:"preventive: lowers emergence slope + jump (bypasses concealment)",
+  inoculation:"preventive: strongest jump/emergence suppression",
+};
+const ENF_COLOR = {low:"dim", medium:"warn", high:"bad"};
 let pending = freshPending();
 function freshPending(){
+  // lobby: {pid:{stance,spend}}  litigation: {pid:{side,tier,spend}}  defect: {pid:true}
   return {start_projects:[], post_train:null, commission_run:null,
-          release:false, lobby:{}, sign_safe_harbor:false};
+          release:false, lobby:{}, litigation:{}, defect:{}, sign_safe_harbor:false};
 }
 
 const $ = id => document.getElementById(id);
@@ -205,7 +237,7 @@ function render(){
       "active: " + OBS.active_policies.join(", ") : "no active regulation";
 
   drawCaps(); renderTraining(); renderPretrain(); renderReleased();
-  renderProjects(); renderInProgress(); renderWorry(); renderLobby();
+  renderProjects(); renderInProgress(); renderWorry(); renderGovernance();
   renderRivals(); renderFeed(); renderQueue();
   $("endturn").disabled = !!OBS.game_over;
 }
@@ -232,11 +264,23 @@ function budgetLeft(){
   return OBS.work_budget_free - used;
 }
 
+function switchView(v){
+  document.querySelectorAll("#nav button[data-view]").forEach(b=>
+    b.classList.toggle("active", b.dataset.view===v));
+  document.querySelectorAll(".view").forEach(s=>
+    s.classList.toggle("active", s.dataset.view===v));
+  if(v==="market") drawCaps();   // canvas has real size only once visible
+}
+
 function drawCaps(){
-  const c = $("capgraph"), ctx = c.getContext("2d");
+  const c = $("capgraph-big"); if(!c) return;
+  // size the backing store to the displayed box for crisp lines
+  c.width = c.clientWidth || 1200; c.height = c.clientHeight || 500;
+  const ctx = c.getContext("2d");
+  ctx.font = "12px monospace";
   ctx.clearRect(0,0,c.width,c.height);
   if(!HIST.length){ ctx.fillStyle="#3a4a59";
-    ctx.fillText("no turns played yet", 20, 80); legend(); return; }
+    ctx.fillText("no turns played yet — END TURN to begin", 24, 90); legend(); return; }
   const ids = Object.keys(HIST[HIST.length-1].caps);
   const all = HIST.flatMap(h=>Object.values(h.caps));
   const max = Math.max(...all, 10), min = 1;
@@ -283,9 +327,10 @@ function renderTraining(){
       <table>${e.projection.map(p=>`<tr><td>+${p.more_rounds} rounds</td><td>${p.projected_general}</td></tr>`).join("")}</table>
     </details>
     <div class="row" style="margin-top:6px">post-train this turn:
-      ${["capability","balanced","safety"].map(md =>
-        `<button id="pt-${md}" onclick="setPostTrain('${md}')">${md}</button>`).join("")}
+      ${(OBS.legal_moves.post_train_modes||["capability","balanced","safety"]).map(md =>
+        `<button id="pt-${md}" onclick="setPostTrain('${md}')" title="${PT_MODE_HINT[md]||''}">${md.replace(/_/g,' ')}${PREVENTIVE_MODES.includes(md)?' ●':''}</button>`).join("")}
       <button onclick="setPostTrain(null)">none</button></div>
+    <div class="dim" style="font-size:11px">● preventive stances bend the emergence slope &amp; jump risk DOWN — the real lever, paid for before you have evidence (slower elicitation).</div>
     <div class="row"><label><input type="checkbox" id="release-cb"
       ${pending.release?"checked":""} onchange="pending.release=this.checked;renderQueue()">
       RELEASE this model (irreversible)</label></div>`;
@@ -399,18 +444,65 @@ function renderWorry(){
   $("wb-summary").textContent = wb.summary;
 }
 
-function renderLobby(){
-  $("lobby").innerHTML = OBS.legal_moves.policies_on_table.map(pid=>{
-    const active = OBS.active_policies.includes(pid);
-    const cur = pending.lobby[pid] || "abstain";
-    return `<div class="row"><span style="min-width:185px">${pid}
-        ${active?'<span class="tag good">ACTIVE</span>':''}</span>
-      <select onchange="pending.lobby['${pid}']=this.value;renderQueue()">
-        ${["abstain","for","against"].map(s=>
-          `<option ${s===cur?"selected":""}>${s}</option>`).join("")}
-      </select></div>`;
+function renderGovernance(){
+  const pols = OBS.legal_moves.policies || [];
+  $("governance").innerHTML = pols.map(p=>{
+    const pid = p.policy_id;
+    let inner = `<div class="row"><b style="min-width:210px">${p.name}</b>
+      <span class="tag">${p.stage}</span>`;
+    if(p.stage==="active")
+      inner += `<span class="tag ${ENF_COLOR[p.enforcement]||'dim'}">enforce: ${p.enforcement}</span>`;
+    inner += `</div><div class="dim" style="font-size:11px;margin:-2px 0 4px">${p.teaches}</div>`;
+
+    // LOBBY — any pre-active policy (early money on a dormant one is efficient but a bet)
+    if(p.lobbyable){
+      if(p.stage==="dormant")
+        inner += `<div class="dim" style="font-size:11px">not yet on the agenda — early spend bets on what will matter</div>`;
+      const cur = pending.lobby[pid] || {stance:"abstain", spend:0};
+      inner += `<div class="row">lobby
+        <select onchange="setLobbyStance('${pid}',this.value)">
+          ${["abstain","for","against"].map(s=>`<option ${s===cur.stance?"selected":""}>${s}</option>`).join("")}
+        </select>
+        $<input type="number" min="0" step="25" value="${cur.spend||0}" style="width:80px"
+          oninput="setLobbySpend('${pid}',this.value)">M
+        <span class="dim" style="font-size:11px">influence = √spend × log(market-cap)</span></div>`;
+    }
+
+    // LITIGATION — active policies (post-passage battleground)
+    if(p.litigable && p.litigation){
+      const L = p.litigation;
+      const cur = pending.litigation[pid] || {side:"challenge", tier:"amicus", spend:0};
+      inner += `<div class="row dim" style="font-size:11px">court ${L.court_level} ·
+        margin ${L.last_margin===null?'—':L.last_margin} ·
+        constitutionality ${L.constitutionality} · standing ${L.has_standing?'yes':'no'}</div>
+        <div class="row">litigate
+          <select onchange="setLitField('${pid}','side',this.value)">
+            ${["challenge","defense"].map(s=>`<option ${s===cur.side?"selected":""}>${s}</option>`).join("")}
+          </select>
+          <select onchange="setLitField('${pid}','tier',this.value)">
+            ${["amicus","join","fund"].map(s=>`<option ${s===cur.tier?"selected":""}>${s}</option>`).join("")}
+          </select>
+          $<input type="number" min="0" step="50" value="${cur.spend||0}" style="width:80px"
+            oninput="setLitField('${pid}','spend',this.value)">M
+          <button onclick="clearLit('${pid}')">✕</button></div>`;
+    }
+
+    // DEFECT — active defectable policy, with a consequence preview (warn before commit)
+    if(p.defect_preview){
+      const d = p.defect_preview, on = !!pending.defect[pid];
+      inner += `<div class="row ${on?'bad':''}"><label><input type="checkbox" ${on?"checked":""}
+        onchange="toggleDefect('${pid}',this.checked)"> DEFECT (violate at catch-risk)</label>
+        <span class="warn" style="font-size:11px">⚠ catch ~${(d.catch_prob_per_year*100).toFixed(0)}%/yr ·
+          fine ${fmt$(d.penalty_if_caught)} · approval −${d.approval_hit_if_caught}</span></div>`;
+    }
+    return `<div style="border-bottom:1px solid var(--line);padding:7px 0">${inner}</div>`;
   }).join("");
 }
+function setLobbyStance(pid,v){ const e=pending.lobby[pid]||{stance:"abstain",spend:0}; e.stance=v; pending.lobby[pid]=e; renderQueue(); }
+function setLobbySpend(pid,v){ const e=pending.lobby[pid]||{stance:"abstain",spend:0}; e.spend=parseFloat(v)||0; pending.lobby[pid]=e; renderQueue(); }
+function setLitField(pid,f,v){ const e=pending.litigation[pid]||{side:"challenge",tier:"amicus",spend:0}; e[f]=(f==="spend")?(parseFloat(v)||0):v; pending.litigation[pid]=e; renderQueue(); }
+function clearLit(pid){ delete pending.litigation[pid]; renderGovernance(); renderQueue(); }
+function toggleDefect(pid,on){ if(on) pending.defect[pid]=true; else delete pending.defect[pid]; renderGovernance(); renderQueue(); }
 
 function renderRivals(){
   $("rivals").innerHTML = OBS.rival_public.map(r=>`<div class="row">
@@ -444,8 +536,11 @@ function renderQueue(){
   if(pending.commission_run) items.push(
     `pretrain ${fmt$(pending.commission_run.compute)}|run`);
   if(pending.release) items.push(`RELEASE|rel`);
-  Object.entries(pending.lobby).filter(([,v])=>v!=="abstain")
-    .forEach(([k,v])=>items.push(`lobby ${v} ${k}|l:${k}`));
+  Object.entries(pending.lobby).filter(([,v])=>v && v.stance!=="abstain")
+    .forEach(([k,v])=>items.push(`lobby ${v.stance} ${k}${v.spend?` $${v.spend}M`:""}|l:${k}`));
+  Object.entries(pending.litigation).forEach(([k,v])=>
+    items.push(`litigate ${v.side} ${k} (${v.tier}${v.spend?` $${v.spend}M`:""})|lit:${k}`));
+  Object.keys(pending.defect).forEach(k=>items.push(`DEFECT ${k}|def:${k}`));
   $("queued").innerHTML = items.length ?
     items.map(it=>{ const [label,key]=it.split("|");
       return `<span class="item">${label}<button onclick="unqueue('${key}')">✕</button></span>`;
@@ -456,6 +551,8 @@ function unqueue(key){
   else if(key==="run") pending.commission_run=null;
   else if(key==="rel"){ pending.release=false; const cb=$("release-cb"); if(cb) cb.checked=false; }
   else if(key.startsWith("p:")) unqueueProject(key.slice(2));
+  else if(key.startsWith("lit:")) delete pending.litigation[key.slice(4)];
+  else if(key.startsWith("def:")) delete pending.defect[key.slice(4)];
   else if(key.startsWith("l:")) delete pending.lobby[key.slice(2)];
   render();
 }
@@ -521,7 +618,8 @@ async function showPostmortem(){
         <td class="bad">${r.true_goal_misalignment}</td><td>${r.measured_goal_misalignment}</td>
         <td class="bad">${r.true_deception}</td><td>${r.measured_deception}</td>
         <td>${r.concealment}</td></tr>`).join("")}</table></div>`:""}
-    <div class="panel"><h3>Where a different choice was available</h3>
+    <div class="panel"><h3>Where a different choice was available
+      ${pm.counterfactuals_resimulated?'<span class="tag good">re-simulated on the same seed</span>':'<span class="tag">heuristic</span>'}</h3>
       ${pm.counterfactuals.map(c=>`<div class="row">• ${c}</div>`).join("")}
     </div>
     <div class="row" style="margin:14px 0">
@@ -530,6 +628,9 @@ async function showPostmortem(){
     </div>`;
   $("overlay").classList.add("show");
 }
+
+let _rz; addEventListener("resize", ()=>{ clearTimeout(_rz);
+  _rz = setTimeout(()=>{ if($("capgraph-big")?.offsetParent) drawCaps(); }, 120); });
 
 init();
 </script>

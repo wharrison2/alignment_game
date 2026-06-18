@@ -31,6 +31,8 @@ class GameLogger:
 
 
 def _action_dict(a):
+    """FULL action capture — faithful enough to REPLAY (counterfactual re-sim)."""
     return {"start_projects": a.start_projects, "post_train": a.post_train,
             "commission_run": a.commission_run, "release": a.release,
-            "lobby": a.lobby}
+            "lobby": a.lobby, "litigation": a.litigation, "defect": a.defect,
+            "sign_safe_harbor": a.sign_safe_harbor}

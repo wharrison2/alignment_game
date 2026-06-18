@@ -82,7 +82,7 @@ class Session:
     def postmortem(self):
         if not self.state.game_over:
             return {"errors": ["game is not over"]}
-        return build_postmortem(self.engine.logger, self.state, self.player.id)
+        return build_postmortem(self.engine.logger, self.state, self.player.id, resim=True)
 
 
 SESSION = Session()

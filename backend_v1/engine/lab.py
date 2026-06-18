@@ -8,9 +8,15 @@ from dataclasses import dataclass, field
 
 @dataclass
 class Disposition:
-    recklessness: float = 0.0       # 0 cautious .. 1 reckless
+    """Rival disposition = WEIGHTS tuning the two-level controller's score
+    functions (§10c), not a fixed personality. recklessness is the base; the
+    controller layers a TRAJECTORY response on top (falling behind → more
+    aggressive — the desperation spiral)."""
+    recklessness: float = 0.0       # 0 cautious .. 1 reckless (the base)
     cost_advantage: float = 1.0     # multiplier on compute efficiency
     open_weights_ideology: bool = False
+    regulation_stance: float = 0.5  # dislike of being regulated -> lobby/litigation spend
+    safety_priority: float = 0.3    # baseline safety weight (rivals care less than player)
 
     @property
     def compliance(self) -> float:
@@ -43,7 +49,8 @@ class Lab:
     impact_positives: float = 0.0           # tracked separately for the loss screen
     # governance
     reputation: float = 50.0                # light per-lab reputation (weak lever)
-    lobby_stances: dict = field(default_factory=dict)  # policy_id -> -1/0/+1
+    lobby_stances: dict = field(default_factory=dict)  # policy_id -> last stance (display)
+    active_defections: set = field(default_factory=set)  # policy_ids the player chose to defect on
     safe_harbor_signed: bool = False
     audit_pending_release: object | None = None   # model waiting on gov audit
     # disposition (rivals; player gets defaults)

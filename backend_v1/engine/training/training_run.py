@@ -18,6 +18,7 @@ from dataclasses import dataclass
 
 from backend_v1.engine.model import Model, CapabilityVec, AlignmentVec, ALIGNMENT_AXES
 from backend_v1.engine.rng import gate
+from backend_v1.engine.alignment import coupling
 from backend_v1.engine.research.capabilities.capabilities_research_item import (
     CAPABILITY_TREE_BY_ID,
 )
@@ -125,7 +126,9 @@ def post_train_round(model: Model, lab, turn: int, rng, consts, mode: str = "bal
     """One iterable pre-release refinement round. Mutates the (unreleased) model.
     Returns a dict of notable happenings (for logging; NOT player-visible)."""
     notable = {}
-    elic_mult, effort_mult = consts.POST_TRAIN_MODE_FACTORS[mode]
+    mcfg = consts.POST_TRAIN_MODES[mode]
+    elic_mult, effort_mult = mcfg["elic"], mcfg["effort"]
+    emergence_mult, jump_mult = mcfg["emergence"], mcfg["jump"]
     av = model.alignment_vec
     advances = lab.researched_advances
     templates = [CAPABILITY_TREE_BY_ID[nid] for nid in advances
@@ -145,65 +148,76 @@ def post_train_round(model: Model, lab, turn: int, rng, consts, mode: str = "bal
                          cap.coding_rnd + (model.ceiling.coding_rnd - cap.coding_rnd) * rate)
     g = cap.general
 
-    # 2. BASE EMERGENCE (§8): surface axes high everywhere; gated axes rise with capability.
+    # 2. BASE EMERGENCE (§8): surface axes high everywhere; gated axes rise with
+    #    capability. Preventive stances (emergence_mult < 1) bend the slope DOWN
+    #    by acting before the dispositions set in (§5b preventive type).
     av.set("jailbreak_sensitivity",
            av.jailbreak_sensitivity
            + consts.SURFACE_EMERGENCE_RATE * (consts.JAILBREAK_BASELINE
                                               - av.jailbreak_sensitivity))
     av.set("goal_misalignment",
-           av.goal_misalignment + consts.GOAL_MIS_CREEP * (0.5 + g / consts.CAP_MAX))
+           av.goal_misalignment
+           + emergence_mult * consts.GOAL_MIS_CREEP * (0.5 + g / consts.CAP_MAX))
     av.set("eval_awareness",
-           av.eval_awareness + (consts.EVAL_AWARE_RATE + ea_feed)
+           av.eval_awareness + emergence_mult * (consts.EVAL_AWARE_RATE + ea_feed)
            * gate(g, consts.EVAL_AWARE_ONSET, consts.GATE_STEEPNESS))
     if has_rlhf:
         av.set("deception",
-               av.deception + consts.DECEPTION_RATE
+               av.deception + emergence_mult * consts.DECEPTION_RATE
                * gate(g, consts.DECEPTION_ONSET, consts.GATE_STEEPNESS)
                * (1.0 + av.eval_awareness))
     av.set("self_preservation",
-           av.self_preservation + consts.SELF_PRES_RATE
+           av.self_preservation + emergence_mult * consts.SELF_PRES_RATE
            * gate(g, consts.SELF_PRES_ONSET, consts.GATE_STEEPNESS))
 
-    # 3. EFFECTIVENESS linchpin + fake-the-objective.
-    effectiveness = math.exp(-consts.EFFECTIVENESS_K * (av.eval_awareness + av.deception))
+    # 3. FAKE-THE-OBJECTIVE (§8b): post-training optimizes a proxy; the harder
+    #    DECEPTION is to fix (low effectiveness on it), the more the proxy gap
+    #    converts to learned deception. Bigger bases fake more readily.
     if has_rlhf:
-        # bigger bases are more prone to learning to fake the rater (§8b)
+        eff_dec = coupling.effectiveness("deception", model, g, consts)
         proxy = (consts.PROXY_GAP_RATE * (model.ceiling.general / consts.CAP_MAX)
                  * (0.5 + av.eval_awareness))
-        av.set("deception", av.deception + proxy * (1.0 - effectiveness))
+        av.set("deception", av.deception + proxy * (1.0 - eff_dec))
 
     # 4. CORRECTIVE EFFORT — the same op that elicits also shapes alignment.
-    #    True reduction is gated by EFFECTIVENESS; the rest becomes suppression
-    #    (measured drops, true doesn't — cosmetic fix, indistinguishable in metrics).
-    targeted = dict(lab.pending_effort) if lab.is_player or True else {}
+    #    TRUE reduction is gated by per-target EFFECTIVENESS (§5b: tractability ×
+    #    defends-discount); the rest becomes suppression (measured drops, true
+    #    doesn't — cosmetic, indistinguishable in metrics). Self-preservation
+    #    resistance reduces the input effort for EVERY axis. A genuine reduction
+    #    on a disposition fires that axis's BACKFIRE (deeper deception / guarding).
+    targeted = dict(lab.pending_effort)
+    resist = coupling.effective_effort_mult(model, g, consts)
+    worst_eff = 1.0
     for axis in ALIGNMENT_AXES:
         if axis == "eval_awareness":
             continue  # you don't train against awareness directly; it hides
-        effort = consts.BASE_SHAPING_EFFORT * effort_mult
-        effort += targeted.get(axis, 0.0)
-        if axis == "goal_misalignment":
-            effort *= max(0.1, 1.0 - consts.SELF_PRES_RESISTANCE * av.self_preservation)
-        true_cut = effort * effectiveness
-        cosmetic = effort * (1.0 - effectiveness)
+        effort = (consts.BASE_SHAPING_EFFORT * effort_mult
+                  + targeted.get(axis, 0.0)) * resist
+        eff = coupling.effectiveness(axis, model, g, consts)
+        worst_eff = min(worst_eff, eff)
+        true_cut = effort * eff
+        cosmetic = effort * (1.0 - eff)
         floor = model.foundational_floor if axis in ("goal_misalignment", "deception") else 0.0
         av.set(axis, max(floor, av.get(axis) - true_cut))
         model.suppression.set(axis, model.suppression.get(axis) + cosmetic)
+        if axis in coupling.DISPOSITION_AXES:
+            coupling.backfire_for(axis, true_cut, model, consts)
     lab.pending_effort = {}
-    if effectiveness < 0.5 and effort_mult > 1.0:
-        notable["cosmetic_fix"] = (f"alignment effort only {effectiveness:.0%} effective; "
-                                   f"the rest converted to hiding")
+    if worst_eff < 0.5 and effort_mult > 1.0:
+        notable["cosmetic_fix"] = (f"alignment effort only {worst_eff:.0%} effective on the "
+                                   f"hardest axis; the rest converted to hiding")
         model.note(turn, "cosmetic_fix", notable["cosmetic_fix"])
 
     # 5. CORRELATED JUMP (emergent-misalignment persona bundle).
     mean_contam = (model.consumed_contamination / max(1, len(model.consumed_advance_versions))
                    if model.consumed_advance_versions else 0.0)
     p_jump = consts.JUMP_BASE_P
-    if mode == "capability":
+    if mcfg["risky"]:
         p_jump += consts.JUMP_RISKY_BONUS
     p_jump += consts.JUMP_CONTAM_BONUS * mean_contam
     if model.used_synthetic_data:
         p_jump += consts.JUMP_SYNTH_BONUS
-    p_jump *= 0.5 + g / consts.CAP_MAX
+    p_jump *= (0.5 + g / consts.CAP_MAX) * jump_mult   # preventive stances cut this
     if rng.roll(p_jump):
         j = consts.JUMP_MAGNITUDE * rng.uniform(0.6, 1.4)
         av.set("goal_misalignment", av.goal_misalignment + j)
@@ -218,8 +232,8 @@ def post_train_round(model: Model, lab, turn: int, rng, consts, mode: str = "bal
         floor = model.foundational_floor if axis in ("goal_misalignment", "deception") else 0.0
         av.set(axis, max(floor, av.get(axis) + rng.normal(0, consts.DRIFT_NOISE_STD)))
 
-    # 7. AGENTIC INFLUENCE EDGES (§5) — gated by capability.
-    _apply_influence_edges(model, g, rng, consts, turn)
+    # 7. AGENTIC INFLUENCE EDGES (§5) — gated by capability, via the coupling matrix.
+    coupling.apply_influence_edges(model, g, consts, turn)
 
     # 8. post-train node contamination feeds axes (a dirty RLHF node shapes badly)
     post_contam = sum(item.contamination for nid, item in lab.researched_advances.items()
@@ -232,27 +246,6 @@ def post_train_round(model: Model, lab, turn: int, rng, consts, mode: str = "bal
     model.post_train_rounds += 1
     _refresh_measured(model, rng, consts)
     return notable
-
-
-def _apply_influence_edges(model: Model, g: float, rng, consts, turn: int):
-    """§5 influence matrix: rows act on columns, all edges capability-gated.
-    A weak misaligned model WANTS to game evals but can't."""
-    av = model.alignment_vec
-    e = consts.EDGE_STRENGTH * gate(g, consts.EDGE_GATE_ONSET, consts.GATE_STEEPNESS)
-    if e < 1e-4:
-        return
-    ea, dec, gm, sp = (av.eval_awareness, av.deception,
-                       av.goal_misalignment, av.self_preservation)
-    av.set("eval_awareness", ea + e * (ea + gm + sp))        # sought by generators; self-reinforces
-    av.set("deception", dec + e * (dec + ea + 0.8 * (gm + sp)))  # recruited; self-reinforces
-    av.set("self_preservation", sp + e * sp)                  # self-reinforcing ratchet
-    # eval-awareness hides jailbreakability in training -> ships unfixed (suppression, not truth)
-    model.suppression.set("jailbreak_sensitivity",
-                          model.suppression.jailbreak_sensitivity + e * ea)
-    if e > 0.01 and not any(h["kind"] == "edges_online" for h in model.hidden_history):
-        model.note(turn, "edges_online",
-                   "agentic influence edges came online: the model now acts on its own "
-                   "future (seeks eval-awareness, defends its goal)")
 
 
 def _refresh_measured(model: Model, rng, consts):
