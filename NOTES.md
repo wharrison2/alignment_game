@@ -266,8 +266,8 @@ A review-driven cleanup; all changes guarded by a new golden-master test
 (`tests/test_golden_master.py`) asserting the full TRUE-state log stays
 bit-identical across a seed/policy/difficulty matrix.
 - **Undeclared dynamic attributes are now real dataclass fields.** `Lab` gained
-  `prev_release_turn`, `last_score`, `rival_estimate_cache` (previously stashed
-  via `setattr`/`__dict__`); dead
+  `prev_release_turn`, `last_score`, `defection_caught_pending`,
+  `rival_estimate_cache` (previously stashed via `setattr`/`__dict__`); dead
   write-only `world._asi_lab_id` removed.
 - **`TurnContext`** (`engine/turn_context.py`) replaces the four hand-rolled
   `SimpleNamespace` per-turn bundles; built once in `run_turn`.
