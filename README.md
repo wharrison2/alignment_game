@@ -64,7 +64,10 @@ backend_v1/
   config/        constants.py (every [TUNE] knob, per-year rates) · difficulty.py
   engine/
     game.py            GameState (data) + GameEngine (stateless step)
-    turn_pipeline.py   the ordered turn sequence
+    turn_pipeline.py   the ordered turn sequence (governance/research/training apply split)
+    turn_context.py    TurnContext: the per-turn state bundle threaded into phases
+    rules.py           action economics (budget/cost) — one source of truth for
+                       validate_action · _apply_action · legal_moves
     rng.py             seeded RNG + dt-rate helpers (§0b)
     model.py lab.py world.py        entities (pure queries only)
     training/          two-phase training (§8b), EFFECTIVENESS linchpin, processes
@@ -78,6 +81,8 @@ backend_v1/
     server/        HTTP API (stdlib http.server): /api/new /api/state /api/action
                    /api/postmortem — exposes Observations only, single session
 cli/run_game.py    interactive · scripted · agent · batch harness
+tests/test_golden_master.py   deterministic-replay regression net (stdlib unittest):
+                   `python3 -m tests.test_golden_master` (add `--record` to rebaseline)
 simple_frontend_v1/index.html   one-file browser skin (vanilla JS, no build step)
 ```
 
