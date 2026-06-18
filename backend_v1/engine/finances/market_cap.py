@@ -7,7 +7,7 @@ weight (§10c regulatory capture falls out of that identity).
 
 def update_market_caps(labs, consts):
     for lab in labs:
-        score = getattr(lab, "_last_score", 0.0)
+        score = lab.last_score
         valuation = consts.MARKET_CAP_SCALE * score * max(lab.investment_rate, 1.0) \
             + 0.5 * lab.revenue_rate
         lab.market_cap += consts.MARKET_CAP_ALPHA * (valuation - lab.market_cap)

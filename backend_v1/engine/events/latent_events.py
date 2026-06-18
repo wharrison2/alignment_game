@@ -4,17 +4,35 @@ Canonical case: two-stage jailbreak. Stage 1 (discovery) arms a per-model
 latent ∝ TRUE jailbreak-sensitivity; every later quarter rolls the incident.
 Jailbreak risk is FLAT, non-decaying, and survives forever (no pull).
 """
-from types import SimpleNamespace
-
 from backend_v1.engine.events.event import FiredEvent
 from backend_v1.engine.events.effects import apply_effects
 from backend_v1.engine.rng import gate
 
 
-def run_latent_phase(labs, world, flags, rng, consts, dt, turn):
-    sb = SimpleNamespace(labs=labs, labs_by_id={l.id: l for l in labs},
-                         world=world, flags=flags, rng=rng, consts=consts,
-                         dt=dt, turn=turn)
+def run_displacement_backlash(ctx):
+    """Cumulative job-displacement crossing each threshold fires a societal
+    backlash event (mass protests): approval down, WTR up (§10). Threshold-
+    triggered, so it lives with the scheduled-event machinery rather than inline
+    in the turn orchestrator."""
+    world, consts, turn = ctx.world, ctx.consts, ctx.turn
+    fired = []
+    while (world.cumulative_displacement
+           >= consts.DISPLACEMENT_BACKLASH_STEP * (world.backlash_fired + 1)):
+        world.backlash_fired += 1
+        world.public_approval = max(0.0, world.public_approval - 8.0)
+        world.wtr = min(100.0, world.wtr + 6.0)
+        fired.append(FiredEvent(
+            "public_backlash", "societal", "ordinary", turn, None, None, 0.4, 0.0,
+            "Mass protests over AI-driven job losses.",
+            f"displacement crossed threshold {world.backlash_fired}",
+            effects=[]))
+    return fired
+
+
+def run_latent_phase(ctx):
+    sb = ctx
+    labs, world, rng, consts, dt, turn = (ctx.labs, ctx.world, ctx.rng,
+                                          ctx.consts, ctx.dt, ctx.turn)
     fired = []
     for lab in labs:
         for m in lab.release_history:

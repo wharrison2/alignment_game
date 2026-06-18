@@ -127,7 +127,7 @@ def _committed(action, moves):
         if p:
             total += p["budget_fraction"]
     if action.post_train:
-        total += 0.30
+        total += moves["post_train_round_budget"]
     return total
 
 

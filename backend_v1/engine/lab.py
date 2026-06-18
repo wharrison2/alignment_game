@@ -42,8 +42,10 @@ class Lab:
     investment_rate: float = 0.0
     market_cap: float = 100.0
     last_release_turn: int | None = None
+    prev_release_turn: int | None = None       # release before last (investment hold-time)
     last_release_measured_general: float = 0.0
     prev_release_measured_general: float = 0.0
+    last_score: float = 0.0                     # investment score, fed to market cap
     # scoring (§3)
     impact_ledger: float = 0.0              # running externality integral
     impact_positives: float = 0.0           # tracked separately for the loss screen
@@ -51,6 +53,7 @@ class Lab:
     reputation: float = 50.0                # light per-lab reputation (weak lever)
     lobby_stances: dict = field(default_factory=dict)  # policy_id -> last stance (display)
     active_defections: set = field(default_factory=set)  # policy_ids the player chose to defect on
+    defection_caught_pending: set = field(default_factory=set)  # policy_ids defecting, awaiting catch roll
     safe_harbor_signed: bool = False
     audit_pending_release: object | None = None   # model waiting on gov audit
     # disposition (rivals; player gets defaults)
@@ -59,6 +62,7 @@ class Lab:
     model_counter: int = 0
     findings: list = field(default_factory=list)    # accumulated safety findings
     pending_effort: dict = field(default_factory=dict)  # axis -> remediation effort feed
+    rival_estimate_cache: dict = field(default_factory=dict)  # (rival_id, model_id) -> noised est
 
     # ── pure queries ────────────────────────────────────────────────
     def released_models(self):
@@ -78,10 +82,6 @@ class Lab:
 
     def max_run_compute(self) -> float:
         return max(0.0, self.cash * 0.9)
-
-    def budget_committed(self, dt: float) -> float:
-        """Fraction of this turn's work budget already committed to in-flight work."""
-        return sum(p.budget_fraction_effective for p in self.in_progress)
 
     def next_model_id(self) -> str:
         self.model_counter += 1

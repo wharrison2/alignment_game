@@ -8,10 +8,14 @@ point analysis, not full branch re-simulation — see NOTES.md).
 
 
 def build_postmortem(logger, state, player_id, resim=False) -> dict:
-    """resim=True runs REAL counterfactual branch re-simulations (replays the
-    action log with one player choice changed, on the same seed, and checks
-    whether the outcome flips). Off by default so batch tooling stays fast; the
-    CLI/agent post-mortem turns it on. Only meaningful on a loss."""
+    """Counterfactuals come from one of TWO engines for the same feature:
+      • resim=True  — REAL branch re-simulation: replay the action log with one
+        player choice changed on the same seed and check whether the outcome
+        flips. Accurate but costs N extra games. CLI/agent/server use this.
+      • resim=False — the heuristic decision-point FAST PATH (no re-simulation),
+        used by batch tooling where speed matters. It is ALSO the fallback when
+        re-simulation surfaces no candidate branch.
+    Only meaningful on a loss."""
     turns = logger.turns
     outcome = state.outcome or {}
     pm = {"outcome": outcome, "trajectories": [], "key_moments": [],
@@ -59,8 +63,11 @@ def build_postmortem(logger, state, player_id, resim=False) -> dict:
                     "there is no one left to have benefited.",
         }
 
+    # Real re-simulation runs on ANY loss (existential or ordinary). The prior
+    # `== "loss"` never matched (the engine writes "LOSS"), so ordinary losses
+    # silently fell back to the heuristic — fixed here.
     resim_results = []
-    if resim and (outcome.get("existential") or outcome.get("result") == "loss"):
+    if resim and outcome.get("result") == "LOSS":
         resim_results = _counterfactuals_resim(logger, state, player, player_id)
     pm["counterfactuals"] = resim_results or _counterfactuals(turns, state, player, player_id)
     pm["counterfactuals_resimulated"] = bool(resim_results)
@@ -161,9 +168,10 @@ def _counterfactuals_resim(logger, state, player, player_id):
 
 
 def _counterfactuals(turns, state, player, player_id):
-    """Legible decision points where a different choice plausibly changes the
-    outcome (§10d: without these, even a true-trajectory reveal reads as
-    'doomed regardless')."""
+    """HEURISTIC fast path (resim=False / fallback): legible decision points where
+    a different choice plausibly changes the outcome (§10d: without these, even a
+    true-trajectory reveal reads as 'doomed regardless'). No re-simulation — these
+    are inferred from the log, not proven by replay."""
     cf = []
     consts = state.consts
 

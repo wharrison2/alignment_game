@@ -20,7 +20,6 @@ from dataclasses import dataclass, field
 
 from backend_v1.engine.governance.policies import POLICY_DEFS_BY_ID
 from backend_v1.engine.governance import gov_news
-from types import SimpleNamespace
 
 
 @dataclass
@@ -119,14 +118,14 @@ def _bar(world, st, consts):
             + consts.LIT_CONST_FLOOR_WEIGHT * st.constitutionality)
 
 
-def resolve_litigation(labs, world, flags, rng, consts, dt, turn):
+def resolve_litigation(ctx):
     """Governance-phase pass: tick injunctions, resolve open cases by MARGIN,
     run appeals/precedent, emit news. Returns (events, news_lines)."""
     from backend_v1.engine.governance import appeals as appeals_mod
+    sb = ctx
+    world, rng, consts, dt, turn = (ctx.world, ctx.rng, ctx.consts,
+                                    ctx.dt, ctx.turn)
     events, news = [], []
-    sb = SimpleNamespace(labs=labs, labs_by_id={l.id: l for l in labs},
-                         world=world, flags=flags, rng=rng, consts=consts,
-                         dt=dt, turn=turn)
     for pid, st in world.policies.items():
         case = st.litigation
         if case is None or case.status == "closed":

@@ -4,6 +4,7 @@ info cross this boundary. Audit this file when wondering 'can the player see X'.
 """
 from backend_v1.engine.observation.observations import Observation
 from backend_v1.engine.actions import legal_moves
+from backend_v1.engine.rules import budget_pool, committed_budget
 from backend_v1.engine.research.findings import synthesize_worry_bar
 
 
@@ -79,7 +80,7 @@ def build_observation(state, lab, tips, policy_news, public_events,
         if fm is not None:
             # rivals' stats: much worse estimates (extra noise, applied once per
             # release and cached so the estimate doesn't dance)
-            cache = lab.__dict__.setdefault("_rival_est_cache", {})
+            cache = lab.rival_estimate_cache
             key = (other.id, fm.id)
             if key not in cache:
                 noise = state.rng.normal(0, consts.RIVAL_ESTIMATE_NOISE)
@@ -94,9 +95,8 @@ def build_observation(state, lab, tips, policy_news, public_events,
         turn=state.turn,
         year=round(consts.START_YEAR + state.turn * state.dt, 2),
         cash=round(lab.cash, 1),
-        work_budget_free=round(lab.work_budget_per_year * state.dt
-                               - sum(p.budget_fraction_effective
-                                     for p in lab.in_progress), 3),
+        work_budget_free=round(budget_pool(lab, state.dt)
+                               - committed_budget(lab), 3),
         revenue_rate=round(lab.revenue_rate, 1),
         investment_rate=round(lab.investment_rate, 1),
         market_caps={l.id: round(l.market_cap, 1) for l in state.labs},

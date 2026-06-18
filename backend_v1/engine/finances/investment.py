@@ -23,7 +23,7 @@ def lab_score(lab, world, turn, consts, dt):
     # target that rises with the frontier and with how long this lab held before
     # shipping. Computed at release; static between releases.
     if lab.last_release_turn is not None and lab.prev_release_measured_general > 0:
-        held = max(dt, (lab.last_release_turn - (lab._prev_release_turn or 0)) * dt)
+        held = max(dt, (lab.last_release_turn - (lab.prev_release_turn or 0)) * dt)
         growth_per_year = ((lab.last_release_measured_general
                             - lab.prev_release_measured_general) / held)
         target = (consts.RISING_TARGET_BASE
@@ -68,4 +68,4 @@ def run_investment(labs, world, turn, rng, consts, dt):
     for lab in labs:
         lab.investment_rate = total * scores[lab.id] / ssum
         lab.cash += rng.amount_per_dt(lab.investment_rate, dt)
-        lab._last_score = scores[lab.id]
+        lab.last_score = scores[lab.id]

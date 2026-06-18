@@ -10,7 +10,6 @@ from backend_v1.engine.governance.policies import POLICY_DEFS
 from backend_v1.engine.world import PolicyState
 from backend_v1.engine.events.event import FiredEvent
 from backend_v1.engine.events.effects import apply_effects
-from types import SimpleNamespace
 
 
 def update_wtr(world, rng, consts, dt):
@@ -110,16 +109,16 @@ def interp_mandate_check(lab, model, consts) -> bool:
     return worst < consts.INTERP_MANDATE_BAR
 
 
-def enforcement_phase(labs, world, flags, rng, consts, dt, turn):
+def enforcement_phase(ctx):
     """Per active defectable policy, a non-compliant lab risks being caught. The
     catch probability and penalty severity both scale with the policy's continuous
     ENFORCEMENT level — weak enforcement = ignorable cost-of-business (the
     compliance-asymmetry dynamic). Players defect via an explicit choice; rivals
     defect ∝ (1 − compliance)."""
+    sb = ctx
+    labs, world, rng, consts, dt, turn = (ctx.labs, ctx.world, ctx.rng,
+                                          ctx.consts, ctx.dt, ctx.turn)
     fired = []
-    sb = SimpleNamespace(labs=labs, labs_by_id={l.id: l for l in labs},
-                         world=world, flags=flags, rng=rng, consts=consts,
-                         dt=dt, turn=turn)
     for pdef in POLICY_DEFS:
         st = world.policies.get(pdef.id)
         if st is None or not st.active or not pdef.defectable:
@@ -134,19 +133,18 @@ def enforcement_phase(labs, world, flags, rng, consts, dt, turn):
                 continue
             if not pdef.covers(lab):
                 continue
-            attr = f"_defected_{pdef.id}"
             # decide/refresh defection state this turn
             if lab.is_player:
-                defecting_now = pdef.id in getattr(lab, "active_defections", set())
+                defecting_now = pdef.id in lab.active_defections
             else:
                 defecting_now = rng.random() > lab.disposition.compliance
             if defecting_now:
-                setattr(lab, attr, True)
+                lab.defection_caught_pending.add(pdef.id)
             # detection: P(caught) = enforcement × base_detection, per year
-            if getattr(lab, attr, False) and \
+            if pdef.id in lab.defection_caught_pending and \
                     rng.roll_rate(enf * consts.ENFORCEMENT_BASE_DETECTION
                                   * consts.ENFORCEMENT_CATCH_RATE * 2.0, dt):
-                setattr(lab, attr, False)
+                lab.defection_caught_pending.discard(pdef.id)
                 # penalty severity scales with enforcement AND lab size (turnover)
                 size_scale = 1.0 + max(0.0, lab.market_cap) / 4000.0
                 penalty = enf * consts.DEFECTION_PENALTY * size_scale

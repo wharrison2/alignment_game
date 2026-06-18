@@ -4,9 +4,10 @@ apply actions -> tick research -> tick training runs -> complete/release models
 -> finances -> job-loss drag -> governance -> event phase (latents + fresh)
 -> end/existential gate -> (engine builds observations).
 """
-from backend_v1.engine.actions import (
-    STANCES, _effective_fraction, assist_potency, assist_speed_potency,
-    parse_lobby_entry,
+from backend_v1.engine.actions import STANCES, parse_lobby_entry
+from backend_v1.engine.rules import (
+    effective_fraction, assist_speed_potency, budget_pool, committed_budget,
+    project_template,
 )
 from backend_v1.engine.governance.lobbying import signed_influence
 from backend_v1.engine.world import PolicyState
@@ -24,12 +25,15 @@ from backend_v1.engine.training.training_run import (
 from backend_v1.engine.finances.finances import run_finances, run_job_loss_drag
 from backend_v1.engine.events.event import run_event_phase, FiredEvent
 from backend_v1.engine.events.event_catalog import EVENT_CATALOG
-from backend_v1.engine.events.latent_events import run_latent_phase
+from backend_v1.engine.events.latent_events import (
+    run_latent_phase, run_displacement_backlash,
+)
 from backend_v1.engine.governance import regulation
 from backend_v1.engine.governance.litigation import (
     apply_litigation_action, resolve_litigation,
 )
 from backend_v1.engine.governance.policies import POLICY_DEFS_BY_ID
+from backend_v1.engine.turn_context import TurnContext
 
 
 def run_turn(state, actions):
@@ -40,6 +44,8 @@ def run_turn(state, actions):
     new_findings = {lab.id: [] for lab in state.labs}
     policy_news = []
     events = []
+    ctx = TurnContext(labs=state.labs, world=state.world, flags=flags, rng=rng,
+                      consts=consts, dt=dt, turn=turn)
 
     # ── 1. apply actions ────────────────────────────────────────────
     for lab in state.labs:
@@ -90,28 +96,15 @@ def run_turn(state, actions):
         policy_news.append(f"POLICY {change.replace('_', ' ').upper()}: "
                            f"{POLICY_DEFS_BY_ID[pid].name}")
     # litigation resolves BEFORE enforcement (a struck/enjoined policy doesn't bite)
-    lit_events, lit_news = resolve_litigation(state.labs, state.world, flags, rng,
-                                              consts, dt, turn)
+    lit_events, lit_news = resolve_litigation(ctx)
     events += lit_events
     policy_news += lit_news
-    events += regulation.enforcement_phase(state.labs, state.world, flags, rng,
-                                           consts, dt, turn)
+    events += regulation.enforcement_phase(ctx)
 
     # ── 8. event phase: armed latents first, then fresh rolls ───────
-    events += run_latent_phase(state.labs, state.world, flags, rng, consts, dt, turn)
-    events += run_event_phase(EVENT_CATALOG, state.labs, state.world, flags, rng,
-                              consts, dt, turn)
-    # displacement backlash thresholds (societal, §10)
-    while (state.world.cumulative_displacement
-           >= consts.DISPLACEMENT_BACKLASH_STEP * (state.world.backlash_fired + 1)):
-        state.world.backlash_fired += 1
-        state.world.public_approval = max(0.0, state.world.public_approval - 8.0)
-        state.world.wtr = min(100.0, state.world.wtr + 6.0)
-        events.append(FiredEvent(
-            "public_backlash", "societal", "ordinary", turn, None, None, 0.4, 0.0,
-            "Mass protests over AI-driven job losses.",
-            f"displacement crossed threshold {state.world.backlash_fired}",
-            effects=[]))
+    events += run_latent_phase(ctx)
+    events += run_event_phase(ctx, EVENT_CATALOG)
+    events += run_displacement_backlash(ctx)
 
     # route event-injected findings (added to lab.findings by effects) to "new"
     for lab in state.labs:
@@ -137,9 +130,16 @@ def _complies(lab, policy_id, rng):
 
 
 def _apply_action(state, lab, action, policy_news):
-    rng, consts, dt = state.rng, state.consts, state.dt
-    turn = state.turn
+    """One lab's action, in fixed order: governance → research → training.
+    Order is load-bearing (RNG draw sequence); keep it stable."""
+    _apply_governance_action(state, lab, action, policy_news)
+    _apply_research_action(state, lab, action)
+    _apply_training_action(state, lab, action, policy_news)
 
+
+def _apply_governance_action(state, lab, action, policy_news):
+    """Lobbying spend, defection choices, litigation moves, safe-harbor sign-on."""
+    consts = state.consts
     # SCALABLE-SPEND lobbying: fresh signed influence is added to each policy's
     # hybrid decaying tally (the standing tally decays in update_policies). Spend
     # competes in the cash pot. Stances re-set each turn (display only).
@@ -164,21 +164,26 @@ def _apply_action(state, lab, action, policy_news):
     if action.sign_safe_harbor:
         lab.safe_harbor_signed = True
 
-    budget_pool = lab.work_budget_per_year * dt
-    committed = sum(p.budget_fraction_effective for p in lab.in_progress)
+
+def _apply_research_action(state, lab, action):
+    """Start new capability/safety projects, charging work-budget + cash. The
+    defensive budget/cash skips mirror validate_action (the player is validated
+    upstream; rivals are not)."""
+    consts, dt, turn = state.consts, state.dt, state.turn
+    pool = budget_pool(lab, dt)
+    committed = committed_budget(lab)
 
     for spec in action.start_projects:
         pid = spec.get("project_id")
         assist = max(0.0, min(1.0, float(spec.get("ai_assist", 0.0))))
-        template = CAPABILITY_TREE_BY_ID.get(pid) or SAFETY_PROJECTS_BY_ID.get(pid)
+        template, kind = project_template(pid)
         if template is None:
             continue
-        kind = "capability" if pid in CAPABILITY_TREE_BY_ID else "safety"
         if kind == "capability" and pid in lab.researched_advances \
                 and not spec.get("reresearch"):
             continue
-        frac = _effective_fraction(template.budget_fraction, assist, lab, consts)
-        if committed + frac > budget_pool + 1e-9 or template.cash_cost > lab.cash:
+        frac = effective_fraction(template.budget_fraction, assist, lab, consts)
+        if committed + frac > pool + 1e-9 or template.cash_cost > lab.cash:
             continue   # defensive skip (validated upstream for the player)
         committed += frac
         lab.cash -= template.cash_cost
@@ -198,6 +203,13 @@ def _apply_action(state, lab, action, policy_news):
             assisting_potency=assist_speed_potency(lab, consts),
             assist_speedup_max=consts.ASSIST_SPEEDUP))
 
+
+def _apply_training_action(state, lab, action, policy_news):
+    """Commission a pretrain run, post-train the model in training, or release it
+    (subject to interp-mandate / audit gates)."""
+    rng, consts, dt = state.rng, state.consts, state.dt
+    turn = state.turn
+
     if action.commission_run is not None and lab.training_run is None \
             and lab.model_in_training is None:
         compute = float(action.commission_run.get("compute", 0))
@@ -211,7 +223,8 @@ def _apply_action(state, lab, action, policy_news):
             lab.training_run = commission_run(lab, compute, turn, consts)
 
     if action.post_train is not None and lab.model_in_training is not None \
-            and committed + consts.POST_TRAIN_ROUND_BUDGET <= budget_pool + 1e-9:
+            and committed_budget(lab) + consts.POST_TRAIN_ROUND_BUDGET \
+            <= budget_pool(lab, dt) + 1e-9:
         mode = action.post_train.get("mode", "balanced")
         if mode in consts.POST_TRAIN_MODES:
             post_train_round(lab.model_in_training, lab, turn, rng, consts, mode)
@@ -241,7 +254,7 @@ def _do_release(state, lab, model, policy_news, note=""):
     model.released = True
     model.release_turn = state.turn
     lab.release_history.append(model)
-    lab._prev_release_turn = lab.last_release_turn
+    lab.prev_release_turn = lab.last_release_turn
     lab.prev_release_measured_general = lab.last_release_measured_general
     lab.last_release_turn = state.turn
     lab.last_release_measured_general = model.measured_capability.general
@@ -315,7 +328,6 @@ def _check_endgame(state, flags, events):
                     world.asi_window_turns_left = max(
                         1, int(round(consts.POST_ASI_WINDOW_YEARS / state.dt)))
                     world.asi_model_id = m.id
-                    world._asi_lab_id = lab.id
                     events.append(FiredEvent(
                         "asi_reached", "misalignment", "ordinary", state.turn,
                         lab.id, m.id, 0.0, 0.0,
