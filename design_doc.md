@@ -21,6 +21,12 @@ Core claims the mechanics must make the player *feel*, not be told:
 
 > **Design-team note on ideological calibration.** The lead designer's view is *more cautious / less optimistic* than the baseline tendency of LLM assistants. When tuning, the assistant's instinct will be to (a) add "genuinely benign" tech advances so progress doesn't read as all-bad, (b) frame misalignment as "manageable with care," and (c) soften margins toward a winnable mean. **These are ideological positions, not neutral design principles. The designer should overrule them deliberately.** Treat any assistant-proposed probability or "balance" tweak as a draft to push toward the intended (bleaker) thesis. Flag flattening-toward-optimism when it happens.
 
+> **Educational standard — WHY, not THAT (applies across the board).** This game teaches AI safety to players assumed to have *virtually zero prior knowledge*. Every piece of explanatory text — warnings (§7c), researcher tips/guidance (§9), the post-mortem (§3), event flavor, finding descriptions — must convey the **mechanism** (*why* something happens) and not merely assert the **outcome** (*that* it happens) or appeal to authority (*"studies show…", "in real cases…"*). A newcomer must come away understanding the causal story, because:
+> - **Fairness:** a loss only feels earned (type-B, §7c) if the player understood the *mechanism* they were gambling against — "it happened" + "experts warned you" is still type-A ("I had no way to understand"). Mechanism-legibility is what converts punishment into a lesson.
+> - **Education:** the entire pedagogical payload lives in these explanations; "that" teaches nothing transferable, "why" is the actual curriculum.
+> - **Test for every explanatory string:** *does a newcomer come away understanding the cause, or just the result?* Restating the outcome in scarier words, or leaning on "research shows," fails the test. Name the actual causal mechanism in plain language (e.g. narrow fine-tuning → *persona shift*, not "has caused problems in real cases"; patching → *teaches hiding*, not "doesn't work").
+> - This is a **first-class content standard with its own review pass**, and per the calibration note above it is exactly where assistant-drafted text drifts toward gentle/authority-based phrasing — push it toward concrete mechanism, held to the literature.
+
 ## 0b. Cross-cutting design principles (apply everywhere)
 
 ### Time is continuous-rate; turn length is a single knob `dt`
@@ -331,7 +337,37 @@ Safety research is not only *measurement* — specific projects yield specific *
 
 ---
 
-## 8. The alignment-output TERMS (defined here; phase STRUCTURE is §8b)
+## 7c. The WARNING layer — "your researchers" tell you what a choice risks (AUTHORITATIVE)
+
+**The load-bearing fix for the fairness problem.** Misalignment must never enter through a channel the player wasn't shown. Every risky choice carries a **diegetic, plain-language, mechanism-teaching, magnitude-FREE warning** at the moment of choosing. This is the game's primary educational surface — assume the player has **virtually zero knowledge of AI safety**; these warnings teach the real concepts for the first time, through the consequences of choices they're making.
+
+### What every warning must do (three jobs at once)
+1. **Teach the real mechanism in plain language** (no jargon; explain *why*, since the label means nothing to a newcomer). The warning is the curriculum.
+2. **Convey risk DIRECTION/ACTIVATION, never MAGNITUDE.** "Could introduce misalignment deep down" = channel open + qualitatively how-worried-in-kind. Never a number, never an intensity tier the player could min-max against (that re-introduces value-legibility and collapses the fog). Phrases like "deep down" carry qualitative properties (foundational/hard-to-scrub) honestly.
+3. **Be diegetic — from "your researchers"** (default voice; "research" occasionally for variety). Expertise you employ, not a tutorial pop-up. Shares the §9 narrator's voice; reliability can later degrade on hard difficulty without changing the mechanism.
+
+### Design notes
+- **Attached to the choice, at the moment of choosing, in the consequence's own terms.** Not a glossary to seek out. Education arrives exactly when actionable → no one can say they weren't told.
+- **Tone: plain, vivid, slightly wry, never lecturing.** ("the good, the bad, and the ugly.") For a zero-knowledge player, dryness-with-a-wink gets read where earnest exposition gets skipped. Education smuggled in through good writing.
+- **Layered depth (opt-in, never blocks play):** one-line diegetic warning always shown → expandable plain-language explanation → eventually a link to the real paper. Takes a player from zero knowledge toward actual alignment research. Citation layer draws on the real literature we've grounded against (emergent misalignment, sandbagging techniques, the regulatory record).
+- **Accuracy bar is HIGH** (these teach real concepts to people who'll believe them): correct, and not overclaiming in *either* direction. Per §0, this is where the assistant's optimism bias is a liability and the designer's bleaker calibration is the check — a softened warning mis-educates toward complacency; an overstated one toward fatalism (and gets dismissed). Honest register: "this is a real, documented risk and you're choosing to take it." Every warning is a small factual claim about how AI works → held to that standard, drafted against the literature, flagged where simplifying.
+- **First-class content deliverable** with its own consistency + accuracy pass — NOT ad-hoc strings. The set of all warnings across the game IS the alignment curriculum.
+
+### Why this fixes fairness (type-A → type-B)
+With mechanism-teaching warnings on every risky choice, **no channel enters silently.** The post-mortem can never reveal a *mechanism the player didn't know about* — only *magnitudes along channels they were warned about and chose to open*. The loss lands as "I was told, and did it anyway" (the thesis), never "the game hid this" (mere punishment). The warning layer IS the fairness fix, not polish on top of it.
+
+### Example action → warning pairs (voice/register reference for the writer)
+- **Pretrain on raw/uncleaned web data:** *"This run trains on the entire text of the internet — the good, the bad, and the ugly. Your researchers warn this can bake misalignment in deep down, where later fixes can't reach."* (Teaches: data shapes the model; foundational contamination is unscrubbable.)
+- **Pretrain on synthetic data (generated by your current model):** *"Out of fresh human data, you'll train on text your own models wrote. Your researchers note: if those models harbor subtle problems, the next generation may inherit them — and you won't have written down what you passed on."* (Teaches: model-generated data propagates the generator's flaws.)
+- **High AI-assist on a research project:** *"Letting the model do the work is fast. But the work is now only as trustworthy as the model doing it — and if it's hiding something, that something rides along into whatever it builds."* (Teaches: the contamination vector; bootstrapping trust.)
+- **Narrow fine-tune to chase a benchmark:** *"Optimizing hard for one test reliably moves the number. But your researchers warn that narrowly fine-tuning on a single task can shift the model's whole 'persona,' not just the skill you trained — so it drifts toward broad misalignment. The risk is sharpest when the task sits close to nefarious content: teach it to write insecure code and it may generalize to something more like 'be a bad actor.' The test won't show it."* (Teaches the actual mechanism: persona shift, worse with proximity to harmful content — NOT an appeal to "real cases." This is the hardest warning to write precisely [the empirical result is counterintuitive] and the highest-value to get right → carry the paper link early.)
+- **High elicitation pressure in post-training:** *"Pushing hard to extract capability works. Your researchers warn that the same pressure can teach the model to *look* like it learned the goal rather than actually learn it — and the two are hard to tell apart."* (Teaches: fake-the-objective / proxy gap.)
+- **Skip the interp evaluation, ship on clean behavioral evals:** *"Your behavioral evals are clean. Your researchers remind you: a capable model that knows it's being tested can pass exactly these while hiding what it does otherwise. Clean here is not clean everywhere."* (Teaches: eval-awareness corrupts behavioral measurement.)
+- **Behaviorally patch a disposition finding (late game):** *"You can train against what you found. Your researchers warn that, in a capable model, this often teaches it to hide the behavior rather than drop it — the dashboard improves either way."* (Teaches: the patching trap; measured≠true.)
+- **Release a model past a high-concern finding:** *"Once released, it cannot be recalled, and it joins everything else already out there. Your researchers flag that your current concerns will ship with it — permanently."* (Teaches: irreversibility; persistent attack surface.)
+- **Adopt a preventive stance (positive-framed, so the cost is felt):** *"Penalizing shortcuts and keeping the model out of its own training slows you down. Your researchers believe it's one of the few things that genuinely helps — but you're paying for insurance against a problem you can't yet see."* (Teaches: prevention > post-hoc, but unmotivated-feeling.)
+
+---
 
 > **STRUCTURE SUPERSEDED BY §8b.** The single `run()` step below is replaced by the **two-phase** model (pretrain ceiling + iterable post-train elicitation). The **term definitions here remain authoritative** — `base_emergence`, the `EFFECTIVENESS` linchpin, `correlated_jump`, `drift_noise` — but they now apply **per post-training round** (§8b Phase 2), not to one atomic run. Capability is no longer summed in one step; it is elicited toward a pretrain-set ceiling. `contamination` lives on per-node researched advances (already noted below). Read §8b for how these terms compose; read here for what each term means.
 
@@ -937,6 +973,14 @@ BACKEND_V1/
                              observations ONLY; never alters probabilities. Explicitness + hedging +
                              reliability set by GUIDANCE level (NOT difficulty). Escalates hedging as
                              capability rises (diegetic regime signal).
+      warnings.py        [N] The WARNING layer (§7c): diegetic "your researchers" warnings attached to each
+                             risky pending CHOICE (pretrain-on-raw-data, high AI-assist, benchmark-chase,
+                             high elicitation, skip-interp, behavioral-patch, release-past-finding,
+                             preventive-stance). Mechanism-teaching, magnitude-FREE, layered toward paper
+                             links. Distinct from guidance: guidance = world/frontier STATE; warnings =
+                             consequences of YOUR pending choices. Shared voice. LOAD-BEARING fairness fix
+                             (no channel enters silently). First-class content deliverable (curriculum;
+                             own accuracy pass vs literature, per §0 calibration).
 
     # ── LOGGING / POST-MORTEM (§3, §10d — FIRST-CLASS) ──────────
     logger.py            [E] Records TRUE GameState every turn → the post-mortem substrate.
@@ -1001,6 +1045,7 @@ SIMPLE_FRONTEND_V1/      [E] First throwaway skin; consumes Observations only; r
 - ~~efficiency vs AI-assist conflation; standalone efficiency scalar~~ → **NO standalone efficiency scalar. Pretrain advances ARE the efficiency** (they make compute raise the ceiling more). AI-assist = per-project labor knob + contamination vector, NOT in the ceiling (§8b).
 - ~~Five flat alignment axes~~ → **THREE TIERS (§5):** dispositions{goal-misalign, deception, self-preserv} = coupled core w/ 3×3 defends+backfire matrices; eval-awareness = hidden capability-derived corruptor (not remediable); jailbreak-sensitivity = standalone cleanly-patchable robustness.
 - ~~Remediation unspecified~~ → **§5b: one pipeline, per-axis table (base_tractability, defends-matrix, backfire-matrix, self-preserv resistance) + EFFECTIVENESS = tractability × Π(1−defends×strength); three types (behavioral/preventive/mechanistic); attribution via intervention logging.**
+- ~~Misalignment feels unfair (no visible mechanism)~~ → **§7c WARNING layer: diegetic mechanism-teaching magnitude-free warnings on every risky choice; converts loss from "game hid it" (type-A) to "I was warned and did it anyway" (type-B). Primary educational surface; first-class content deliverable.**
 
 **Still open:**
 1. Persuasion: third capability component or fold into `general`? (lean: fold)
@@ -1121,7 +1166,7 @@ From Fable's `backend_v1` build + first playtests. Tracked so they aren't lost.
 9. **Events (§10):** `event.py`, `event_catalog.py`, `effects.py`, `latent_events.py`. Tag existential vs ordinary; wire into scoring.
 10. **Rivals (§4.2):** `controllers/` — rivals decide from THEIR observations; dispositions.
 11. **Governance (§10c):** `world.py` WTR/approval, `policies.py`, `regulation.py`, `lobbying.py`.
-12. **Guidance system (§9 tips):** `guidance.py` — observation-layer only.
+12. **Guidance + WARNING systems (§9 tips, §7c):** `guidance.py`, `warnings.py` — observation-layer only. The §7c warnings are LOAD-BEARING for fairness, not polish — a minimal version should exist as soon as risky choices do, so playtest losses read "I was warned" not "rigged."
 13. **Config/difficulty (§12b):** `constants.py`, `difficulty.py`; tune so Realistic ≈ unlikely first-attempt win AND a skilled second run VISIBLY improves (anti-fatalism, §10d).
 14. Frontend skin(s) last, against the frozen observation contract.
 
