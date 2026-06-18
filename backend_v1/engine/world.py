@@ -47,11 +47,13 @@ class World:
     last_buyout_turn: int | None = None            # cooldown anchor for relaunch events
 
     def snapshot(self) -> dict:
+        active_policies = [pid for pid, st in self.policies.items() if st.active]
         return {
-            "public_approval": self.public_approval, "wtr": self.wtr,
+            "public_approval": self.public_approval,
+            "wtr": self.wtr,
             "world_harm": self.world_harm,
             "cumulative_displacement": self.cumulative_displacement,
-            "active_policies": [pid for pid, st in self.policies.items() if st.active],
+            "active_policies": active_policies,
             "frontier_measured_general": self.frontier_measured_general,
             "total_revenue_rate": self.total_revenue_rate,
         }

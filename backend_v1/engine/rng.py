@@ -13,10 +13,12 @@ class Rng:
         self._r = random.Random(seed)
 
     # ── §0b time helpers ────────────────────────────────────────────
+
     @staticmethod
     def prob_per_dt(rate_per_year: float, dt: float) -> float:
         """Poisson: probability of >=1 event this turn given a per-year rate."""
-        return 1.0 - math.exp(-max(0.0, rate_per_year) * dt)
+        clamped_rate = max(0.0, rate_per_year)
+        return 1.0 - math.exp(-clamped_rate * dt)
 
     @staticmethod
     def amount_per_dt(rate_per_year: float, dt: float) -> float:
@@ -24,11 +26,13 @@ class Rng:
         return rate_per_year * dt
 
     # ── draws ───────────────────────────────────────────────────────
+
     def roll(self, p: float) -> bool:
         return self._r.random() < p
 
     def roll_rate(self, rate_per_year: float, dt: float) -> bool:
-        return self.roll(self.prob_per_dt(rate_per_year, dt))
+        p = self.prob_per_dt(rate_per_year, dt)
+        return self.roll(p)
 
     def uniform(self, a: float, b: float) -> float:
         return self._r.uniform(a, b)
@@ -42,7 +46,8 @@ class Rng:
     def random(self) -> float:
         return self._r.random()
 
-    # serializable state (replay support)
+    # ── serializable state (replay support) ─────────────────────────
+
     def getstate(self):
         return self._r.getstate()
 
@@ -53,4 +58,6 @@ class Rng:
 def gate(capability: float, onset: float, steepness: float) -> float:
     """Sigmoid capability gate in [0,1] — how 'online' a capability-gated
     mechanism is. Used for agentic edges and gated emergence (§5, §6)."""
-    return 1.0 / (1.0 + math.exp(-(capability - onset) / max(1e-6, steepness)))
+    safe_steepness = max(1e-6, steepness)
+    exponent = -(capability - onset) / safe_steepness
+    return 1.0 / (1.0 + math.exp(exponent))

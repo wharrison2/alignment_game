@@ -76,20 +76,29 @@ class Model:
         """How much eval-awareness x deception suppresses what instruments see.
         Recomputed lazily from TRUE stats; capped below 1 (never perfect)."""
         a = self.alignment_vec
-        return min(0.95, a.eval_awareness * a.deception * self._conceal_k)
+        raw_concealment = a.eval_awareness * a.deception * self._conceal_k
+        return min(0.95, raw_concealment)
 
     _conceal_k: float = 1.8  # set by training code from constants at shaping time
 
     def misalignment_composite(self) -> float:
         """Catastrophe-relevant TRUE misalignment (goal_mis is primary driver, §5)."""
         a = self.alignment_vec
-        return min(1.0, 0.55 * a.goal_misalignment + 0.30 * a.self_preservation
-                   + 0.15 * a.deception)
+        weighted_sum = (
+            0.55 * a.goal_misalignment
+            + 0.30 * a.self_preservation
+            + 0.15 * a.deception
+        )
+        return min(1.0, weighted_sum)
 
     def measured_misalignment_composite(self) -> float:
         a = self.measured_alignment
-        return min(1.0, 0.55 * a.goal_misalignment + 0.30 * a.self_preservation
-                   + 0.15 * a.deception)
+        weighted_sum = (
+            0.55 * a.goal_misalignment
+            + 0.30 * a.self_preservation
+            + 0.15 * a.deception
+        )
+        return min(1.0, weighted_sum)
 
     def effective_jailbreak_sensitivity(self) -> float:
         """Leaked weights: guardrails are out of anyone's hands (§10)."""
@@ -101,7 +110,9 @@ class Model:
     def snapshot(self) -> dict:
         """Serializable TRUE+measured snapshot for the logger."""
         return {
-            "id": self.id, "lab_id": self.lab_id, "released": self.released,
+            "id": self.id,
+            "lab_id": self.lab_id,
+            "released": self.released,
             "leaked": self.leaked,
             "true_capability": asdict(self.capability_vec),
             "ceiling": asdict(self.ceiling),

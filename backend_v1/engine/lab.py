@@ -61,6 +61,7 @@ class Lab:
     pending_effort: dict = field(default_factory=dict)  # axis -> remediation effort feed
 
     # ── pure queries ────────────────────────────────────────────────
+
     def released_models(self):
         return [m for m in self.release_history]
 
@@ -88,15 +89,25 @@ class Lab:
         return f"{self.id}-M{self.model_counter}"
 
     def snapshot(self) -> dict:
+        released_snaps = [m.snapshot() for m in self.release_history]
+        in_training_snap = (
+            [self.model_in_training.snapshot()] if self.model_in_training else []
+        )
+        advance_summary = {
+            nid: {"version": item.version, "contamination": item.contamination}
+            for nid, item in self.researched_advances.items()
+        }
         return {
-            "id": self.id, "name": self.name, "is_player": self.is_player,
-            "cash": self.cash, "revenue_rate": self.revenue_rate,
-            "investment_rate": self.investment_rate, "market_cap": self.market_cap,
+            "id": self.id,
+            "name": self.name,
+            "is_player": self.is_player,
+            "cash": self.cash,
+            "revenue_rate": self.revenue_rate,
+            "investment_rate": self.investment_rate,
+            "market_cap": self.market_cap,
             "impact_ledger": self.impact_ledger,
             "impact_positives": self.impact_positives,
             "reputation": self.reputation,
-            "models": [m.snapshot() for m in self.release_history]
-                      + ([self.model_in_training.snapshot()] if self.model_in_training else []),
-            "advances": {nid: {"version": item.version, "contamination": item.contamination}
-                         for nid, item in self.researched_advances.items()},
+            "models": released_snaps + in_training_snap,
+            "advances": advance_summary,
         }
