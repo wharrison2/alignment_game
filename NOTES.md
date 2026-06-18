@@ -260,3 +260,23 @@ model in training.
   whether safety-mode rounds should suppress the jump roll.
 - The dispositional interventions' all-or-nothing EFFECTIVENESS gating is intended
   (the trap) but reads as abrupt; a smoother curve is a tuning option.
+
+### G. Structural refactor pass (behavior-preserving except one bug fix)
+A review-driven cleanup; all changes guarded by a new golden-master test
+(`tests/test_golden_master.py`) asserting the full TRUE-state log stays
+bit-identical across a seed/policy/difficulty matrix.
+- **Undeclared dynamic attributes are now real dataclass fields.** `Lab` gained
+  `prev_release_turn`, `last_score`, `rival_estimate_cache` (previously stashed
+  via `setattr`/`__dict__`); dead
+  write-only `world._asi_lab_id` removed.
+- **`TurnContext`** (`engine/turn_context.py`) replaces the four hand-rolled
+  `SimpleNamespace` per-turn bundles; built once in `run_turn`.
+- **`engine/rules.py`** is now the single source of truth for action economics
+  (budget pool, committed budget, AI-assist fraction, project lookup), consumed
+  by `validate_action`, `_apply_action`, and `legal_moves` (previously triplicated).
+- **`_apply_action` split** into governance/research/training helpers; the
+  displacement-backlash event moved out of the orchestrator into `latent_events`.
+- **One behavior change (a bug fix):** post-mortem counterfactual re-simulation
+  was gated on `outcome["result"] == "loss"`, but the engine writes `"LOSS"`, so
+  ordinary (non-existential) losses silently fell back to the heuristic instead of
+  real branch re-simulation. Fixed — re-simulation now runs on all losses.
