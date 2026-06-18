@@ -72,9 +72,18 @@ def end_game(sb, ev, p):
 
 
 EFFECTS = {f.__name__: f for f in [
-    modify_cash, modify_approval, modify_wtr, damage_reputation, add_world_harm,
-    add_impact, inject_finding, leak_model, flag_deception_public, flag_damaging,
-    trigger_existential_gate, end_game,
+    modify_cash,
+    modify_approval,
+    modify_wtr,
+    damage_reputation,
+    add_world_harm,
+    add_impact,
+    inject_finding,
+    leak_model,
+    flag_deception_public,
+    flag_damaging,
+    trigger_existential_gate,
+    end_game,
 ]}
 
 

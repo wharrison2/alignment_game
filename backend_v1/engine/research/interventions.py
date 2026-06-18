@@ -35,6 +35,7 @@ def apply_intervention(project, model, turn, rng, consts):
 
     nominal = project.base_reduction
     leak = av.eval_awareness if project.eval_aware_leak else 0.0
+
     if not project.effectiveness_gated:
         # robustness fix (jailbreak hardening): genuine, only the hiding leak
         genuine_share = 1.0 - leak
@@ -52,9 +53,11 @@ def apply_intervention(project, model, turn, rng, consts):
 
     av.set(axis, max(floor, before_true - genuine_cut))
     model.suppression.set(axis, model.suppression.get(axis) + cosmetic)
+
     # intervening on a disposition induces BACKFIRE (§5b), scaled by the real cut
     if axis in coupling.DISPOSITION_AXES:
         coupling.backfire_for(axis, genuine_cut, model, consts)
+
     _refresh_measured(model, rng, consts)
 
     after_measured = model.measured_alignment.get(axis)
@@ -66,14 +69,18 @@ def apply_intervention(project, model, turn, rng, consts):
                    f"measured {before_measured:.2f}→{after_measured:.2f})")
 
     nice_axis = axis.replace("_", " ")
+    low_confidence_caveat = (
+        ""
+        if genuine_share > 0.6
+        else "  (caution: adversarial-robustness gains like this can reflect "
+             "the model learning to pass the test rather than a real fix)"
+    )
     return {
         "project_id": project.id, "model_id": model.id, "turn": turn,
         "evidence": "intervention", "axis": axis,
         "text": (f"{project.name}: measured {nice_axis} "
                  f"{before_measured:.2f} → {after_measured:.2f}"
-                 + ("" if genuine_share > 0.6
-                    else "  (caution: adversarial-robustness gains like this can reflect "
-                         "the model learning to pass the test rather than a real fix)")),
+                 + low_confidence_caveat),
         "concern": 0.0, "weight": 0.4, "mechanistic": project.mechanistic,
         "assist_used": 0.0,
     }

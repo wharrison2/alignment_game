@@ -14,8 +14,8 @@ STANCE_SIGN = {"for": 1, "against": -1, "abstain": 0}
 
 
 def cap_multiplier(market_cap, consts):
-    m = 1.0 + consts.LOBBY_LOG_K * math.log(max(market_cap, 1.0) / consts.LOBBY_REFERENCE_CAP)
-    return max(consts.LOBBY_MIN_CAP_MULT, m)
+    raw = 1.0 + consts.LOBBY_LOG_K * math.log(max(market_cap, 1.0) / consts.LOBBY_REFERENCE_CAP)
+    return max(consts.LOBBY_MIN_CAP_MULT, raw)
 
 
 def lobby_influence(spend, market_cap, consts):

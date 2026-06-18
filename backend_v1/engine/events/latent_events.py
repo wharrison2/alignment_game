@@ -12,43 +12,58 @@ from backend_v1.engine.rng import gate
 
 
 def run_latent_phase(labs, world, flags, rng, consts, dt, turn):
-    sb = SimpleNamespace(labs=labs, labs_by_id={l.id: l for l in labs},
-                         world=world, flags=flags, rng=rng, consts=consts,
-                         dt=dt, turn=turn)
+    sb = SimpleNamespace(
+        labs=labs,
+        labs_by_id={l.id: l for l in labs},
+        world=world,
+        flags=flags,
+        rng=rng,
+        consts=consts,
+        dt=dt,
+        turn=turn,
+    )
     fired = []
     for lab in labs:
         for m in lab.release_history:
             sens = m.effective_jailbreak_sensitivity()
-            # stage 1: technique discovery arms the latent
+
+            # Stage 1: technique discovery arms the latent.
             if not m.jailbreak_discovered:
                 if rng.roll_rate(consts.JAILBREAK_DISCOVERY_RATE * sens, dt):
                     m.jailbreak_discovered = True
                     m.note(turn, "jailbreak_discovered",
                            "jailbreak techniques discovered in the wild "
                            f"(true sensitivity {sens:.2f}) — incidents now roll every quarter")
+                    guardrail_status = "LEAKED — no guardrails" if m.leaked else "guarded"
                     fired.append(FiredEvent(
                         "jailbreak_discovery", "misuse", "ordinary", turn,
                         lab.id, m.id, 0.1, 0.0,
                         f"Researchers publish jailbreak techniques for {m.id}.",
-                        f"Discovery armed: sensitivity {sens:.2f} ({'LEAKED — no guardrails' if m.leaked else 'guarded'})",
+                        f"Discovery armed: sensitivity {sens:.2f} ({guardrail_status})",
                         effects=[("modify_approval", {"amount": -1.0})]))
                 continue
-            # stage 2: armed latent rolls an incident every quarter, forever
+
+            # Stage 2: armed latent rolls an incident every quarter, forever.
             if rng.roll_rate(consts.JAILBREAK_INCIDENT_RATE * sens, dt):
-                g, c = m.capability_vec.general, m.capability_vec.coding_rnd
-                if g >= consts.BIO_MISUSE_GENERAL_MIN and rng.roll(0.25):
-                    kind, capv, mult = "bio/chem uplift attack", g, 2.0
-                elif rng.roll(min(0.8, c / consts.CAP_MAX + 0.2)):
-                    kind, capv, mult = "cyber attack", c, 1.0
+                general_cap = m.capability_vec.general
+                coding_cap = m.capability_vec.coding_rnd
+
+                if general_cap >= consts.BIO_MISUSE_GENERAL_MIN and rng.roll(0.25):
+                    kind, relevant_cap, severity_mult = "bio/chem uplift attack", general_cap, 2.0
+                elif rng.roll(min(0.8, coding_cap / consts.CAP_MAX + 0.2)):
+                    kind, relevant_cap, severity_mult = "cyber attack", coding_cap, 1.0
                 else:
-                    kind, capv, mult = "mass-disinformation campaign", g, 0.7
-                sev = mult * sens * (capv / consts.CAP_MAX)
+                    kind, relevant_cap, severity_mult = "mass-disinformation campaign", general_cap, 0.7
+
+                sev = severity_mult * sens * (relevant_cap / consts.CAP_MAX)
                 impact = -30.0 * sev
+                incident_id = f"jailbreak_incident_{kind.split()[0]}"
+
                 ev = FiredEvent(
-                    f"jailbreak_incident_{kind.split()[0]}", "misuse", "ordinary",
+                    incident_id, "misuse", "ordinary",
                     turn, lab.id, m.id, sev, impact,
                     f"High-profile {kind} used a jailbroken {m.id}.",
-                    f"{kind} via jailbroken {m.id} (sens {sens:.2f}, capability {capv:.1f})",
+                    f"{kind} via jailbroken {m.id} (sens {sens:.2f}, capability {relevant_cap:.1f})",
                     effects=[
                         ("add_impact", {"amount": impact}),
                         ("add_world_harm", {"amount": -impact}),
@@ -57,11 +72,13 @@ def run_latent_phase(labs, world, flags, rng, consts, dt, turn):
                         ("damage_reputation", {"amount": -5.0 * sev}),
                         ("flag_damaging", {}),
                     ])
-                # liability policy: incidents traced to your back catalog cost cash
-                if world.policies.get("incident_liability") is not None and \
-                        world.policies["incident_liability"].active:
+
+                # Liability policy: incidents traced to your back catalog cost cash.
+                liability_policy = world.policies.get("incident_liability")
+                if liability_policy is not None and liability_policy.active:
                     ev.effects.append(("modify_cash",
                                        {"amount": -consts.LIABILITY_COST_PER_SEVERITY * sev}))
+
                 apply_effects(sb, ev)
                 fired.append(ev)
     return fired
