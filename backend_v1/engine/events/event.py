@@ -37,21 +37,14 @@ class FiredEvent:
     public: bool = True
 
 
-def run_event_phase(definitions, labs, world, flags, rng, consts, dt, turn):
+def run_event_phase(ctx, definitions):
     """Returns list of FiredEvents. Rival existential events are suppressed
     unless the rival holds a BIG capability lead (§10 frontier rule)."""
-    sb = SimpleNamespace(
-        labs=labs,
-        labs_by_id={l.id: l for l in labs},
-        world=world,
-        flags=flags,
-        rng=rng,
-        consts=consts,
-        dt=dt,
-        turn=turn,
-    )
+    sb = ctx
+    labs, world, flags = ctx.labs, ctx.world, ctx.flags
+    rng, consts, dt, turn = ctx.rng, ctx.consts, ctx.dt, ctx.turn
     fired = []
-    player = next(l for l in labs if l.is_player)
+    player = ctx.player
     player_best = player.best_true_general()
 
     for d in definitions:

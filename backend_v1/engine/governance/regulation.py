@@ -10,7 +10,6 @@ from backend_v1.engine.governance.policies import POLICY_DEFS
 from backend_v1.engine.world import PolicyState
 from backend_v1.engine.events.event import FiredEvent
 from backend_v1.engine.events.effects import apply_effects
-from types import SimpleNamespace
 
 
 def update_wtr(world, rng, consts, dt):
@@ -117,16 +116,16 @@ def interp_mandate_check(lab, model, consts) -> bool:
     return worst < consts.INTERP_MANDATE_BAR
 
 
-def enforcement_phase(labs, world, flags, rng, consts, dt, turn):
+def enforcement_phase(ctx):
     """Per active defectable policy, a non-compliant lab risks being caught. The
     catch probability and penalty severity both scale with the policy's continuous
     ENFORCEMENT level — weak enforcement = ignorable cost-of-business (the
     compliance-asymmetry dynamic). Players defect via an explicit choice; rivals
     defect ∝ (1 − compliance)."""
     fired = []
-    sb = SimpleNamespace(labs=labs, labs_by_id={l.id: l for l in labs},
-                         world=world, flags=flags, rng=rng, consts=consts,
-                         dt=dt, turn=turn)
+    sb = ctx
+    labs, world, flags = ctx.labs, ctx.world, ctx.flags
+    rng, consts, dt, turn = ctx.rng, ctx.consts, ctx.dt, ctx.turn
 
     for pdef in POLICY_DEFS:
         st = world.policies.get(pdef.id)

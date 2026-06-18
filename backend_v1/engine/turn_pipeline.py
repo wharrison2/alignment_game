@@ -5,7 +5,10 @@ apply actions -> tick research -> tick training runs -> complete/release models
 -> end/existential gate -> (engine builds observations).
 """
 from backend_v1.engine.actions import STANCES, parse_lobby_entry
-from backend_v1.engine.rules import effective_fraction, assist_speed_potency
+from backend_v1.engine.rules import (
+    effective_fraction, assist_speed_potency, budget_pool, committed_budget,
+    project_template,
+)
 from backend_v1.engine.governance.lobbying import signed_influence
 from backend_v1.engine.world import PolicyState
 from backend_v1.engine.research.capabilities.capabilities_research_item import (
@@ -22,7 +25,9 @@ from backend_v1.engine.training.training_run import (
 from backend_v1.engine.finances.finances import run_finances, run_job_loss_drag
 from backend_v1.engine.events.event import run_event_phase, FiredEvent
 from backend_v1.engine.events.event_catalog import EVENT_CATALOG
-from backend_v1.engine.events.latent_events import run_latent_phase
+from backend_v1.engine.events.latent_events import (
+    run_latent_phase, run_displacement_backlash,
+)
 from backend_v1.engine.events.buyouts import run_buyout_phase
 from backend_v1.engine.governance import regulation
 from backend_v1.engine.governance.litigation import (
@@ -30,6 +35,7 @@ from backend_v1.engine.governance.litigation import (
 )
 from backend_v1.engine.governance.policies import POLICY_DEFS_BY_ID
 from backend_v1.engine.evaluations import EVAL_HARNESS_BY_ID, next_upgrade
+from backend_v1.engine.turn_context import TurnContext
 
 
 def run_turn(state, actions):
@@ -40,6 +46,8 @@ def run_turn(state, actions):
     new_findings = {lab.id: [] for lab in state.labs}
     policy_news = []
     events = []
+    ctx = TurnContext(labs=state.labs, world=state.world, flags=flags, rng=rng,
+                      consts=consts, dt=dt, turn=turn)
 
     # ── 1. apply actions ────────────────────────────────────────────
     for lab in state.labs:
@@ -101,32 +109,20 @@ def run_turn(state, actions):
                            f"{POLICY_DEFS_BY_ID[pid].name}")
 
     # litigation resolves BEFORE enforcement (a struck/enjoined policy doesn't bite)
-    lit_events, lit_news = resolve_litigation(state.labs, state.world, flags, rng,
-                                              consts, dt, turn)
+    lit_events, lit_news = resolve_litigation(ctx)
     events += lit_events
     policy_news += lit_news
-    events += regulation.enforcement_phase(state.labs, state.world, flags, rng,
-                                           consts, dt, turn)
+    events += regulation.enforcement_phase(ctx)
 
     # ── 8. event phase: armed latents first, then fresh rolls ───────
-    events += run_latent_phase(state.labs, state.world, flags, rng, consts, dt, turn)
-    events += run_event_phase(EVENT_CATALOG, state.labs, state.world, flags, rng,
-                              consts, dt, turn)
+    events += run_latent_phase(ctx)
+    events += run_event_phase(ctx, EVENT_CATALOG)
 
     # market shake-up: a crushed rival can be acquired and relaunched (anti-coast)
-    events += run_buyout_phase(state.labs, state.world, flags, rng, consts, dt, turn)
+    events += run_buyout_phase(ctx)
 
     # displacement backlash thresholds (societal, §10)
-    while (state.world.cumulative_displacement
-           >= consts.DISPLACEMENT_BACKLASH_STEP * (state.world.backlash_fired + 1)):
-        state.world.backlash_fired += 1
-        state.world.public_approval = max(0.0, state.world.public_approval - 8.0)
-        state.world.wtr = min(100.0, state.world.wtr + 6.0)
-        events.append(FiredEvent(
-            "public_backlash", "societal", "ordinary", turn, None, None, 0.4, 0.0,
-            "Mass protests over AI-driven job losses.",
-            f"displacement crossed threshold {state.world.backlash_fired}",
-            effects=[]))
+    events += run_displacement_backlash(ctx)
 
     # route event-injected findings (added to lab.findings by effects) to "new"
     for lab in state.labs:
