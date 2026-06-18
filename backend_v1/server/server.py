@@ -50,6 +50,20 @@ class Session:
     def lab_names(self):
         return {l.id: l.name for l in self.state.labs}
 
+    def truth_payload(self):
+        """God's-eye TRUE state for the debug Truth tab. Reads the logger's
+        per-turn snapshots (full true+measured) — NOT the firewalled player
+        observation, so it never widens what build_observation exposes."""
+        turns = []
+        for t in self.engine.logger.turns:
+            turns.append({
+                "turn": t["turn"],
+                "year": round(t["year"], 2),
+                "labs": [{"id": lab["id"], "models": lab["models"]}
+                         for lab in t["labs"]],
+            })
+        return {"turns": turns}
+
     def submit(self, action_dict):
         if self.state.game_over:
             return {"errors": ["game is over — start a new game"]}
@@ -124,6 +138,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(SESSION.state_payload())
         elif self.path == "/api/postmortem":
             self._json(SESSION.postmortem())
+        elif self.path == "/api/truth":
+            self._json(SESSION.truth_payload())
         else:
             self._json({"errors": ["not found"]}, 404)
 

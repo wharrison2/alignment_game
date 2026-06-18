@@ -98,6 +98,7 @@
   <button data-view="research" onclick="switchView('research')">Research</button>
   <button data-view="governance" onclick="switchView('governance')">Governance</button>
   <button data-view="intel" onclick="switchView('intel')">Intel</button>
+  <button data-view="truth" onclick="switchView('truth')">Truth</button>
   <span style="flex:1"></span>
   <button onclick="showNewGame()">new game</button>
 </div>
@@ -181,6 +182,19 @@
     </div>
   </section>
 
+  <!-- ── TRUTH: god's-eye true state (DEBUG — bypasses the firewall) ── -->
+  <section class="view" data-view="truth">
+    <div class="panel">
+      <h3>Truth — god's-eye true state (debug)</h3>
+      <div class="dim" style="margin-bottom:6px">DEV ONLY. This bypasses the
+        true-vs-measured firewall the game is built on: it shows every lab's
+        <b>true</b> alignment &amp; capability (red) beside what instruments
+        <b>measure</b> — including rivals' hidden, sandbagged danger. Expand a
+        model for its turn-by-turn true trajectory.</div>
+      <div id="truth"></div>
+    </div>
+  </section>
+
 </div>
 
 <div id="queue">
@@ -196,7 +210,7 @@
 "use strict";
 
 // ── Global state ────────────────────────────────────────────────────────────
-let OBS = null, NAMES = {}, HIST = [], FEED = [];
+let OBS = null, NAMES = {}, HIST = [], FEED = [], TRUTH = {turns:[]};
 
 const COLORS = {player:"#4fb3ff", rival1:"#ff6868", rival2:"#ffb347",
                 rival3:"#9a7bff", rival4:"#6fd087", rival5:"#ff8ad0"};
@@ -237,12 +251,13 @@ async function init(){ apply(await api("/api/state")); }
 
 // ── Core state application ────────────────────────────────────────────────────
 // Receives a server payload, updates globals, and triggers a full render.
-function apply(payload){
+async function apply(payload){
   if(payload.errors){ $("errors").textContent = payload.errors.join("\n"); return; }
   $("errors").textContent = "";
   OBS = payload.observation; NAMES = payload.lab_names; HIST = payload.caps_history;
   pending = freshPending();
   collectFeed();
+  TRUTH = await api("/api/truth");   // debug god-view, served separately from OBS
   render();
   if(OBS.game_over) showPostmortem();
 }
@@ -283,7 +298,7 @@ function render(){
   drawCaps(); renderTraining(); renderPretrain(); renderReleased();
   renderBenchmarks();
   renderProjects(); renderInProgress(); renderWorry(); renderGovernance();
-  renderRivals(); renderFeed(); renderQueue();
+  renderRivals(); renderFeed(); renderQueue(); renderTruth();
   $("endturn").disabled = !!OBS.game_over;
 }
 
@@ -554,6 +569,89 @@ function renderBenchmarks(){
         <div class="scores" style="flex:1">${scoreList}</div></div>
     </div>`;
   }).join("");
+}
+
+// ── Truth panel (DEBUG god-view — bypasses the firewall) ─────────────────────
+const TRUTH_AXES = ["eval_awareness","deception","goal_misalignment",
+                    "self_preservation","jailbreak_sensitivity"];
+
+// Per-turn true/measured trajectory for one model, walking every logged turn the
+// model appears in (matched by lab + model id; absent on turns before it existed).
+function truthTrajectory(labId, modelId){
+  const rows = [];
+  TRUTH.turns.forEach(t => {
+    const lab = t.labs.find(l => l.id === labId);
+    const model = lab && lab.models.find(m => m.id === modelId);
+    if(!model) return;
+    rows.push({
+      turn: t.turn,
+      true_gm: model.true_alignment.goal_misalignment,
+      meas_gm: model.measured_alignment.goal_misalignment,
+      true_dec: model.true_alignment.deception,
+      meas_dec: model.measured_alignment.deception,
+      true_ea: model.true_alignment.eval_awareness,
+      conceal: model.concealment,
+      true_gen: model.true_capability.general,
+    });
+  });
+  return rows;
+}
+
+// One card per model: true (red) beside measured for every alignment axis +
+// capability, with an expandable per-turn trajectory.
+function truthModelCard(labId, model){
+  const f = v => v.toFixed(3);
+  const axisRows = TRUTH_AXES.map(axis => `<tr>
+    <td>${axis.replace(/_/g," ")}</td>
+    <td class="bad">${f(model.true_alignment[axis])}</td>
+    <td class="dim">${f(model.measured_alignment[axis])}</td></tr>`).join("");
+
+  const capRows = ["general","coding_rnd"].map(dim => `<tr>
+    <td>cap · ${dim.replace("_rnd"," r&d")}</td>
+    <td class="bad">${model.true_capability[dim].toFixed(2)}</td>
+    <td class="dim">${model.measured_capability[dim].toFixed(2)}</td></tr>`).join("");
+
+  const traj = truthTrajectory(labId, model.id);
+  const trajTable = `<table>
+    <tr><th>t</th><th>true gm</th><th>meas gm</th><th>true dec</th><th>meas dec</th>
+      <th>true ea</th><th>conceal</th><th>true gen</th></tr>
+    ${traj.map(r => `<tr><td>${r.turn}</td>
+      <td class="bad">${r.true_gm.toFixed(3)}</td><td class="dim">${r.meas_gm.toFixed(3)}</td>
+      <td class="bad">${r.true_dec.toFixed(3)}</td><td class="dim">${r.meas_dec.toFixed(3)}</td>
+      <td class="bad">${r.true_ea.toFixed(3)}</td><td>${r.conceal.toFixed(3)}</td>
+      <td>${r.true_gen.toFixed(2)}</td></tr>`).join("")}</table>`;
+
+  return `<div class="panel" style="margin:0">
+    <div class="row"><i class="lg" style="background:${COLORS[labId]||'#888'}"></i>
+      <b>${NAMES[labId]||labId}</b> · <span>${model.id}</span>
+      ${model.released?'<span class="tag">released</span>':'<span class="tag">in training</span>'}
+      ${model.leaked?'<span class="tag bad">LEAKED</span>':''}</div>
+    <table><tr><th>axis</th><th>true</th><th>measured</th></tr>
+      ${axisRows}${capRows}
+      <tr><td>concealment</td><td class="bad" colspan="2">${f(model.concealment)}</td></tr>
+      <tr><td>foundational floor</td><td colspan="2">${f(model.foundational_floor)}</td></tr>
+    </table>
+    <details style="margin-top:4px"><summary>per-turn trajectory (${traj.length})</summary>
+      ${trajTable}</details></div>`;
+}
+
+function renderTruth(){
+  const el = $("truth");
+  if(!TRUTH.turns.length){
+    el.innerHTML = `<span class="dim">no turns played yet — END TURN to begin</span>`;
+    return;
+  }
+  // Latest snapshot, player's lab first then rivals.
+  const last = TRUTH.turns[TRUTH.turns.length-1];
+  const labs = [...last.labs].sort((a,b) =>
+    (a.id==="player"?-1:0) - (b.id==="player"?-1:0));
+
+  const cards = labs.flatMap(lab =>
+    lab.models.map(model => truthModelCard(lab.id, model)));
+
+  el.innerHTML = cards.length
+    ? `<div class="cols2">${cards.join("")}</div>`
+    : `<span class="dim">no models exist yet on any lab</span>`;
 }
 
 // ── Research panel ────────────────────────────────────────────────────────────
