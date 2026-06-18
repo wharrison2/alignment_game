@@ -41,13 +41,14 @@ POLICY_RECKLESSNESS = {"aggressive": 0.95, "balanced": 0.5, "cautious": 0.12}
 _OPENING = Action(start_projects=[{"project_id": "scaling_laws", "ai_assist": 0.0}],
                   commission_run={"compute": 300})
 
-# Baselines captured with --record on the pre-refactor engine.
+# Baselines captured with --record on the reconciled (legibility + structural
+# + §7 features) engine.
 EXPECTED = {
-    "0-balanced-realistic": "91e2cbd2e51a17b6919c0ebda542bd046ddab953e633f35d3964787d5cba4c0a",
-    "3-aggressive-realistic": "48f55ac6f8a58fbec843479b789c762c667a0d39ceb8ff4570fb92b4c49c7df6",
-    "7-cautious-realistic": "c1ab1c2b975700ed3ac94f10075667567ada98a4522d88f34ff96f64e8f9795c",
-    "1-balanced-easy": "084a9d3d4338b169ba9935dfc43151b0aa206ca33e053c54bb62bf2cc36be7f9",
-    "5-aggressive-impossible": "c0be7c5e52a123c4c49ac44f13d4f99c785af84b53392560ef54942903e79745",
+    "0-balanced-realistic": "7ac97e1953c5f7a3eee60b8371e26d33f84254c697cd67440fe706af69733d43",
+    "3-aggressive-realistic": "6169e68f2eb9c6bd307945fab092fcf260d07ff6eb97714ce43fdc8ed01266cc",
+    "7-cautious-realistic": "3951432d70922521ca51f56128ada77572782230c0054492dd62292b512e7eb4",
+    "1-balanced-easy": "6378c90f2c9f8b595c44fd7db78ef188b9c4cbc33f320067e8d7eb924cd57b88",
+    "5-aggressive-impossible": "fedac192e4a32bf7dcdfd44140e75ba64c96bff11f1f89908d2dfe6892d1ad48",
 }
 
 
