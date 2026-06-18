@@ -66,6 +66,16 @@
   .findings div{padding:3px 0;border-bottom:1px dotted var(--line)}
   .tag{font-size:10px;padding:0 5px;border-radius:3px;background:var(--panel2);
        border:1px solid var(--line);color:var(--dim)}
+  .bench{background:var(--panel2);border:1px solid var(--line);border-radius:6px;
+         padding:10px;display:flex;flex-direction:column;gap:6px}
+  .bench .head{display:flex;align-items:baseline;gap:6px;justify-content:space-between}
+  .bench .name{font-weight:700;letter-spacing:.03em}
+  .bench .blurb{color:var(--dim);font-size:11px;line-height:1.35}
+  .bench .gauge{display:flex;align-items:center;gap:10px}
+  .bench .headline{font-size:20px;font-weight:700;color:var(--acc)}
+  .bench .scores{font-size:11px}
+  .bench .scores .me b{color:var(--acc)}
+  .ring text{font:700 13px monospace;fill:var(--txt)}
 </style>
 </head>
 <body>
@@ -84,6 +94,7 @@
 <div id="nav">
   <button data-view="market" class="active" onclick="switchView('market')">Market</button>
   <button data-view="lab" onclick="switchView('lab')">Lab</button>
+  <button data-view="benchmarks" onclick="switchView('benchmarks')">Benchmarks</button>
   <button data-view="research" onclick="switchView('research')">Research</button>
   <button data-view="governance" onclick="switchView('governance')">Governance</button>
   <button data-view="intel" onclick="switchView('intel')">Intel</button>
@@ -115,6 +126,18 @@
         <div class="panel"><h3>Released models (frozen · permanent attack surface)</h3>
           <div id="released"></div></div>
       </div>
+    </div>
+  </section>
+
+  <!-- ── BENCHMARKS: §7 public scoreboard (you + rivals) ── -->
+  <section class="view" data-view="benchmarks">
+    <div class="panel">
+      <h3>Public benchmarks — the shared scoreboard</h3>
+      <div class="dim" style="margin-bottom:6px">Public &amp; passive: everyone sees
+        every lab's scores, read off <b>measured</b> capability — so a sandbagging
+        model looks clean here. Released free by the world; old benchmarks saturate
+        as the frontier passes them. Chasing these for investors is the Goodhart trap.</div>
+      <div id="benchmarks" class="cols3"></div>
     </div>
   </section>
 
@@ -258,6 +281,7 @@ function render(){
       "active: " + OBS.active_policies.join(", ") : "no active regulation";
 
   drawCaps(); renderTraining(); renderPretrain(); renderReleased();
+  renderBenchmarks();
   renderProjects(); renderInProgress(); renderWorry(); renderGovernance();
   renderRivals(); renderFeed(); renderQueue();
   $("endturn").disabled = !!OBS.game_over;
@@ -457,6 +481,79 @@ function renderReleased(){
       <td>${model.jailbreak_techniques_public?'<span class="bad">yes</span>':'no'}</td>
       <td>${model.leaked?'<span class="bad">LEAKED</span>':''}</td></tr>`).join("") +
     `</table>`;
+}
+
+// ── Benchmarks panel (§7 public scoreboard) ──────────────────────────────────
+// Formats one score by benchmark kind: rings are percentages, elo is a rounded
+// rating, horizon is a METR-style time printed in human units.
+function fmtBenchScore(kind, value){
+  if(kind === "ring") return value.toFixed(0) + "%";
+  if(kind === "elo")  return Math.round(value).toLocaleString();
+  if(kind === "horizon"){            // value is in minutes
+    if(value < 60)   return value.toFixed(0) + " min";
+    if(value < 1440) return (value/60).toFixed(1) + " h";
+    return (value/1440).toFixed(1) + " d";
+  }
+  return value.toFixed(1);
+}
+
+// A small SVG donut gauge for the player's ring score (0–100%).
+function ringSVG(percent){
+  const radius = 26, circumference = 2 * Math.PI * radius;
+  const filled = circumference * Math.max(0, Math.min(100, percent)) / 100;
+  // Saturated benchmarks (near 100%) lose discriminating power — fade toward dim.
+  const color = percent >= 95 ? "var(--dim)" : "var(--acc)";
+  return `<svg class="ring" width="64" height="64" viewBox="0 0 64 64">
+    <circle cx="32" cy="32" r="${radius}" fill="none" stroke="var(--line)" stroke-width="7"/>
+    <circle cx="32" cy="32" r="${radius}" fill="none" stroke="${color}" stroke-width="7"
+      stroke-linecap="round" transform="rotate(-90 32 32)"
+      stroke-dasharray="${filled.toFixed(1)} ${circumference.toFixed(1)}"/>
+    <text x="32" y="36" text-anchor="middle">${percent.toFixed(0)}%</text></svg>`;
+}
+
+function renderBenchmarks(){
+  const el = $("benchmarks");
+  const cards = OBS.benchmarks || [];
+  if(!cards.length){
+    el.innerHTML = `<span class="dim">no benchmarks released yet — play a turn</span>`;
+    return;
+  }
+
+  el.innerHTML = cards.map(card => {
+    // All labs that have a frontier release scored on this benchmark, plus your own
+    // model-in-training, sorted best-first so the race ordering reads at a glance.
+    const rows = Object.entries(card.scores)
+      .map(([labId, value]) => ({labId, value, training:false}));
+    if(card.in_training !== undefined)
+      rows.push({labId:"player", value:card.in_training, training:true});
+    rows.sort((a, b) => b.value - a.value);
+
+    const playerReleased = card.scores.player;
+    const gauge = card.kind === "ring" && playerReleased !== undefined
+      ? ringSVG(playerReleased)
+      : `<div class="headline">${playerReleased !== undefined
+          ? fmtBenchScore(card.kind, playerReleased) : "—"}</div>`;
+
+    const scoreList = rows.map(row => {
+      const isMe = row.labId === "player";
+      const name = (NAMES[row.labId] || row.labId) + (row.training ? " (in training)" : "");
+      return `<div class="row${isMe ? " me" : ""}" style="margin:1px 0">
+        <i class="lg" style="background:${COLORS[row.labId] || '#888'}"></i>
+        ${isMe ? "<b>"+name+"</b>" : name}
+        <span style="flex:1"></span>
+        <span>${fmtBenchScore(card.kind, row.value)}</span></div>`;
+    }).join("");
+
+    return `<div class="bench">
+      <div class="head">
+        <span class="name">${card.name}</span>
+        <span class="tag">${card.domain} · ${card.kind}</span>
+      </div>
+      <div class="blurb">${card.blurb}</div>
+      <div class="gauge">${gauge}
+        <div class="scores" style="flex:1">${scoreList}</div></div>
+    </div>`;
+  }).join("");
 }
 
 // ── Research panel ────────────────────────────────────────────────────────────
