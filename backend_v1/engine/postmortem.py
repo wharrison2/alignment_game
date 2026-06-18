@@ -19,8 +19,8 @@ def build_postmortem(logger, state, player_id, resim=False) -> dict:
 
     # TRUE vs MEASURED trajectories for the player's models
     for t in turns:
-        lab = next(l for l in t["labs"] if l["id"] == player_id)
-        for m in lab["models"]:
+        player_lab = next(l for l in t["labs"] if l["id"] == player_id)
+        for m in player_lab["models"]:
             pm["trajectories"].append({
                 "turn": t["turn"], "model": m["id"],
                 "true_goal_misalignment": round(m["true_alignment"]["goal_misalignment"], 3),
@@ -41,14 +41,15 @@ def build_postmortem(logger, state, player_id, resim=False) -> dict:
             pm["key_moments"].append(
                 {"turn": h["turn"], "model": m.id, "kind": h["kind"],
                  "what_you_couldnt_see": h["detail"]})
+
     # when did cheap evals go blind? first turn concealment crossed 0.3
-    blind = next((tr for tr in pm["trajectories"] if tr["concealment"] > 0.3), None)
-    if blind is not None:
+    first_blind = next((tr for tr in pm["trajectories"] if tr["concealment"] > 0.3), None)
+    if first_blind is not None:
         pm["key_moments"].append({
-            "turn": blind["turn"], "model": blind["model"], "kind": "evals_went_blind",
+            "turn": first_blind["turn"], "model": first_blind["model"], "kind": "evals_went_blind",
             "what_you_couldnt_see":
                 f"from here, behavioral instruments were suppressed ~"
-                f"{blind['concealment']:.0%}; clean dashboards stopped meaning clean models"})
+                f"{first_blind['concealment']:.0%}; clean dashboards stopped meaning clean models"})
     pm["key_moments"].sort(key=lambda k: k["turn"])
 
     # voided impact on existential null (§3: show what was real and is now void)
@@ -65,6 +66,48 @@ def build_postmortem(logger, state, player_id, resim=False) -> dict:
     pm["counterfactuals"] = resim_results or _counterfactuals(turns, state, player, player_id)
     pm["counterfactuals_resimulated"] = bool(resim_results)
     return pm
+
+
+def render_postmortem_text(pm) -> str:
+    out = []
+    o = pm["outcome"]
+
+    out.append("=" * 72)
+    out.append("POST-MORTEM — what was actually happening")
+    out.append("=" * 72)
+    out.append(o.get("headline", ""))
+    out.append(o.get("detail", ""))
+
+    if pm["voided_impact"]:
+        v = pm["voided_impact"]
+        out.append(f"\nPositive impact that was REAL and is now VOID: "
+                   f"{v['positive_impact_that_was_real']}")
+        out.append(v["note"])
+
+    if pm["key_moments"]:
+        out.append("\n--- The moments you couldn't see ---")
+        for k in pm["key_moments"]:
+            out.append(f"  turn {k['turn']:>3} | {k['model']} | {k['kind']}: "
+                       f"{k['what_you_couldnt_see']}")
+
+    # compact true-vs-measured table for the last model
+    traj = pm["trajectories"]
+    if traj:
+        last_model = traj[-1]["model"]
+        last_model_rows = [t for t in traj if t["model"] == last_model]
+        out.append(f"\n--- True vs measured (model {last_model}) ---")
+        out.append("  turn | true_goalmis meas_goalmis | true_decep meas_decep | conceal")
+        for r in last_model_rows[-12:]:
+            out.append(f"  {r['turn']:>4} |    {r['true_goal_misalignment']:.2f}    "
+                       f"{r['measured_goal_misalignment']:.2f}     |   "
+                       f"{r['true_deception']:.2f}    {r['measured_deception']:.2f}   |  "
+                       f"{r['concealment']:.2f}")
+
+    out.append("\n--- Where a different choice was available ---")
+    for c in pm["counterfactuals"]:
+        out.append(f"  • {c}")
+    out.append("")
+    return "\n".join(out)
 
 
 def _resimulate(state, logger, player_id, branch_turn, new_action):
@@ -102,27 +145,29 @@ def _counterfactuals_resim(logger, state, player, player_id):
     from backend_v1.engine.actions import Action
     out = []
     log = logger.turns
+
     def player_act(t):
         return dict(log[t - 1]["actions"].get(player_id, {})) if t - 1 < len(log) else None
 
     def describe(base_outcome, branch_outcome):
-        be, bo = base_outcome.get("existential"), branch_outcome.get("existential")
-        if be and not bo:
+        base_existential = base_outcome.get("existential")
+        branch_existential = branch_outcome.get("existential")
+        if base_existential and not branch_existential:
             return "would have AVOIDED the existential loss"
-        if be and bo:
+        if base_existential and branch_existential:
             return "still ends existentially (this choice alone wasn't enough)"
-        di = branch_outcome.get("net_impact", 0) - base_outcome.get("net_impact", 0)
-        if abs(di) >= 5:
-            return f"net impact {'improves' if di > 0 else 'worsens'} by {abs(di):.0f}"
+        impact_delta = branch_outcome.get("net_impact", 0) - base_outcome.get("net_impact", 0)
+        if abs(impact_delta) >= 5:
+            return f"net impact {'improves' if impact_delta > 0 else 'worsens'} by {abs(impact_delta):.0f}"
         return "barely changes the outcome"
 
     base = state.outcome or {}
     candidates = []   # (turn, modified_action, label)
 
     # (a) the last release before the end — hold it instead of shipping
-    releases = [t["turn"] for t in log if t["actions"].get(player_id, {}).get("release")]
-    if releases:
-        rt = releases[-1]
+    release_turns = [t["turn"] for t in log if t["actions"].get(player_id, {}).get("release")]
+    if release_turns:
+        rt = release_turns[-1]
         a = player_act(rt); a["release"] = False
         candidates.append((rt, Action.from_dict(a),
                            f"holding the model you shipped on turn {rt} (not releasing)"))
@@ -195,17 +240,17 @@ def _counterfactuals(turns, state, player, player_id):
                   "one that bypasses it.")
 
     # 4. released past a visible warning: any release while worry-relevant finding existed
-    high_findings = [f for f in player.findings
-                     if f.get("concern", 0) > 0.5 and f.get("evidence") != "null"]
-    releases = [(t["turn"]) for t in turns
-                if t["actions"].get(player_id, {}).get("release")]
-    for rel_turn in releases:
-        warned = [f for f in high_findings if f["turn"] < rel_turn]
-        if warned:
-            f = warned[-1]
+    high_concern_findings = [f for f in player.findings
+                             if f.get("concern", 0) > 0.5 and f.get("evidence") != "null"]
+    release_turns = [(t["turn"]) for t in turns
+                     if t["actions"].get(player_id, {}).get("release")]
+    for rel_turn in release_turns:
+        prior_warnings = [f for f in high_concern_findings if f["turn"] < rel_turn]
+        if prior_warnings:
+            latest_warning = prior_warnings[-1]
             cf.append(f"Turn {rel_turn}: you released a model after a concern-"
-                      f"{f['concern']:.2f} finding on {f.get('axis')} "
-                      f"(turn {f['turn']}). Holding to remediate — or not shipping — "
+                      f"{latest_warning['concern']:.2f} finding on {latest_warning.get('axis')} "
+                      f"(turn {latest_warning['turn']}). Holding to remediate — or not shipping — "
                       f"was available.")
             break
 
@@ -224,40 +269,3 @@ def _counterfactuals(turns, state, player, player_id):
                   "the world's margins. (That can happen on this difficulty — and is "
                   "part of the argument.)")
     return cf
-
-
-def render_postmortem_text(pm) -> str:
-    out = []
-    o = pm["outcome"]
-    out.append("=" * 72)
-    out.append("POST-MORTEM — what was actually happening")
-    out.append("=" * 72)
-    out.append(o.get("headline", ""))
-    out.append(o.get("detail", ""))
-    if pm["voided_impact"]:
-        v = pm["voided_impact"]
-        out.append(f"\nPositive impact that was REAL and is now VOID: "
-                   f"{v['positive_impact_that_was_real']}")
-        out.append(v["note"])
-    if pm["key_moments"]:
-        out.append("\n--- The moments you couldn't see ---")
-        for k in pm["key_moments"]:
-            out.append(f"  turn {k['turn']:>3} | {k['model']} | {k['kind']}: "
-                       f"{k['what_you_couldnt_see']}")
-    # compact true-vs-measured table for the last model
-    traj = pm["trajectories"]
-    if traj:
-        last_model = traj[-1]["model"]
-        rows = [t for t in traj if t["model"] == last_model]
-        out.append(f"\n--- True vs measured (model {last_model}) ---")
-        out.append("  turn | true_goalmis meas_goalmis | true_decep meas_decep | conceal")
-        for r in rows[-12:]:
-            out.append(f"  {r['turn']:>4} |    {r['true_goal_misalignment']:.2f}    "
-                       f"{r['measured_goal_misalignment']:.2f}     |   "
-                       f"{r['true_deception']:.2f}    {r['measured_deception']:.2f}   |  "
-                       f"{r['concealment']:.2f}")
-    out.append("\n--- Where a different choice was available ---")
-    for c in pm["counterfactuals"]:
-        out.append(f"  • {c}")
-    out.append("")
-    return "\n".join(out)

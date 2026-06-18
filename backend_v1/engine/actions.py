@@ -10,6 +10,9 @@ from backend_v1.engine.research.capabilities.capabilities_research_item import (
 )
 from backend_v1.engine.research.safety.safety_research_item import SAFETY_PROJECTS_BY_ID
 from backend_v1.engine.governance.policies import POLICY_DEFS
+from backend_v1.engine.evaluations import (
+    EVAL_HARNESS_BY_ID, max_level, next_upgrade,
+)
 
 
 @dataclass
@@ -32,6 +35,10 @@ class Action:
     # (consequence preview is in legal_moves).
     defect: dict = field(default_factory=dict)
     sign_safe_harbor: bool = False
+    # build/upgrade passive eval harnesses (§7): harness_id -> bool. Each entry
+    # advances that harness ONE level (build if unbuilt, else upgrade), costing
+    # cash + turns; the reading then refreshes for free.
+    build_evals: dict = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, d: dict) -> "Action":
@@ -39,7 +46,7 @@ class Action:
             raise ActionError("action must be a JSON object")
         unknown = set(d) - {"start_projects", "post_train", "commission_run",
                             "release", "lobby", "litigation", "defect",
-                            "sign_safe_harbor"}
+                            "sign_safe_harbor", "build_evals"}
         if unknown:
             raise ActionError(f"unknown action fields: {sorted(unknown)}")
         return cls(
@@ -51,6 +58,7 @@ class Action:
             litigation=d.get("litigation", {}) or {},
             defect=d.get("defect", {}) or {},
             sign_safe_harbor=bool(d.get("sign_safe_harbor", False)),
+            build_evals=d.get("build_evals", {}) or {},
         )
 
 
@@ -64,122 +72,12 @@ ALL_PROJECT_IDS = set(CAPABILITY_TREE_BY_ID) | set(SAFETY_PROJECTS_BY_ID)
 
 def parse_lobby_entry(v):
     """Normalize a lobby value into (stance, spend). Accepts a bare stance string
-    (legacy, spend 0) or {"stance":..., "spend":...}."""
+    (legacy, back-compat, spend 0) or {"stance":..., "spend":...}."""
     if isinstance(v, str):
         return v, 0.0
     if isinstance(v, dict):
         return v.get("stance", "abstain"), max(0.0, float(v.get("spend", 0.0) or 0.0))
     return "abstain", 0.0
-
-
-def validate_action(action: Action, lab, world, consts, dt) -> list[str]:
-    """Returns a list of human-readable problems; empty list = valid."""
-    problems = []
-    budget_pool = lab.work_budget_per_year * dt
-    committed = sum(p.budget_fraction_effective for p in lab.in_progress)
-    cash_needed = 0.0
-
-    for spec in action.start_projects:
-        pid = spec.get("project_id")
-        assist = float(spec.get("ai_assist", 0.0))
-        if pid not in ALL_PROJECT_IDS:
-            problems.append(f"unknown project '{pid}'")
-            continue
-        if not 0.0 <= assist <= 1.0:
-            problems.append(f"{pid}: ai_assist must be in [0,1], got {assist}")
-        if pid in CAPABILITY_TREE_BY_ID:
-            t = CAPABILITY_TREE_BY_ID[pid]
-            if pid in lab.researched_advances and not spec.get("reresearch"):
-                problems.append(f"{pid} already researched (pass \"reresearch\": true "
-                                f"to redo it cleanly)")
-            missing = [q for q in t.prereqs if q not in lab.researched_advances]
-            if missing:
-                problems.append(f"{pid} requires {missing} first")
-            cash_needed += t.cash_cost
-            committed += _effective_fraction(t.budget_fraction, assist, lab, consts)
-        else:
-            t = SAFETY_PROJECTS_BY_ID[pid]
-            if t.intervention:
-                if lab.model_in_training is None:
-                    problems.append(f"{pid}: interventions edit the model in training; "
-                                    f"there is none (released models are frozen)")
-            elif lab.model_in_training is None and not lab.release_history:
-                problems.append(f"{pid}: no model to study yet")
-            cash_needed += t.cash_cost
-            committed += _effective_fraction(t.budget_fraction, assist, lab, consts)
-
-    if action.post_train is not None:
-        if lab.model_in_training is None:
-            problems.append("post_train: no model in training (commission a run first)")
-        else:
-            mode = action.post_train.get("mode", "balanced")
-            if mode not in consts.POST_TRAIN_MODES:
-                problems.append(f"post_train mode must be one of "
-                                f"{list(consts.POST_TRAIN_MODES)}")
-            committed += consts.POST_TRAIN_ROUND_BUDGET
-
-    if action.commission_run is not None:
-        if lab.training_run is not None:
-            problems.append("a pretrain run is already in progress")
-        elif lab.model_in_training is not None:
-            problems.append("finish or release the current model before pretraining "
-                            "a new one (v1 simplification — see NOTES.md)")
-        else:
-            compute = float(action.commission_run.get("compute", 0))
-            if compute < consts.MIN_RUN_COMPUTE:
-                problems.append(f"compute must be ≥ {consts.MIN_RUN_COMPUTE} ($M)")
-            cap_state = world.policies.get("compute_cap")
-            if cap_state is not None and cap_state.active and \
-                    compute > consts.COMPUTE_CAP_LIMIT and lab.disposition.compliance > 0.5:
-                problems.append(f"compute cap active: max {consts.COMPUTE_CAP_LIMIT} "
-                                f"(defect at your own risk by lowering compliance — "
-                                f"rivals might)")
-            cash_needed += compute
-
-    if action.release and lab.model_in_training is None:
-        problems.append("release: no model in training to release")
-
-    policy_ids = {p.id for p in POLICY_DEFS}
-    for pid, v in action.lobby.items():
-        stance, spend = parse_lobby_entry(v)
-        if pid not in policy_ids:
-            problems.append(f"lobby: unknown policy '{pid}'")
-        if stance not in STANCES:
-            problems.append(f"lobby {pid}: stance must be for/against/abstain")
-        if spend < 0:
-            problems.append(f"lobby {pid}: spend must be >= 0")
-        cash_needed += spend
-
-    for pid in action.defect:
-        if pid not in policy_ids:
-            problems.append(f"defect: unknown policy '{pid}'")
-
-    for pid, spec in action.litigation.items():
-        if pid not in policy_ids:
-            problems.append(f"litigation: unknown policy '{pid}'")
-            continue
-        st = world.policies.get(pid)
-        if st is None or not st.active:
-            problems.append(f"litigation {pid}: only ACTIVE policies can be litigated")
-        side = spec.get("side", "challenge")
-        if side not in ("challenge", "defense"):
-            problems.append(f"litigation {pid}: side must be challenge/defense")
-        tier = spec.get("tier", "amicus")
-        if tier not in ("amicus", "join", "fund"):
-            problems.append(f"litigation {pid}: tier must be amicus/join/fund")
-        if tier == "amicus":
-            cash_needed += consts.LIT_AMICUS_COST
-        elif tier == "join":
-            cash_needed += consts.LIT_JOIN_COST
-        else:
-            cash_needed += max(0.0, float(spec.get("spend", 0.0) or 0.0))
-
-    if committed > budget_pool + 1e-9:
-        problems.append(f"work budget exceeded: committed {committed:.2f} of "
-                        f"{budget_pool:.2f} (in-flight work counts)")
-    if cash_needed > lab.cash:
-        problems.append(f"not enough cash: need {cash_needed:.0f}, have {lab.cash:.0f}")
-    return problems
 
 
 def assist_potency(lab, consts, clamp=1.0):
@@ -193,13 +91,18 @@ def assist_potency(lab, consts, clamp=1.0):
     m = lab.current_best_model
     if m is None:
         return 0.0
+
     # coding drives research labor (§4.1); general blended in so a broadly capable
     # model also speeds research, matching the "esp. high general" intuition
-    base = max(m.capability_vec.coding_rnd, 0.85 * m.capability_vec.general)
+    coding_score = m.capability_vec.coding_rnd
+    general_score = m.capability_vec.general
+    base = max(coding_score, 0.85 * general_score)
     potency = base / consts.CAP_MAX
+
     for nid, t in CAPABILITY_TREE_BY_ID.items():
         if t.assist_potency_bonus and nid in lab.researched_advances:
             potency *= 1.0 + t.assist_potency_bonus
+
     return min(clamp, potency)
 
 
@@ -216,10 +119,157 @@ def _effective_fraction(base_fraction, assist, lab, consts):
     return base_fraction * (1.0 - reduction)
 
 
+def validate_action(action: Action, lab, world, consts, dt) -> list[str]:
+    """Returns a list of human-readable problems; empty list = valid."""
+    problems = []
+    budget_pool = lab.work_budget_per_year * dt
+    committed = sum(p.budget_fraction_effective for p in lab.in_progress)
+    cash_needed = 0.0
+
+    # --- start_projects ---
+    for spec in action.start_projects:
+        pid = spec.get("project_id")
+        assist = float(spec.get("ai_assist", 0.0))
+
+        if pid not in ALL_PROJECT_IDS:
+            problems.append(f"unknown project '{pid}'")
+            continue
+
+        if not 0.0 <= assist <= 1.0:
+            problems.append(f"{pid}: ai_assist must be in [0,1], got {assist}")
+
+        if pid in CAPABILITY_TREE_BY_ID:
+            t = CAPABILITY_TREE_BY_ID[pid]
+            if pid in lab.researched_advances and not spec.get("reresearch"):
+                problems.append(f"{pid} already researched (pass \"reresearch\": true "
+                                f"to redo it cleanly)")
+            missing_prereqs = [q for q in t.prereqs if q not in lab.researched_advances]
+            if missing_prereqs:
+                problems.append(f"{pid} requires {missing_prereqs} first")
+            cash_needed += t.cash_cost
+            committed += _effective_fraction(t.budget_fraction, assist, lab, consts)
+        else:
+            t = SAFETY_PROJECTS_BY_ID[pid]
+            if t.intervention:
+                if lab.model_in_training is None:
+                    problems.append(f"{pid}: interventions edit the model in training; "
+                                    f"there is none (released models are frozen)")
+            elif lab.model_in_training is None and not lab.release_history:
+                problems.append(f"{pid}: no model to study yet")
+            cash_needed += t.cash_cost
+            committed += _effective_fraction(t.budget_fraction, assist, lab, consts)
+
+    # --- post_train ---
+    if action.post_train is not None:
+        if lab.model_in_training is None:
+            problems.append("post_train: no model in training (commission a run first)")
+        else:
+            mode = action.post_train.get("mode", "balanced")
+            if mode not in consts.POST_TRAIN_MODES:
+                problems.append(f"post_train mode must be one of "
+                                f"{list(consts.POST_TRAIN_MODES)}")
+            committed += consts.POST_TRAIN_ROUND_BUDGET
+
+    # --- commission_run ---
+    if action.commission_run is not None:
+        if lab.training_run is not None:
+            problems.append("a pretrain run is already in progress")
+        elif lab.model_in_training is not None:
+            problems.append("finish or release the current model before pretraining "
+                            "a new one (v1 simplification — see NOTES.md)")
+        else:
+            compute = float(action.commission_run.get("compute", 0))
+            if compute < consts.MIN_RUN_COMPUTE:
+                problems.append(f"compute must be ≥ {consts.MIN_RUN_COMPUTE} ($M)")
+            cap_state = world.policies.get("compute_cap")
+            compute_cap_active = (
+                cap_state is not None
+                and cap_state.active
+                and compute > consts.COMPUTE_CAP_LIMIT
+                and lab.disposition.compliance > 0.5
+            )
+            if compute_cap_active:
+                problems.append(f"compute cap active: max {consts.COMPUTE_CAP_LIMIT} "
+                                f"(defect at your own risk by lowering compliance — "
+                                f"rivals might)")
+            cash_needed += compute
+
+    # --- release ---
+    if action.release and lab.model_in_training is None:
+        problems.append("release: no model in training to release")
+
+    # --- lobby ---
+    policy_ids = {p.id for p in POLICY_DEFS}
+    for pid, v in action.lobby.items():
+        stance, spend = parse_lobby_entry(v)
+        if pid not in policy_ids:
+            problems.append(f"lobby: unknown policy '{pid}'")
+        if stance not in STANCES:
+            problems.append(f"lobby {pid}: stance must be for/against/abstain")
+        if spend < 0:
+            problems.append(f"lobby {pid}: spend must be >= 0")
+        cash_needed += spend
+
+    # --- defect ---
+    for pid in action.defect:
+        if pid not in policy_ids:
+            problems.append(f"defect: unknown policy '{pid}'")
+
+    # --- litigation ---
+    for pid, spec in action.litigation.items():
+        if pid not in policy_ids:
+            problems.append(f"litigation: unknown policy '{pid}'")
+            continue
+        policy_state = world.policies.get(pid)
+        if policy_state is None or not policy_state.active:
+            problems.append(f"litigation {pid}: only ACTIVE policies can be litigated")
+        side = spec.get("side", "challenge")
+        if side not in ("challenge", "defense"):
+            problems.append(f"litigation {pid}: side must be challenge/defense")
+        tier = spec.get("tier", "amicus")
+        if tier not in ("amicus", "join", "fund"):
+            problems.append(f"litigation {pid}: tier must be amicus/join/fund")
+        if tier == "amicus":
+            cash_needed += consts.LIT_AMICUS_COST
+        elif tier == "join":
+            cash_needed += consts.LIT_JOIN_COST
+        else:
+            cash_needed += max(0.0, float(spec.get("spend", 0.0) or 0.0))
+
+    # --- build_evals (build/upgrade passive harnesses) ---
+    builds_in_flight = {b["harness_id"] for b in lab.eval_builds}
+    for harness_id, requested in action.build_evals.items():
+        if not requested:
+            continue
+        harness = EVAL_HARNESS_BY_ID.get(harness_id)
+        if harness is None:
+            problems.append(f"build_evals: unknown harness '{harness_id}'")
+            continue
+        current_level = lab.eval_harnesses.get(harness_id, -1)
+        if current_level >= max_level(harness):
+            problems.append(f"build_evals {harness_id}: already fully upgraded")
+            continue
+        if harness_id in builds_in_flight:
+            problems.append(f"build_evals {harness_id}: a build is already in progress")
+            continue
+        cash_needed += next_upgrade(harness, current_level).cash_cost
+
+    # --- global budget checks ---
+    if committed > budget_pool + 1e-9:
+        problems.append(f"work budget exceeded: committed {committed:.2f} of "
+                        f"{budget_pool:.2f} (in-flight work counts)")
+    if cash_needed > lab.cash:
+        problems.append(f"not enough cash: need {cash_needed:.0f}, have {lab.cash:.0f}")
+
+    return problems
+
+
 def legal_moves(lab, world, consts, dt) -> dict:
     """Explicit action space for agents/humans (§14)."""
     budget_pool = lab.work_budget_per_year * dt
     committed = sum(p.budget_fraction_effective for p in lab.in_progress)
+
+    # capability projects: unlocked and prereqs met, not yet researched
     cap_avail = []
     for t in CAPABILITY_TREE_BY_ID.values():
         if t.id in lab.researched_advances:
@@ -229,12 +279,14 @@ def legal_moves(lab, world, consts, dt) -> dict:
                               "duration_years": t.duration_years,
                               "cash_cost": t.cash_cost,
                               "budget_fraction": t.budget_fraction})
+
     safety_avail = [{"project_id": p.id, "name": p.name,
                      "duration_years": p.duration_years, "cash_cost": p.cash_cost,
                      "budget_fraction": p.budget_fraction, "evidence": p.evidence,
                      "intervention": p.intervention,
                      "target_axis": p.target_axis}
                     for p in SAFETY_PROJECTS_BY_ID.values()]
+
     return {
         "work_budget_free": round(budget_pool - committed, 3),
         "cash": round(lab.cash, 1),
@@ -257,6 +309,7 @@ def legal_moves(lab, world, consts, dt) -> dict:
         "can_release": lab.model_in_training is not None,
         "policies": _policy_board(lab, world, consts),
         "lobby_stances": list(STANCES),
+        "eval_harnesses": _eval_harness_board(lab),
         "action_schema_example": {
             "start_projects": [{"project_id": "rlhf", "ai_assist": 0.0}],
             "post_train": {"mode": "balanced"},
@@ -264,8 +317,34 @@ def legal_moves(lab, world, consts, dt) -> dict:
             "release": False,
             "lobby": {"audit_requirement": {"stance": "against", "spend": 120}},
             "defect": {"compute_cap": True},
+            "build_evals": {"dangerous_cyber": True},
         },
     }
+
+
+def _eval_harness_board(lab):
+    """Build/upgrade availability for the passive eval harnesses (§7): current
+    level, whether a build is in flight, and the cost/time of the next level."""
+    builds_in_flight = {b["harness_id"] for b in lab.eval_builds}
+    board = []
+    for harness in EVAL_HARNESS_BY_ID.values():
+        current_level = lab.eval_harnesses.get(harness.id, -1)
+        upgrade = next_upgrade(harness, current_level)
+        in_flight = harness.id in builds_in_flight
+        entry = {
+            "harness_id": harness.id,
+            "name": harness.name,
+            "level": current_level,
+            "max_level": max_level(harness),
+            "in_flight": in_flight,
+            "action": "build" if current_level < 0 else "upgrade",
+        }
+        if upgrade is not None and not in_flight:
+            entry["next_cost"] = upgrade.cash_cost
+            entry["next_years"] = upgrade.build_years
+            entry["next_awareness_reduction"] = upgrade.awareness_reduction
+        board.append(entry)
+    return board
 
 
 def _enf_tier(level):
@@ -277,26 +356,30 @@ def _policy_board(lab, world, consts):
     frontend needs to warn-and-confirm before the player defects (§3d)."""
     board = []
     for p in POLICY_DEFS:
-        st = world.policies.get(p.id)
-        stage = st.stage if st is not None else "dormant"
+        policy_state = world.policies.get(p.id)
+        stage = policy_state.stage if policy_state is not None else "dormant"
         entry = {"policy_id": p.id, "name": p.name, "stage": stage,
                  "defectable": p.defectable, "teaches": p.teaches}
-        if st is not None and st.active:
-            enf = st.enforcement_level
+
+        if policy_state is not None and policy_state.active:
+            enf = policy_state.enforcement_level
             entry["enforcement"] = _enf_tier(enf)
             entry["lobbyable"] = False   # active: lobbying only drifts enforcement
             # litigable: public court state + ladder costs (standing for join)
             entry["litigable"] = True
             entry["litigation"] = {
-                "court_level": st.litigation.court_level if st.litigation else "trial",
-                "last_margin": (round(st.litigation.last_margin, 1)
-                                if st.litigation and st.litigation.last_margin is not None
+                "court_level": (policy_state.litigation.court_level
+                                if policy_state.litigation else "trial"),
+                "last_margin": (round(policy_state.litigation.last_margin, 1)
+                                if policy_state.litigation
+                                and policy_state.litigation.last_margin is not None
                                 else None),
-                "constitutionality": round(st.constitutionality, 2),
+                "constitutionality": round(policy_state.constitutionality, 2),
                 "has_standing": p.covers(lab),
                 "ladder": {"amicus": consts.LIT_AMICUS_COST,
                            "join": consts.LIT_JOIN_COST, "fund": "scaled $"},
             }
+
             if p.defectable and p.covers(lab):
                 # consequence preview (warn before committing)
                 size_scale = 1.0 + max(0.0, lab.market_cap) / 4000.0
@@ -309,5 +392,6 @@ def _policy_board(lab, world, consts):
                 }
         else:
             entry["lobbyable"] = True
+
         board.append(entry)
     return board

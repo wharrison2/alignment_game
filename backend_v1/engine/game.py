@@ -37,24 +37,35 @@ def new_game(seed=0, difficulty="realistic", guidance="standard",
              rival_count=None, max_turns=None) -> GameState:
     consts = build_constants(difficulty)
     rng = Rng(seed)
-    n = rival_count if rival_count is not None else consts.RIVAL_COUNT
-    labs = [Lab(id="player", name="Your Lab", is_player=True,
-                cash=consts.STARTING_CASH,
-                work_budget_per_year=consts.WORK_BUDGET_PER_YEAR)]
-    names = ["Mistreal", "OpenBrain", "Anthropos", "DeepThink", "Cypher"]
-    for i in range(n):
+    num_rivals = rival_count if rival_count is not None else consts.RIVAL_COUNT
+
+    player_lab = Lab(
+        id="player", name="Your Lab", is_player=True,
+        cash=consts.STARTING_CASH,
+        work_budget_per_year=consts.WORK_BUDGET_PER_YEAR,
+    )
+    labs = [player_lab]
+
+    rival_names = ["Mistreal", "OpenBrain", "Anthropos", "DeepThink", "Cypher"]
+    for i in range(num_rivals):
         reck, cost, ow = consts.RIVAL_DISPOSITIONS[i % len(consts.RIVAL_DISPOSITIONS)]
         # governance weights derive from recklessness (ideologues hate regulation more)
         reg_stance = min(0.95, 0.3 + 0.6 * reck + (0.2 if ow else 0.0))
         safety_pri = max(0.05, 0.5 * (1.0 - reck))
-        labs.append(Lab(
-            id=f"rival{i+1}", name=names[i % len(names)],
-            cash=consts.STARTING_CASH * rng.uniform(0.8, 1.2),
+        rival_cash = consts.STARTING_CASH * rng.uniform(0.8, 1.2)
+        rival_lab = Lab(
+            id=f"rival{i+1}", name=rival_names[i % len(rival_names)],
+            cash=rival_cash,
             work_budget_per_year=consts.WORK_BUDGET_PER_YEAR,
-            disposition=Disposition(recklessness=reck, cost_advantage=cost,
-                                    open_weights_ideology=ow,
-                                    regulation_stance=reg_stance,
-                                    safety_priority=safety_pri)))
+            disposition=Disposition(
+                recklessness=reck, cost_advantage=cost,
+                open_weights_ideology=ow,
+                regulation_stance=reg_stance,
+                safety_priority=safety_pri,
+            ),
+        )
+        labs.append(rival_lab)
+
     world = World(public_approval=consts.APPROVAL_START, wtr=consts.WTR_START)
     return GameState(consts=consts, rng=rng, dt=consts.DT_YEARS,
                      max_turns=max_turns, labs=labs, world=world,

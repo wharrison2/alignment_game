@@ -44,21 +44,31 @@ RIVAL_COST_ADV_MULT = {"easy": 0.3, "medium": 0.6, "realistic": 1.0, "impossible
 def build_constants(difficulty: str = "realistic") -> SimpleNamespace:
     if difficulty not in _PROFILES:
         raise ValueError(f"unknown difficulty {difficulty!r}; choose from {list(_PROFILES)}")
+
     profile = _PROFILES[difficulty]
-    ns = SimpleNamespace(**{k: v for k, v in vars(C).items() if k.isupper()})
+
+    # Start with a flat copy of every module-level constant.
+    consts = SimpleNamespace(**{k: v for k, v in vars(C).items() if k.isupper()})
+
+    # Apply per-difficulty multipliers to the scalable subset.
     for name in C.DIFFICULTY_SCALED:
-        mult = profile.get(name, profile["default"])
-        setattr(ns, name, getattr(ns, name) * mult)
+        scale_factor = profile.get(name, profile["default"])
+        setattr(consts, name, getattr(consts, name) * scale_factor)
+
     # ENFORCEMENT and BENEFICIAL are "good for the world" rates: where a profile
     # didn't override them explicitly, leave them unscaled rather than scaled hostile.
     for name in ("ENFORCEMENT_CATCH_RATE", "BENEFICIAL_RATE"):
         if name not in profile:
-            setattr(ns, name, getattr(C, name))
-    ns.DIFFICULTY = difficulty
-    rm = RIVAL_RECKLESSNESS_MULT[difficulty]
-    cm = RIVAL_COST_ADV_MULT[difficulty]
-    ns.RIVAL_DISPOSITIONS = [
-        (min(0.95, r * rm), 1.0 + (cost - 1.0) * cm, ow)
+            setattr(consts, name, getattr(C, name))
+
+    consts.DIFFICULTY = difficulty
+
+    # Scale rival dispositions along the world axis.
+    recklessness_mult = RIVAL_RECKLESSNESS_MULT[difficulty]
+    cost_adv_mult = RIVAL_COST_ADV_MULT[difficulty]
+    consts.RIVAL_DISPOSITIONS = [
+        (min(0.95, r * recklessness_mult), 1.0 + (cost - 1.0) * cost_adv_mult, ow)
         for (r, cost, ow) in C.RIVAL_DISPOSITIONS
     ]
-    return ns
+
+    return consts

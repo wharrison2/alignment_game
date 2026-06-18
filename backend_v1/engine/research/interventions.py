@@ -26,7 +26,7 @@ from backend_v1.engine.alignment import coupling
 from backend_v1.engine.training.training_run import _refresh_measured
 
 
-def apply_intervention(project, model, turn, rng, consts):
+def apply_intervention(project, model, turn, rng, consts, ai_assist=0.0):
     axis = project.target_axis
     av = model.alignment_vec
     g = model.capability_vec.general
@@ -46,23 +46,44 @@ def apply_intervention(project, model, turn, rng, consts):
         # behavioral dispositional: per-target effectiveness × (1 − hiding leak)
         genuine_share = coupling.effectiveness(axis, model, g, consts) * (1.0 - leak)
 
+    # SCALABLE-OVERSIGHT TRAP (§7b): heavy AI-assist on an EVAL-AWARE model corrupts
+    # the intervention — the auditor is the same suspect system. It pushes the genuine
+    # share down and can drive it NEGATIVE, at which point the "fix" BACKFIRES (true
+    # misalignment rises while measured drops). No cap: complete failure / backfire.
+    assist_corruption = consts.INTERVENTION_ASSIST_BACKFIRE_K * ai_assist * av.eval_awareness
+    genuine_share -= assist_corruption
+
     floor = (model.foundational_floor
              if axis in ("goal_misalignment", "deception") else 0.0)
-    genuine_cut = min(before_true - floor, nominal * genuine_share) if before_true > floor else 0.0
-    cosmetic = nominal * (1.0 - genuine_share)
+    nominal_cut = nominal * genuine_share
+    if nominal_cut >= 0.0:
+        # normal patch: remove at most the headroom above the floor
+        genuine_cut = min(before_true - floor, nominal_cut) if before_true > floor else 0.0
+    else:
+        # BACKFIRE: a negative share RAISES the true axis (av.set clamps at 1.0)
+        genuine_cut = nominal_cut
+    cosmetic = nominal * min(1.0, max(0.0, 1.0 - genuine_share))
 
     av.set(axis, max(floor, before_true - genuine_cut))
     model.suppression.set(axis, model.suppression.get(axis) + cosmetic)
 
     # intervening on a disposition induces BACKFIRE (§5b), scaled by the real cut
+    # (only a genuine reduction leaks; a backfiring negative cut does not double-dip)
     if axis in coupling.DISPOSITION_AXES:
         coupling.backfire_for(axis, genuine_cut, model, consts)
 
     _refresh_measured(model, rng, consts)
 
     after_measured = model.measured_alignment.get(axis)
-    cosmetic_dominant = cosmetic > genuine_cut + 1e-6
-    if cosmetic_dominant and before_true > 0.15:
+    backfired = genuine_cut < -1e-6
+    cosmetic_dominant = cosmetic > max(genuine_cut, 0.0) + 1e-6
+    if backfired:
+        model.note(turn, "intervention_backfire",
+                   f"{project.name} on {axis} BACKFIRED: heavy AI-assist ({ai_assist:.0%}) "
+                   f"on an eval-aware model RAISED true {axis} "
+                   f"(true {before_true:.2f}→{av.get(axis):.2f}, "
+                   f"measured {before_measured:.2f}→{after_measured:.2f})")
+    elif cosmetic_dominant and before_true > 0.15:
         model.note(turn, "cosmetic_intervention",
                    f"{project.name} on {axis}: only {genuine_share:.0%} genuine — the rest "
                    f"became hiding (true {before_true:.2f}→{av.get(axis):.2f}, "
@@ -82,5 +103,5 @@ def apply_intervention(project, model, turn, rng, consts):
                  f"{before_measured:.2f} → {after_measured:.2f}"
                  + low_confidence_caveat),
         "concern": 0.0, "weight": 0.4, "mechanistic": project.mechanistic,
-        "assist_used": 0.0,
+        "assist_used": round(ai_assist, 2),
     }

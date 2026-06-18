@@ -31,6 +31,7 @@ from backend_v1.engine.governance.litigation import (
     apply_litigation_action, resolve_litigation,
 )
 from backend_v1.engine.governance.policies import POLICY_DEFS_BY_ID
+from backend_v1.engine.evaluations import EVAL_HARNESS_BY_ID, next_upgrade
 
 
 def run_turn(state, actions):
@@ -51,15 +52,24 @@ def run_turn(state, actions):
 
     # ── 2. tick research processes ──────────────────────────────────
     for lab in state.labs:
-        speed = sum(CAPABILITY_TREE_BY_ID[nid].research_speed_bonus
-                    for nid in lab.researched_advances if nid in CAPABILITY_TREE_BY_ID)
+        speed_bonus = sum(
+            CAPABILITY_TREE_BY_ID[nid].research_speed_bonus
+            for nid in lab.researched_advances
+            if nid in CAPABILITY_TREE_BY_ID
+        )
         done = []
         for proc in lab.in_progress:
-            if proc.tick(dt, speed, rng.normal()):
+            if proc.tick(dt, speed_bonus, rng.normal()):
                 done.append(proc)
         for proc in done:
             lab.in_progress.remove(proc)
             _complete_process(state, lab, proc, new_findings)
+
+    # ── 2b. tick passive-eval harness builds (§7) ───────────────────
+    # A completed build/upgrade raises the harness level; its reading then
+    # refreshes for free thereafter. No RNG — scripted games never build evals.
+    for lab in state.labs:
+        _tick_eval_builds(lab, dt)
 
     # ── 3. tick training runs / 4. complete models ──────────────────
     for lab in state.labs:
@@ -67,6 +77,7 @@ def run_turn(state, actions):
             run = lab.training_run
             lab.training_run = None
             lab.model_in_training = complete_pretrain(run, lab, turn, rng, consts)
+
         # resolve audit-pending releases (delay applied last turn)
         if lab.audit_pending_release is not None:
             model = lab.audit_pending_release
@@ -90,6 +101,7 @@ def run_turn(state, actions):
                                                   consts, turn, dt):
         policy_news.append(f"POLICY {change.replace('_', ' ').upper()}: "
                            f"{POLICY_DEFS_BY_ID[pid].name}")
+
     # litigation resolves BEFORE enforcement (a struck/enjoined policy doesn't bite)
     lit_events, lit_news = resolve_litigation(state.labs, state.world, flags, rng,
                                               consts, dt, turn)
@@ -102,8 +114,10 @@ def run_turn(state, actions):
     events += run_latent_phase(state.labs, state.world, flags, rng, consts, dt, turn)
     events += run_event_phase(EVENT_CATALOG, state.labs, state.world, flags, rng,
                               consts, dt, turn)
+
     # market shake-up: a crushed rival can be acquired and relaunched (anti-coast)
     events += run_buyout_phase(state.labs, state.world, flags, rng, consts, dt, turn)
+
     # displacement backlash thresholds (societal, §10)
     while (state.world.cumulative_displacement
            >= consts.DISPLACEMENT_BACKLASH_STEP * (state.world.backlash_fired + 1)):
@@ -139,6 +153,42 @@ def _complies(lab, policy_id, rng):
     return rng.random() < lab.disposition.compliance
 
 
+def _apply_eval_builds(lab, action):
+    """Pay for each requested build/upgrade and start its timer (§7). The harness
+    level advances only when the timer completes (_tick_eval_builds)."""
+    builds_in_flight = {build["harness_id"] for build in lab.eval_builds}
+    for harness_id, requested in action.build_evals.items():
+        if not requested or harness_id in builds_in_flight:
+            continue
+        harness = EVAL_HARNESS_BY_ID.get(harness_id)
+        if harness is None:
+            continue
+        current_level = lab.eval_harnesses.get(harness_id, -1)
+        upgrade = next_upgrade(harness, current_level)
+        if upgrade is None or upgrade.cash_cost > lab.cash:
+            continue
+        lab.cash -= upgrade.cash_cost
+        lab.eval_builds.append({
+            "harness_id": harness_id,
+            "target_level": current_level + 1,
+            "years_remaining": upgrade.build_years,
+        })
+
+
+def _tick_eval_builds(lab, dt):
+    """Advance in-flight harness builds; a finished one raises the harness level."""
+    if not lab.eval_builds:
+        return
+    still_building = []
+    for build in lab.eval_builds:
+        build["years_remaining"] -= dt
+        if build["years_remaining"] <= 1e-9:
+            lab.eval_harnesses[build["harness_id"]] = build["target_level"]
+        else:
+            still_building.append(build)
+    lab.eval_builds = still_building
+
+
 def _apply_action(state, lab, action, policy_news):
     rng, consts, dt = state.rng, state.consts, state.dt
     turn = state.turn
@@ -157,15 +207,20 @@ def _apply_action(state, lab, action, policy_news):
         lab.cash -= spend
         st = state.world.policies.setdefault(pid, PolicyState())
         st.lobby_tally += signed_influence(stance, spend, lab.market_cap, consts)
+
     # explicit player defection choices (re-set each turn; rivals defect via disposition)
     lab.active_defections = {pid for pid, on in action.defect.items() if on}
+
     # litigation moves against ACTIVE policies (challenge/defense ladder, §10c)
     for pid, spec in action.litigation.items():
         ok, msg = apply_litigation_action(state.world, lab, pid, spec, consts)
         if ok and lab.is_player:
             policy_news.append(msg)
+
     if action.sign_safe_harbor:
         lab.safe_harbor_signed = True
+
+    _apply_eval_builds(lab, action)
 
     budget_pool = lab.work_budget_per_year * dt
     committed = sum(p.budget_fraction_effective for p in lab.in_progress)
@@ -257,6 +312,7 @@ def _do_release(state, lab, model, policy_news, note=""):
 
 def _complete_process(state, lab, proc, new_findings):
     rng, consts = state.rng, state.consts
+
     if proc.kind == "capability":
         template = CAPABILITY_TREE_BY_ID[proc.template_id]
         prev = lab.researched_advances.get(proc.template_id)
@@ -270,16 +326,20 @@ def _complete_process(state, lab, proc, new_findings):
             researched_with_assist=proc.ai_assist,
             researcher_model_id=proc.assisting_model_id)
         return
+
     project = SAFETY_PROJECTS_BY_ID[proc.template_id]
+
     # INTERVENTION: directly edit the model in training (released models are
     # frozen — you can't patch what's already shipped).
     if project.intervention:
         if lab.model_in_training is None:
             return
-        d = apply_intervention(project, lab.model_in_training, state.turn, rng, consts)
-        lab.findings.append(d)
-        new_findings[lab.id].append(d)
+        finding_dict = apply_intervention(project, lab.model_in_training, state.turn,
+                                          rng, consts, ai_assist=proc.ai_assist)
+        lab.findings.append(finding_dict)
+        new_findings[lab.id].append(finding_dict)
         return
+
     # MEASUREMENT: roll findings against the model in training (preferred) or the
     # frontier released model.
     target = lab.model_in_training or lab.frontier_model()
@@ -288,9 +348,10 @@ def _complete_process(state, lab, proc, new_findings):
     findings = run_safety_project(project, target, lab, state.turn, rng, consts,
                                   ai_assist=proc.ai_assist)
     for f in findings:
-        d = f.to_dict()
-        lab.findings.append(d)
-        new_findings[lab.id].append(d)
+        finding_dict = f.to_dict()
+        lab.findings.append(finding_dict)
+        new_findings[lab.id].append(finding_dict)
+
     # knowing what's wrong feeds targeted corrective effort into the next
     # safety-mode rounds (still EFFECTIVENESS-gated at training time)
     for axis in project.remediation_axes:
