@@ -144,22 +144,20 @@ def enforcement_phase(ctx):
             if not pdef.covers(lab):
                 continue
 
-            attr = f"_defected_{pdef.id}"
-
             # decide/refresh defection state this turn
             if lab.is_player:
-                defecting_now = pdef.id in getattr(lab, "active_defections", set())
+                defecting_now = pdef.id in lab.active_defections
             else:
                 defecting_now = rng.random() > lab.disposition.compliance
 
             if defecting_now:
-                setattr(lab, attr, True)
+                lab.defection_caught_pending.add(pdef.id)
 
             # detection: P(caught) = enforcement × base_detection, per year
-            is_defecting = getattr(lab, attr, False)
+            is_defecting = pdef.id in lab.defection_caught_pending
             catch_rate = enf * consts.ENFORCEMENT_BASE_DETECTION * consts.ENFORCEMENT_CATCH_RATE * 2.0
             if is_defecting and rng.roll_rate(catch_rate, dt):
-                setattr(lab, attr, False)
+                lab.defection_caught_pending.discard(pdef.id)
 
                 # penalty severity scales with enforcement AND lab size (turnover)
                 size_scale = 1.0 + max(0.0, lab.market_cap) / 4000.0

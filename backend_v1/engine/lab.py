@@ -53,6 +53,7 @@ class Lab:
     reputation: float = 50.0                # light per-lab reputation (weak lever)
     lobby_stances: dict = field(default_factory=dict)  # policy_id -> last stance (display)
     active_defections: set = field(default_factory=set)  # policy_ids the player chose to defect on
+    defection_caught_pending: set = field(default_factory=set)  # policy_ids defecting, awaiting catch roll
     safe_harbor_signed: bool = False
     audit_pending_release: object | None = None   # model waiting on gov audit
     # disposition (rivals; player gets defaults)
