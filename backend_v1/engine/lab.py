@@ -42,8 +42,10 @@ class Lab:
     investment_rate: float = 0.0
     market_cap: float = 100.0
     last_release_turn: int | None = None
+    prev_release_turn: int | None = None       # release before last (investment hold-time)
     last_release_measured_general: float = 0.0
     prev_release_measured_general: float = 0.0
+    last_score: float = 0.0                     # investment score, fed to market cap
     # scoring (§3)
     impact_ledger: float = 0.0              # running externality integral
     impact_positives: float = 0.0           # tracked separately for the loss screen
@@ -63,6 +65,7 @@ class Lab:
     model_counter: int = 0
     findings: list = field(default_factory=list)    # accumulated safety findings
     pending_effort: dict = field(default_factory=dict)  # axis -> remediation effort feed
+    rival_estimate_cache: dict = field(default_factory=dict)  # (rival_id, model_id) -> noised est
 
     # ── pure queries ────────────────────────────────────────────────
 
@@ -83,10 +86,6 @@ class Lab:
 
     def max_run_compute(self) -> float:
         return max(0.0, self.cash * 0.9)
-
-    def budget_committed(self, dt: float) -> float:
-        """Fraction of this turn's work budget already committed to in-flight work."""
-        return sum(p.budget_fraction_effective for p in self.in_progress)
 
     def next_model_id(self) -> str:
         self.model_counter += 1
