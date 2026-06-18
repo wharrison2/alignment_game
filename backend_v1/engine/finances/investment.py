@@ -24,11 +24,12 @@ def lab_score(lab, world, turn, consts, dt):
     # shipping. Computed at release; static between releases.
     if lab.last_release_turn is not None and lab.prev_release_measured_general > 0:
         held = max(dt, (lab.last_release_turn - (lab._prev_release_turn or 0)) * dt)
-        growth_per_year = ((lab.last_release_measured_general
-                            - lab.prev_release_measured_general) / held)
+
+        growth_per_year = (lab.last_release_measured_general - lab.prev_release_measured_general) / held
         target = (consts.RISING_TARGET_BASE
                   + consts.RISING_TARGET_FRONTIER_K * frontier
                   + consts.RISING_TARGET_TIME_K * held)
+
         # beating the bar is rewarded; MISSING it falls precipitously (down to -1)
         growth_term = max(-1.0, min(1.5, (growth_per_year - target) / max(0.05, target)))
     else:
@@ -59,13 +60,18 @@ def run_investment(labs, world, turn, rng, consts, dt):
         rev_growth = (world.total_revenue_rate / world.prev_total_revenue_rate - 1) / dt
     else:
         rev_growth = 0.0
-    best = world.frontier_measured_general
-    total = (consts.INVESTMENT_MAX_PER_YEAR
-             * (best / consts.CAP_MAX) ** consts.INVESTMENT_CAP_EXP
-             * max(0.2, 1 + consts.INVESTMENT_GROWTH_WEIGHT * rev_growth))
+
+    frontier_capability = world.frontier_measured_general
+    capability_fraction = frontier_capability / consts.CAP_MAX
+    growth_multiplier = max(0.2, 1 + consts.INVESTMENT_GROWTH_WEIGHT * rev_growth)
+    total_investment = (consts.INVESTMENT_MAX_PER_YEAR
+                        * capability_fraction ** consts.INVESTMENT_CAP_EXP
+                        * growth_multiplier)
+
     scores = {lab.id: lab_score(lab, world, turn, consts, dt) for lab in labs}
-    ssum = sum(scores.values()) or 1.0
+    scores_sum = sum(scores.values()) or 1.0
+
     for lab in labs:
-        lab.investment_rate = total * scores[lab.id] / ssum
+        lab.investment_rate = total_investment * scores[lab.id] / scores_sum
         lab.cash += rng.amount_per_dt(lab.investment_rate, dt)
         lab._last_score = scores[lab.id]

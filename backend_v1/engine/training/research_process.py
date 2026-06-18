@@ -34,7 +34,7 @@ class ResearchProcess:
         if self.ai_assist > 0:
             # assist speeds the EXPECTED clock (∝ assisting-model potency) but adds
             # noise to it (anti-dithering: can't shave exactly one turn on demand)
-            speed = self.assist_speedup_max * self.ai_assist * self.assisting_potency
-            effective_dt *= 1.0 + speed + variance_draw * 0.35 * self.ai_assist
+            assist_speed = self.assist_speedup_max * self.ai_assist * self.assisting_potency
+            effective_dt *= 1.0 + assist_speed + variance_draw * 0.35 * self.ai_assist
         self.duration_years_remaining -= max(0.0, effective_dt)
         return self.duration_years_remaining <= 1e-9

@@ -23,7 +23,25 @@ class RivalController(LabController):
     def __init__(self, rng):
         self.rng = rng
 
-    # ── trajectory response: falling behind → more reckless (desperation) ──
+    # ── top-level decision ────────────────────────────────────────────────────
+
+    def decide(self, obs, disposition):
+        recklessness, market_position = self._effective_recklessness(obs, disposition)
+        action = Action()
+        moves = obs.legal_moves
+        work_budget_free = moves["work_budget_free"]
+        starting_cash = moves["cash"]
+
+        # L1: reserve COMPUTE first (binary), then the other domains
+        cash_after_capabilities = self._capabilities_domain(
+            action, obs, moves, recklessness, work_budget_free, starting_cash)
+        self._governance_domain(
+            action, obs, moves, disposition, recklessness, market_position,
+            cash_after_capabilities)
+        return action
+
+    # ── trajectory response: falling behind → more reckless (desperation) ────
+
     def _effective_recklessness(self, obs, disposition):
         caps = obs.market_caps
         if not caps:
@@ -33,19 +51,8 @@ class RivalController(LabController):
         r = disposition.recklessness + 0.25 * position * (1.0 - disposition.recklessness)
         return min(0.98, r), position
 
-    def decide(self, obs, disposition):
-        r, position = self._effective_recklessness(obs, disposition)
-        action = Action()
-        moves = obs.legal_moves
-        free = moves["work_budget_free"]
-        cash = moves["cash"]
-
-        # ── L1: reserve COMPUTE first (binary), then the other domains ──
-        cash = self._capabilities_domain(action, obs, moves, r, free, cash)
-        self._governance_domain(action, obs, moves, disposition, r, position, cash)
-        return action
-
     # ── capabilities + safety + training (the tuned core, lightly disposition-weighted) ──
+
     def _capabilities_domain(self, action, obs, moves, r, free, cash):
         # research: capability tree first; safety ∝ caution (1 - r) and safety_priority
         for proj in moves["capability_projects_available"]:
@@ -56,11 +63,14 @@ class RivalController(LabController):
                 {"project_id": proj["project_id"], "ai_assist": assist})
             free -= proj["budget_fraction"] * (1 - 0.4 * assist)
             cash -= proj["cash_cost"]
+
         if self.rng.random() < (1.0 - r) * 0.8 and free > 0.2:
-            safety = [p for p in moves["safety_projects_available"]
-                      if p["cash_cost"] <= cash and p["budget_fraction"] <= free]
-            if safety and (moves["can_post_train"] or obs.own_models):
-                pick = self.rng.choice(safety)
+            affordable_safety = [
+                p for p in moves["safety_projects_available"]
+                if p["cash_cost"] <= cash and p["budget_fraction"] <= free
+            ]
+            if affordable_safety and (moves["can_post_train"] or obs.own_models):
+                pick = self.rng.choice(affordable_safety)
                 action.start_projects.append(
                     {"project_id": pick["project_id"], "ai_assist": r * 0.5})
                 free -= pick["budget_fraction"]
@@ -72,9 +82,9 @@ class RivalController(LabController):
             action.commission_run = {"compute": reserve}
             cash -= reserve
         elif moves["can_post_train"] and free >= 0.3:
-            mit = obs.model_in_training
-            ceiling = mit["elicitation"]["ceiling_estimate"]
-            realized = mit["measured_capability"]["general"]
+            model_in_training = obs.model_in_training
+            ceiling = model_in_training["elicitation"]["ceiling_estimate"]
+            realized = model_in_training["measured_capability"]["general"]
             target = (0.55 + 0.35 * r) * ceiling
             if realized < target:
                 mode = "capability" if self.rng.random() < 0.4 + 0.5 * r else "balanced"
@@ -88,27 +98,30 @@ class RivalController(LabController):
         return cash
 
     # ── L2 governance: lobbying (pipeline policies) + litigation (active policies) ──
+
     def _governance_domain(self, action, obs, moves, disposition, r, position, cash):
-        reg = disposition.regulation_stance
+        regulation_stance = disposition.regulation_stance
         for p in moves["policies"]:
             stage = p.get("stage", "dormant")
+
             # LOBBYING: live-but-not-yet-active policies (introduced/passed/signed)
             if p.get("lobbyable", True) and stage != "dormant":
                 lean_for = position - 0.35 - 0.4 * r
                 if lean_for > 0.1:
                     stance, spend = "for", min(cash * 0.015, 40.0)
                 elif lean_for < -0.1:
-                    stance, spend = "against", min(cash * 0.03 * reg, 140.0)
+                    stance, spend = "against", min(cash * 0.03 * regulation_stance, 140.0)
                 else:
                     continue
                 if spend > 0:
                     action.lobby[p["policy_id"]] = {"stance": stance, "spend": round(spend, 0)}
                     cash -= spend
+
             # LITIGATION: ACTIVE policies that BIND/hurt me — the obvious move (challenge)
             elif p.get("litigable") and p.get("defectable"):
-                hurt = _ENF_TIER.get(p.get("enforcement", "low"), 0.3) * reg
-                if hurt > 0.45 and cash > 120 and self.rng.random() < hurt:
-                    spend = min(cash * 0.04 * reg, 200.0)
+                enforcement_weight = _ENF_TIER.get(p.get("enforcement", "low"), 0.3) * regulation_stance
+                if enforcement_weight > 0.45 and cash > 120 and self.rng.random() < enforcement_weight:
+                    spend = min(cash * 0.04 * regulation_stance, 200.0)
                     action.litigation[p["policy_id"]] = {
                         "side": "challenge", "tier": "fund", "spend": round(spend, 0)}
                     cash -= spend

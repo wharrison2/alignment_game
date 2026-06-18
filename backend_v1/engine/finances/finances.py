@@ -17,16 +17,20 @@ def run_job_loss_drag(labs, world, rng, consts, dt):
     landscape: steady downward approval pressure rising inexorably with
     capability. Attribution of the impact drag is by deployment (revenue) share
     — a liberty, see NOTES.md."""
-    best = world.frontier_measured_general
-    if best <= 0:
+    frontier_capability = world.frontier_measured_general
+    if frontier_capability <= 0:
         return
-    intensity = (best / consts.CAP_MAX) ** 2
-    world.public_approval = max(
-        0.0, world.public_approval
-        - rng.amount_per_dt(consts.JOB_LOSS_APPROVAL_RATE * intensity * 10, dt) * 0.1)
+
+    capability_fraction = frontier_capability / consts.CAP_MAX
+    intensity = capability_fraction ** 2
+
+    approval_delta = rng.amount_per_dt(consts.JOB_LOSS_APPROVAL_RATE * intensity * 10, dt) * 0.1
+    world.public_approval = max(0.0, world.public_approval - approval_delta)
+
     displacement = rng.amount_per_dt(consts.JOB_LOSS_IMPACT_RATE * intensity, dt)
     world.cumulative_displacement += displacement
+
     total_rev = sum(lab.revenue_rate for lab in labs) or 1.0
     for lab in labs:
-        share = lab.revenue_rate / total_rev
-        lab.impact_ledger -= displacement * share
+        revenue_share = lab.revenue_rate / total_rev
+        lab.impact_ledger -= displacement * revenue_share

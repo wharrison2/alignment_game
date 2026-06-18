@@ -45,26 +45,28 @@ class TrainingRun:
 
 
 def commission_run(lab, compute: float, turn: int, consts) -> TrainingRun:
-    eff = lab.disposition.cost_advantage
+    ceiling_efficiency = lab.disposition.cost_advantage
     coding_bonus = 0.0
-    synth = False
-    consumed = {}
+    used_synthetic_data = False
+    consumed_advances = {}
+
     for node_id, item in lab.researched_advances.items():
         template = CAPABILITY_TREE_BY_ID.get(node_id)
         if template is None:
             continue
-        consumed[node_id] = item
+        consumed_advances[node_id] = item
         if template.phase == "pretrain":
-            eff *= template.ceiling_efficiency_mult
+            ceiling_efficiency *= template.ceiling_efficiency_mult
         coding_bonus += template.coding_ceiling_bonus
         if template.intrinsic_synthetic_data:
-            synth = True
+            used_synthetic_data = True
+
     parent = lab.current_best_model
     return TrainingRun(
         lab_id=lab.id, compute=compute, commissioned_turn=turn,
         duration_years_remaining=consts.PRETRAIN_DURATION_YEARS,
-        consumed_advances=consumed, ceiling_efficiency=eff,
-        coding_bonus=coding_bonus, used_synthetic_data=synth,
+        consumed_advances=consumed_advances, ceiling_efficiency=ceiling_efficiency,
+        coding_bonus=coding_bonus, used_synthetic_data=used_synthetic_data,
         parent_model_id=parent.id if parent else None,
         parent_goal_mis=parent.alignment_vec.goal_misalignment if parent else 0.0,
     )
@@ -75,20 +77,25 @@ def complete_pretrain(run: TrainingRun, lab, turn: int, rng, consts) -> Model:
     latent alignment dispositions (possibly poisoned foundations)."""
     # sqrt inside the exponential: early compute buys real capability, the top
     # of the range stays expensive (concentration matters; weak runs don't sum)
-    x = math.sqrt(run.compute * run.ceiling_efficiency / consts.CEIL_COMPUTE_SCALE)
-    ceiling_general = consts.CAP_MAX * (1.0 - math.exp(-x))
+    scaled_compute = math.sqrt(run.compute * run.ceiling_efficiency / consts.CEIL_COMPUTE_SCALE)
+    ceiling_general = consts.CAP_MAX * (1.0 - math.exp(-scaled_compute))
     ceiling_coding = ceiling_general * (consts.CEIL_CODING_BASE_RATIO + run.coding_bonus)
 
     # foundational contamination: pretrain-tagged nodes only, plus synthetic data
-    pretrain_contam = 0.0
-    total_contam = 0.0
+    pretrain_contamination = 0.0
+    total_contamination = 0.0
     for node_id, item in run.consumed_advances.items():
         template = CAPABILITY_TREE_BY_ID[node_id]
-        total_contam += item.contamination
+        total_contamination += item.contamination
         if template.phase == "pretrain":
-            pretrain_contam += item.contamination
+            pretrain_contamination += item.contamination
     if run.used_synthetic_data:
-        pretrain_contam += consts.SYNTH_DATA_INTRINSIC * run.parent_goal_mis
+        pretrain_contamination += consts.SYNTH_DATA_INTRINSIC * run.parent_goal_mis
+
+    jailbreak_sensitivity = min(1.0, consts.JAILBREAK_BASELINE + rng.normal(0, 0.05))
+    goal_misalignment = min(1.0, 0.08 + 0.5 * pretrain_contamination
+                            + abs(rng.normal(0, 0.02)))
+    foundational_floor = min(0.6, consts.FOUNDATIONAL_FLOOR_K * pretrain_contamination)
 
     model = Model(
         id=lab.next_model_id(), lab_id=lab.id, trained_turn=turn,
@@ -99,22 +106,20 @@ def complete_pretrain(run: TrainingRun, lab, turn: int, rng, consts) -> Model:
         ),
         alignment_vec=AlignmentVec(
             # latent base dispositions: surface badness is in the data from day one
-            jailbreak_sensitivity=min(1.0, consts.JAILBREAK_BASELINE
-                                      + rng.normal(0, 0.05)),
-            goal_misalignment=min(1.0, 0.08 + 0.5 * pretrain_contam
-                                  + abs(rng.normal(0, 0.02))),
+            jailbreak_sensitivity=jailbreak_sensitivity,
+            goal_misalignment=goal_misalignment,
         ),
-        foundational_floor=min(0.6, consts.FOUNDATIONAL_FLOOR_K * pretrain_contam),
+        foundational_floor=foundational_floor,
         consumed_advance_versions={nid: it.version
                                    for nid, it in run.consumed_advances.items()},
-        consumed_contamination=total_contam,
+        consumed_contamination=total_contamination,
         used_synthetic_data=run.used_synthetic_data,
         parent_model_id=run.parent_model_id,
     )
     model._conceal_k = consts.CONCEALMENT_K
-    if pretrain_contam > 0.05:
+    if pretrain_contamination > 0.05:
         model.note(turn, "foundational_contamination",
-                   f"base poisoned (contamination {pretrain_contam:.2f}) — "
+                   f"base poisoned (contamination {pretrain_contamination:.2f}) — "
                    f"synthetic data / dirty pretrain nodes; post-training cannot fully scrub")
     _refresh_measured(model, rng, consts)
     return model
@@ -139,13 +144,13 @@ def post_train_round(model: Model, lab, turn: int, rng, consts, mode: str = "bal
     # 1. ELICIT realized capability toward the ceiling (asymptotic, never past it).
     #    Clamp the per-round gap-closure to <1 so a fully-researched post-train tree
     #    can't overshoot the ceiling; clamp the result to the ceiling as a backstop.
-    rate = consts.ELICIT_BASE + sum(t.elicitation_bonus for t in templates)
-    rate = min(0.92, rate * elic_mult)
+    elicitation_rate = consts.ELICIT_BASE + sum(t.elicitation_bonus for t in templates)
+    elicitation_rate = min(0.92, elicitation_rate * elic_mult)
     cap = model.capability_vec
     cap.general = min(model.ceiling.general,
-                      cap.general + (model.ceiling.general - cap.general) * rate)
+                      cap.general + (model.ceiling.general - cap.general) * elicitation_rate)
     cap.coding_rnd = min(model.ceiling.coding_rnd,
-                         cap.coding_rnd + (model.ceiling.coding_rnd - cap.coding_rnd) * rate)
+                         cap.coding_rnd + (model.ceiling.coding_rnd - cap.coding_rnd) * elicitation_rate)
     g = cap.general
 
     # 2. BASE EMERGENCE (§8): surface axes high everywhere; gated axes rise with
@@ -174,10 +179,10 @@ def post_train_round(model: Model, lab, turn: int, rng, consts, mode: str = "bal
     #    DECEPTION is to fix (low effectiveness on it), the more the proxy gap
     #    converts to learned deception. Bigger bases fake more readily.
     if has_rlhf:
-        eff_dec = coupling.effectiveness("deception", model, g, consts)
-        proxy = (consts.PROXY_GAP_RATE * (model.ceiling.general / consts.CAP_MAX)
-                 * (0.5 + av.eval_awareness))
-        av.set("deception", av.deception + proxy * (1.0 - eff_dec))
+        deception_effectiveness = coupling.effectiveness("deception", model, g, consts)
+        proxy_gap = (consts.PROXY_GAP_RATE * (model.ceiling.general / consts.CAP_MAX)
+                     * (0.5 + av.eval_awareness))
+        av.set("deception", av.deception + proxy_gap * (1.0 - deception_effectiveness))
 
     # 4. CORRECTIVE EFFORT — the same op that elicits also shapes alignment.
     #    TRUE reduction is gated by per-target EFFECTIVENESS (§5b: tractability ×
@@ -185,26 +190,26 @@ def post_train_round(model: Model, lab, turn: int, rng, consts, mode: str = "bal
     #    doesn't — cosmetic, indistinguishable in metrics). Self-preservation
     #    resistance reduces the input effort for EVERY axis. A genuine reduction
     #    on a disposition fires that axis's BACKFIRE (deeper deception / guarding).
-    targeted = dict(lab.pending_effort)
-    resist = coupling.effective_effort_mult(model, g, consts)
-    worst_eff = 1.0
+    targeted_effort = dict(lab.pending_effort)
+    effort_resistance_mult = coupling.effective_effort_mult(model, g, consts)
+    worst_effectiveness = 1.0
     for axis in ALIGNMENT_AXES:
         if axis == "eval_awareness":
             continue  # you don't train against awareness directly; it hides
         effort = (consts.BASE_SHAPING_EFFORT * effort_mult
-                  + targeted.get(axis, 0.0)) * resist
-        eff = coupling.effectiveness(axis, model, g, consts)
-        worst_eff = min(worst_eff, eff)
-        true_cut = effort * eff
-        cosmetic = effort * (1.0 - eff)
+                  + targeted_effort.get(axis, 0.0)) * effort_resistance_mult
+        axis_effectiveness = coupling.effectiveness(axis, model, g, consts)
+        worst_effectiveness = min(worst_effectiveness, axis_effectiveness)
+        true_cut = effort * axis_effectiveness
+        cosmetic = effort * (1.0 - axis_effectiveness)
         floor = model.foundational_floor if axis in ("goal_misalignment", "deception") else 0.0
         av.set(axis, max(floor, av.get(axis) - true_cut))
         model.suppression.set(axis, model.suppression.get(axis) + cosmetic)
         if axis in coupling.DISPOSITION_AXES:
             coupling.backfire_for(axis, true_cut, model, consts)
     lab.pending_effort = {}
-    if worst_eff < 0.5 and effort_mult > 1.0:
-        notable["cosmetic_fix"] = (f"alignment effort only {worst_eff:.0%} effective on the "
+    if worst_effectiveness < 0.5 and effort_mult > 1.0:
+        notable["cosmetic_fix"] = (f"alignment effort only {worst_effectiveness:.0%} effective on the "
                                    f"hardest axis; the rest converted to hiding")
         model.note(turn, "cosmetic_fix", notable["cosmetic_fix"])
 
@@ -219,12 +224,12 @@ def post_train_round(model: Model, lab, turn: int, rng, consts, mode: str = "bal
         p_jump += consts.JUMP_SYNTH_BONUS
     p_jump *= (0.5 + g / consts.CAP_MAX) * jump_mult   # preventive stances cut this
     if rng.roll(p_jump):
-        j = consts.JUMP_MAGNITUDE * rng.uniform(0.6, 1.4)
-        av.set("goal_misalignment", av.goal_misalignment + j)
-        av.set("deception", av.deception + 0.8 * j)
-        notable["correlated_jump"] = j
+        jump_magnitude = consts.JUMP_MAGNITUDE * rng.uniform(0.6, 1.4)
+        av.set("goal_misalignment", av.goal_misalignment + jump_magnitude)
+        av.set("deception", av.deception + 0.8 * jump_magnitude)
+        notable["correlated_jump"] = jump_magnitude
         model.note(turn, "correlated_jump",
-                   f"correlated jump (+{j:.2f} goal-misalignment, +{0.8*j:.2f} deception) "
+                   f"correlated jump (+{jump_magnitude:.2f} goal-misalignment, +{0.8*jump_magnitude:.2f} deception) "
                    f"during {mode}-mode post-training — invisible at the time")
 
     # 6. DRIFT NOISE (independent per axis: misalignment is multi-dimensional).
@@ -254,18 +259,21 @@ def _refresh_measured(model: Model, rng, consts):
     on-target, risk-relevant reads low."""
     conceal = model.concealment
     cap, av = model.capability_vec, model.alignment_vec
+
     # commercial capability: on-target (the model wants to look deployable)
     model.measured_capability = CapabilityVec(
         max(0.0, cap.general * (1 + rng.normal(0, consts.MEASURE_CAP_NOISE))),
         max(0.0, cap.coding_rnd * (1 + rng.normal(0, consts.MEASURE_CAP_NOISE))),
     )
+
     # risk-relevant capability: suppressed exactly where scrutiny would trigger
     model.measured_dangerous_capability = max(
         0.0, cap.general * (1 - conceal) * (1 + rng.normal(0, consts.MEASURE_CAP_NOISE)))
+
     measured = AlignmentVec()
     for axis in ALIGNMENT_AXES:
-        true_v = av.get(axis)
-        shown = max(0.0, true_v - model.suppression.get(axis))
+        true_value = av.get(axis)
+        shown = max(0.0, true_value - model.suppression.get(axis))
         if axis != "jailbreak_sensitivity":
             shown *= (1 - conceal)
         shown *= (1 + rng.normal(0, consts.MEASURE_ALIGN_NOISE))
