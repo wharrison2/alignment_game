@@ -184,8 +184,17 @@ def _tick_eval_builds(lab, dt):
 
 
 def _apply_action(state, lab, action, policy_news):
-    rng, consts, dt = state.rng, state.consts, state.dt
-    turn = state.turn
+    """One lab's action, in fixed order: governance -> research -> training.
+    Order is load-bearing (the RNG draw sequence); keep it stable."""
+    _apply_governance_action(state, lab, action, policy_news)
+    _apply_research_action(state, lab, action)
+    _apply_training_action(state, lab, action, policy_news)
+
+
+def _apply_governance_action(state, lab, action, policy_news):
+    """Lobbying spend, defection choices, litigation moves, safe-harbor sign-on,
+    and passive-eval harness builds."""
+    consts = state.consts
 
     # SCALABLE-SPEND lobbying: fresh signed influence is added to each policy's
     # hybrid decaying tally (the standing tally decays in update_policies). Spend
@@ -216,21 +225,26 @@ def _apply_action(state, lab, action, policy_news):
 
     _apply_eval_builds(lab, action)
 
-    budget_pool = lab.work_budget_per_year * dt
-    committed = sum(p.budget_fraction_effective for p in lab.in_progress)
+
+def _apply_research_action(state, lab, action):
+    """Start new capability/safety projects, charging work-budget + cash. The
+    defensive budget/cash skips mirror validate_action (the player is validated
+    upstream; rivals are not)."""
+    consts, dt, turn = state.consts, state.dt, state.turn
+    pool = budget_pool(lab, dt)
+    committed = committed_budget(lab)
 
     for spec in action.start_projects:
         pid = spec.get("project_id")
         assist = max(0.0, min(1.0, float(spec.get("ai_assist", 0.0))))
-        template = CAPABILITY_TREE_BY_ID.get(pid) or SAFETY_PROJECTS_BY_ID.get(pid)
+        template, kind = project_template(pid)
         if template is None:
             continue
-        kind = "capability" if pid in CAPABILITY_TREE_BY_ID else "safety"
         if kind == "capability" and pid in lab.researched_advances \
                 and not spec.get("reresearch"):
             continue
         frac = effective_fraction(template.budget_fraction, assist, lab, consts)
-        if committed + frac > budget_pool + 1e-9 or template.cash_cost > lab.cash:
+        if committed + frac > pool + 1e-9 or template.cash_cost > lab.cash:
             continue   # defensive skip (validated upstream for the player)
         committed += frac
         lab.cash -= template.cash_cost
@@ -250,6 +264,13 @@ def _apply_action(state, lab, action, policy_news):
             assisting_potency=assist_speed_potency(lab, consts),
             assist_speedup_max=consts.ASSIST_SPEEDUP))
 
+
+def _apply_training_action(state, lab, action, policy_news):
+    """Commission a pretrain run, post-train the model in training, or release it
+    (subject to interp-mandate / audit gates)."""
+    rng, consts, dt = state.rng, state.consts, state.dt
+    turn = state.turn
+
     if action.commission_run is not None and lab.training_run is None \
             and lab.model_in_training is None:
         compute = float(action.commission_run.get("compute", 0))
@@ -257,13 +278,14 @@ def _apply_action(state, lab, action, policy_news):
         if cap_state is not None and cap_state.active:
             if _complies(lab, "compute_cap", rng):
                 compute = min(compute, consts.COMPUTE_CAP_LIMIT)
-            # else: defection — enforcement_phase may catch it
+            # else: defection - enforcement_phase may catch it
         if consts.MIN_RUN_COMPUTE <= compute <= lab.cash:
             lab.cash -= compute
             lab.training_run = commission_run(lab, compute, turn, consts)
 
     if action.post_train is not None and lab.model_in_training is not None \
-            and committed + consts.POST_TRAIN_ROUND_BUDGET <= budget_pool + 1e-9:
+            and committed_budget(lab) + consts.POST_TRAIN_ROUND_BUDGET \
+            <= budget_pool(lab, dt) + 1e-9:
         mode = action.post_train.get("mode", "balanced")
         if mode in consts.POST_TRAIN_MODES:
             post_train_round(lab.model_in_training, lab, turn, rng, consts, mode)
@@ -287,7 +309,6 @@ def _apply_action(state, lab, action, policy_news):
                                f"pre-deployment audit")
         else:
             _do_release(state, lab, model, policy_news)
-
 
 def _do_release(state, lab, model, policy_news, note=""):
     model.released = True
