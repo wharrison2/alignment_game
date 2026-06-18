@@ -38,19 +38,19 @@ def play_one(strategy_name, seed, difficulty, guidance, trace=False):
                         start_projects=[{"project_id": "scaling_laws", "ai_assist": 0}],
                         commission_run={"compute": 300})
                 else:
-                    actions[lab.id] = Action.from_dict(
-                        decide(observations[lab.id].to_dict(), srng))
+                    player_obs_dict = observations[lab.id].to_dict()
+                    actions[lab.id] = Action.from_dict(decide(player_obs_dict, srng))
             else:
                 actions[lab.id] = (rivals.decide(observations[lab.id], lab.disposition)
                                    if observations else Action())
         state, observations = engine.step(state, actions)
         peak_cap = max(peak_cap, state.world.frontier_measured_general)
         if trace:
-            o = observations[player.id]
-            print(f"  t{o.turn:02d} cash {o.cash:7.0f} inv {o.investment_rate:6.0f} "
-                  f"cap[mkt {max(o.market_caps.values()):7.0f}] frontier "
+            trace_obs = observations[player.id]
+            print(f"  t{trace_obs.turn:02d} cash {trace_obs.cash:7.0f} inv {trace_obs.investment_rate:6.0f} "
+                  f"cap[mkt {max(trace_obs.market_caps.values()):7.0f}] frontier "
                   f"{state.world.frontier_measured_general:.2f} worry "
-                  f"{o.worry_bar['level']:.2f}/{o.worry_bar['confidence']:.2f}")
+                  f"{trace_obs.worry_bar['level']:.2f}/{trace_obs.worry_bar['confidence']:.2f}")
     out = state.outcome
     pm = build_postmortem(engine.logger, state, player.id)
     return {
@@ -72,11 +72,13 @@ def summarize(name, rows):
     avg_impact = sum(r["net_impact"] for r in rows) / n
     avg_turns = sum(r["turns"] for r in rows) / n
     avg_peak = sum(r["peak_frontier"] for r in rows) / n
+
     print(f"\n{name:20s} n={n}")
     print(f"  wins {wins} ({100*wins//n}%) · dominance {dom} · "
           f"existential endings {exi} (your fault {own})")
     print(f"  avg net impact {avg_impact:+8.1f} · avg game length {avg_turns:.0f} turns "
           f"· avg peak frontier cap {avg_peak:.1f}")
+
     return {"strategy": name, "n": n, "wins": wins, "existential": exi,
             "own_existential": own, "dominance": dom,
             "avg_impact": round(avg_impact, 1), "avg_turns": round(avg_turns, 1),

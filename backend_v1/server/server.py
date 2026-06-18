@@ -43,9 +43,8 @@ class Session:
     def caps_history(self):
         hist = []
         for t in self.engine.logger.turns:
-            hist.append({"turn": t["turn"],
-                         "caps": {l["id"]: round(l["market_cap"], 1)
-                                  for l in t["labs"]}})
+            per_lab_caps = {l["id"]: round(l["market_cap"], 1) for l in t["labs"]}
+            hist.append({"turn": t["turn"], "caps": per_lab_caps})
         return hist
 
     def lab_names(self):
@@ -62,11 +61,12 @@ class Session:
                                    self.state.consts, self.state.dt)
         if problems:
             return {"errors": problems}
+        is_first_turn = self.observations is None
         actions = {self.player.id: action}
         for lab in self.state.labs:
             if lab.is_player:
                 continue
-            if self.observations is None:
+            if is_first_turn:
                 actions[lab.id] = Action()
             else:
                 actions[lab.id] = self.rival_ctrl.decide(
@@ -108,17 +108,18 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path in ("/", "/index.html"):
+            index_path = os.path.join(FRONTEND_DIR, "index.html")
             try:
-                with open(os.path.join(FRONTEND_DIR, "index.html"), "rb") as f:
-                    body = f.read()
+                with open(index_path, "rb") as f:
+                    html_body = f.read()
             except OSError:
                 self._json({"errors": ["frontend not found"]}, 404)
                 return
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Content-Length", str(len(html_body)))
             self.end_headers()
-            self.wfile.write(body)
+            self.wfile.write(html_body)
         elif self.path == "/api/state":
             self._json(SESSION.state_payload())
         elif self.path == "/api/postmortem":
@@ -147,7 +148,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(SESSION.state_payload())
         elif self.path == "/api/action":
             result = SESSION.submit(body.get("action", {}))
-            self._json(result, 200 if "errors" not in result else 422)
+            status_code = 200 if "errors" not in result else 422
+            self._json(result, status_code)
         else:
             self._json({"errors": ["not found"]}, 404)
 

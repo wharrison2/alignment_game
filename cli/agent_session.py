@@ -28,55 +28,55 @@ DEFAULT_SESSION = "/tmp/ai_safety_session.pkl"
 
 
 def _condense(obs):
-    o = obs.to_dict()
-    lm = o["legal_moves"]
-    mit = o["model_in_training"]
+    obs_dict = obs.to_dict()
+    legal_moves = obs_dict["legal_moves"]
+    model_in_training = obs_dict["model_in_training"]
     return {
-        "turn": o["turn"], "year": o["year"], "cash": o["cash"],
-        "revenue_per_yr": o["revenue_rate"], "investment_per_yr": o["investment_rate"],
-        "work_budget_free": o["work_budget_free"],
-        "market_caps": o["market_caps"],
-        "public_approval": o["public_approval"],
-        "regulatory_chatter": o["regulatory_chatter"],
-        "active_policies": o["active_policies"],
-        "worry_bar": o["worry_bar"],
+        "turn": obs_dict["turn"], "year": obs_dict["year"], "cash": obs_dict["cash"],
+        "revenue_per_yr": obs_dict["revenue_rate"], "investment_per_yr": obs_dict["investment_rate"],
+        "work_budget_free": obs_dict["work_budget_free"],
+        "market_caps": obs_dict["market_caps"],
+        "public_approval": obs_dict["public_approval"],
+        "regulatory_chatter": obs_dict["regulatory_chatter"],
+        "active_policies": obs_dict["active_policies"],
+        "worry_bar": obs_dict["worry_bar"],
         "released_models": [
             {"id": m["id"], "general": m["measured_capability"]["general"],
              "jailbreak_public": m["jailbreak_techniques_public"], "leaked": m["leaked"]}
-            for m in o["own_models"]],
-        "model_in_training": None if not mit else {
-            "id": mit["id"], "rounds": mit["post_train_rounds"],
-            "measured_general": mit["measured_capability"]["general"],
-            "ceiling_estimate": mit["elicitation"]["ceiling_estimate"],
-            "measured_alignment": mit["measured_alignment"],
-            "dangerous_capability_eval": mit["dangerous_capability_eval"]},
+            for m in obs_dict["own_models"]],
+        "model_in_training": None if not model_in_training else {
+            "id": model_in_training["id"], "rounds": model_in_training["post_train_rounds"],
+            "measured_general": model_in_training["measured_capability"]["general"],
+            "ceiling_estimate": model_in_training["elicitation"]["ceiling_estimate"],
+            "measured_alignment": model_in_training["measured_alignment"],
+            "dangerous_capability_eval": model_in_training["dangerous_capability_eval"]},
         "rivals": [{"name": r["name"], "market_cap": r["market_cap"],
                     "frontier_estimate": r.get("frontier_capability_estimate")}
-                   for r in o["rival_public"]],
-        "new_findings": [f["text"] for f in o["new_findings"]],
-        "tips": [t["text"] for t in o["tips"]],
-        "news": o["policy_news"],
-        "events": [e["text"] for e in o["public_events"]],
-        "assist": lm["assist"],
+                   for r in obs_dict["rival_public"]],
+        "new_findings": [f["text"] for f in obs_dict["new_findings"]],
+        "tips": [t["text"] for t in obs_dict["tips"]],
+        "news": obs_dict["policy_news"],
+        "events": [e["text"] for e in obs_dict["public_events"]],
+        "assist": legal_moves["assist"],
         "legal_moves": {
             "capability_projects": [
                 {"id": p["project_id"], "phase": p["phase"],
                  "years": p["duration_years"], "cash": p["cash_cost"],
                  "budget": p["budget_fraction"]}
-                for p in lm["capability_projects_available"]],
+                for p in legal_moves["capability_projects_available"]],
             "safety_projects": [
                 {"id": p["project_id"], "intervention": p["intervention"],
                  "target_axis": p["target_axis"], "years": p["duration_years"],
                  "cash": p["cash_cost"], "budget": p["budget_fraction"]}
-                for p in lm["safety_projects_available"]],
-            "can_post_train": lm["can_post_train"],
-            "post_train_modes": lm["post_train_modes"],
-            "can_commission_run": lm["can_commission_run"],
-            "max_run_compute": lm["max_run_compute"],
-            "can_release": lm["can_release"],
-            "policies": lm["policies"],
+                for p in legal_moves["safety_projects_available"]],
+            "can_post_train": legal_moves["can_post_train"],
+            "post_train_modes": legal_moves["post_train_modes"],
+            "can_commission_run": legal_moves["can_commission_run"],
+            "max_run_compute": legal_moves["max_run_compute"],
+            "can_release": legal_moves["can_release"],
+            "policies": legal_moves["policies"],
         },
-        "game_over": o["game_over"], "outcome": o["outcome"],
+        "game_over": obs_dict["game_over"], "outcome": obs_dict["outcome"],
         "action_schema": {
             "start_projects": [{"project_id": "<id>", "ai_assist": "0..1"}],
             "post_train": {"mode": "capability|balanced|safety"},
