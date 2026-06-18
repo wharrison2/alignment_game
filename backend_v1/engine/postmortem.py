@@ -61,7 +61,10 @@ def build_postmortem(logger, state, player_id, resim=False) -> dict:
         }
 
     resim_results = []
-    if resim and (outcome.get("existential") or outcome.get("result") == "loss"):
+    # Real re-simulation runs on ANY loss (existential or ordinary). The prior
+    # `== "loss"` never matched (the engine writes "LOSS"), so ordinary losses
+    # silently fell back to the heuristic — fixed here.
+    if resim and outcome.get("result") == "LOSS":
         resim_results = _counterfactuals_resim(logger, state, player, player_id)
     pm["counterfactuals"] = resim_results or _counterfactuals(turns, state, player, player_id)
     pm["counterfactuals_resimulated"] = bool(resim_results)
