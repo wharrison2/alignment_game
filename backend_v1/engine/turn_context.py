@@ -1,0 +1,29 @@
+"""TurnContext — the per-turn state bundle threaded through the phase functions.
+
+Previously each subsystem (event phase, latent phase, enforcement, litigation)
+hand-rolled an identical `SimpleNamespace(labs, labs_by_id, world, flags, rng,
+consts, dt, turn)`. That implicit "turn context" is now a single declared type,
+built ONCE in turn_pipeline.run_turn and passed down. The effect vocabulary
+(events/effects.py) and the rate/build/news/appeal helpers consume the same
+attributes, so they are unchanged.
+"""
+from dataclasses import dataclass, field
+
+
+@dataclass
+class TurnContext:
+    labs: list
+    world: object
+    flags: dict
+    rng: object
+    consts: object
+    dt: float
+    turn: int
+    labs_by_id: dict = field(init=False)
+
+    def __post_init__(self):
+        self.labs_by_id = {l.id: l for l in self.labs}
+
+    @property
+    def player(self):
+        return next(l for l in self.labs if l.is_player)

@@ -10,6 +10,10 @@ from backend_v1.engine.research.capabilities.capabilities_research_item import (
 )
 from backend_v1.engine.research.safety.safety_research_item import SAFETY_PROJECTS_BY_ID
 from backend_v1.engine.governance.policies import POLICY_DEFS
+from backend_v1.engine.rules import (
+    assist_potency, assist_speed_potency, effective_fraction,
+    budget_pool, committed_budget,
+)
 from backend_v1.engine.evaluations import (
     EVAL_HARNESS_BY_ID, max_level, next_upgrade,
 )
@@ -80,50 +84,16 @@ def parse_lobby_entry(v):
     return "abstain", 0.0
 
 
-def assist_potency(lab, consts, clamp=1.0):
-    """How effective the assisting model is at research labor: gated by its coding
-    capability (early models can't help) and boosted by assist-potency advances
-    (AI-assisted R&D, automated researcher, RSI). The capability term is the SAME
-    number that drives danger, so cranking assist late is the squeeze.
-    `clamp` caps the result: 1.0 for budget reduction (can't free more than the
-    whole project); higher for the duration speedup, so a very capable model gives
-    near-superhuman research speed."""
-    m = lab.current_best_model
-    if m is None:
-        return 0.0
-
-    # coding drives research labor (§4.1); general blended in so a broadly capable
-    # model also speeds research, matching the "esp. high general" intuition
-    coding_score = m.capability_vec.coding_rnd
-    general_score = m.capability_vec.general
-    base = max(coding_score, 0.85 * general_score)
-    potency = base / consts.CAP_MAX
-
-    for nid, t in CAPABILITY_TREE_BY_ID.items():
-        if t.assist_potency_bonus and nid in lab.researched_advances:
-            potency *= 1.0 + t.assist_potency_bonus
-
-    return min(clamp, potency)
-
-
-def assist_speed_potency(lab, consts):
-    """Unclamped-to-1 potency for the DURATION speedup: high-capability models
-    accelerate research dramatically (capped well above 1)."""
-    return assist_potency(lab, consts, clamp=consts.ASSIST_SPEED_POTENCY_CAP)
-
-
-def _effective_fraction(base_fraction, assist, lab, consts):
-    """AI-assist reduces a project's budget fraction (the incentive, §9b),
-    scaled by the assisting model's research potency."""
-    reduction = consts.ASSIST_MAX_REDUCTION * assist * assist_potency(lab, consts)
-    return base_fraction * (1.0 - reduction)
+# assist_potency / assist_speed_potency / effective_fraction now live in
+# engine/rules.py — the single source of truth for action economics (imported
+# above), so validate_action, _apply_action, and legal_moves can't drift apart.
 
 
 def validate_action(action: Action, lab, world, consts, dt) -> list[str]:
     """Returns a list of human-readable problems; empty list = valid."""
     problems = []
-    budget_pool = lab.work_budget_per_year * dt
-    committed = sum(p.budget_fraction_effective for p in lab.in_progress)
+    pool = budget_pool(lab, dt)
+    committed = committed_budget(lab)
     cash_needed = 0.0
 
     # --- start_projects ---
@@ -147,7 +117,7 @@ def validate_action(action: Action, lab, world, consts, dt) -> list[str]:
             if missing_prereqs:
                 problems.append(f"{pid} requires {missing_prereqs} first")
             cash_needed += t.cash_cost
-            committed += _effective_fraction(t.budget_fraction, assist, lab, consts)
+            committed += effective_fraction(t.budget_fraction, assist, lab, consts)
         else:
             t = SAFETY_PROJECTS_BY_ID[pid]
             if t.intervention:
@@ -157,7 +127,7 @@ def validate_action(action: Action, lab, world, consts, dt) -> list[str]:
             elif lab.model_in_training is None and not lab.release_history:
                 problems.append(f"{pid}: no model to study yet")
             cash_needed += t.cash_cost
-            committed += _effective_fraction(t.budget_fraction, assist, lab, consts)
+            committed += effective_fraction(t.budget_fraction, assist, lab, consts)
 
     # --- post_train ---
     if action.post_train is not None:
@@ -255,9 +225,9 @@ def validate_action(action: Action, lab, world, consts, dt) -> list[str]:
         cash_needed += next_upgrade(harness, current_level).cash_cost
 
     # --- global budget checks ---
-    if committed > budget_pool + 1e-9:
+    if committed > pool + 1e-9:
         problems.append(f"work budget exceeded: committed {committed:.2f} of "
-                        f"{budget_pool:.2f} (in-flight work counts)")
+                        f"{pool:.2f} (in-flight work counts)")
     if cash_needed > lab.cash:
         problems.append(f"not enough cash: need {cash_needed:.0f}, have {lab.cash:.0f}")
 
@@ -266,8 +236,8 @@ def validate_action(action: Action, lab, world, consts, dt) -> list[str]:
 
 def legal_moves(lab, world, consts, dt) -> dict:
     """Explicit action space for agents/humans (§14)."""
-    budget_pool = lab.work_budget_per_year * dt
-    committed = sum(p.budget_fraction_effective for p in lab.in_progress)
+    pool = budget_pool(lab, dt)
+    committed = committed_budget(lab)
 
     # capability projects: unlocked and prereqs met, not yet researched
     cap_avail = []
@@ -288,12 +258,12 @@ def legal_moves(lab, world, consts, dt) -> dict:
                     for p in SAFETY_PROJECTS_BY_ID.values()]
 
     return {
-        "work_budget_free": round(budget_pool - committed, 3),
+        "work_budget_free": round(pool - committed, 3),
         "cash": round(lab.cash, 1),
         "capability_projects_available": cap_avail,
         "reresearchable_nodes": sorted(lab.researched_advances),
         "safety_projects_available": safety_avail,
-        # AI-assist effect the frontend can preview (mirrors _effective_fraction /
+        # AI-assist effect the frontend can preview (mirrors rules.effective_fraction /
         # the duration speedup): effective_budget = base*(1 - max_reduction*assist*potency)
         # and effective_years ≈ base / (1 + speedup*assist*speed_potency).
         "assist": {
@@ -304,6 +274,7 @@ def legal_moves(lab, world, consts, dt) -> dict:
         },
         "can_post_train": lab.model_in_training is not None,
         "post_train_modes": list(consts.POST_TRAIN_MODES),
+        "post_train_round_budget": consts.POST_TRAIN_ROUND_BUDGET,
         "can_commission_run": lab.training_run is None and lab.model_in_training is None,
         "max_run_compute": round(lab.max_run_compute(), 0),
         "can_release": lab.model_in_training is not None,
