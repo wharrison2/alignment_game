@@ -293,7 +293,7 @@ def _do_release(state, lab, model, policy_news, note=""):
     model.released = True
     model.release_turn = state.turn
     lab.release_history.append(model)
-    lab._prev_release_turn = lab.last_release_turn
+    lab.prev_release_turn = lab.last_release_turn
     lab.prev_release_measured_general = lab.last_release_measured_general
     lab.last_release_turn = state.turn
     lab.last_release_measured_general = model.measured_capability.general
@@ -373,7 +373,6 @@ def _check_endgame(state, flags, events):
                     world.asi_window_turns_left = max(
                         1, int(round(consts.POST_ASI_WINDOW_YEARS / state.dt)))
                     world.asi_model_id = m.id
-                    world._asi_lab_id = lab.id
                     events.append(FiredEvent(
                         "asi_reached", "misalignment", "ordinary", state.turn,
                         lab.id, m.id, 0.0, 0.0,
