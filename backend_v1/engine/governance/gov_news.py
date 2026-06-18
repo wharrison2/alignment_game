@@ -12,14 +12,14 @@ from backend_v1.engine.events.effects import apply_effects
 
 def news_event(sb, kind, policy_name, approval=0.0, wtr=0.0, lab_id=None, detail=""):
     """Emit a governance NEWS event that moves approval/WTR, applied immediately."""
-    eff = []
+    effects = []
     if approval:
-        eff.append(("modify_approval", {"amount": approval}))
+        effects.append(("modify_approval", {"amount": approval}))
     if wtr:
-        eff.append(("modify_wtr", {"amount": wtr}))
+        effects.append(("modify_wtr", {"amount": wtr}))
     ev = FiredEvent(kind, "societal", "ordinary", sb.turn, lab_id, None, 0.3, 0.0,
                     f"Public reaction to the court fight over {policy_name}.",
-                    detail or f"governance news: {kind} ({policy_name})", effects=eff)
+                    detail or f"governance news: {kind} ({policy_name})", effects=effects)
     apply_effects(sb, ev)
     return ev
 
@@ -28,10 +28,10 @@ def challenge_backlash(sb, policy_name, challenge_effort, lab_id):
     """The ACT of aggressively challenging a popular safety policy draws protest —
     approval falls / WTR rises in proportion to how hard the challenge pushed."""
     consts = sb.consts
-    mag = min(1.0, challenge_effort / 60.0)
-    if mag < 0.15:
+    magnitude = min(1.0, challenge_effort / 60.0)
+    if magnitude < 0.15:
         return None
     return news_event(sb, "litigation_backlash", policy_name,
-                      approval=-consts.LIT_NEWS_APPROVAL_SWING * mag,
-                      wtr=+consts.LIT_NEWS_WTR_SWING * mag, lab_id=lab_id,
+                      approval=-consts.LIT_NEWS_APPROVAL_SWING * magnitude,
+                      wtr=+consts.LIT_NEWS_WTR_SWING * magnitude, lab_id=lab_id,
                       detail=f"aggressive challenge to {policy_name} drew public backlash")

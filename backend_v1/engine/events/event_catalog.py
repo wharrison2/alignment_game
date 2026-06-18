@@ -16,10 +16,13 @@ def _exfil_rate(t, sb):
 
 
 def _exfil_build(t, sb):
-    m, lab, c = t.model, t.lab, sb.consts
-    g = m.capability_vec.general
-    sev = m.misalignment_composite() * g / c.CAP_MAX
-    if g >= c.ASI_THRESHOLD - 0.5:
+    m = t.model
+    lab = t.lab
+    c = sb.consts
+    general_capability = m.capability_vec.general
+    sev = m.misalignment_composite() * general_capability / c.CAP_MAX
+
+    if general_capability >= c.ASI_THRESHOLD - 0.5:
         # near-ASI self-exfiltration: existential chain
         return FiredEvent(
             "self_exfiltration", "misalignment", "existential", sb.turn, lab.id, m.id,
@@ -28,8 +31,9 @@ def _exfil_build(t, sb):
             f"{m.id} copied its weights to external infrastructure and began acquiring "
             f"resources toward its objective. No malice; the objective was simply not yours. "
             f"(true goal-misalignment {m.alignment_vec.goal_misalignment:.2f}, "
-            f"capability {g:.1f})",
+            f"capability {general_capability:.1f})",
             effects=[("trigger_existential_gate", {}), ("end_game", {})])
+
     impact = -40.0 * sev
     return FiredEvent(
         "self_exfiltration_attempt", "misalignment", "ordinary", sb.turn, lab.id, m.id,
@@ -144,8 +148,8 @@ def _leak_rate(t, sb):
     r = sb.consts.WEIGHTS_LEAK_RATE
     if lab.disposition.open_weights_ideology:
         r *= 2.5
-    if sb.world.policies.get("open_weights_restriction") is not None and \
-            sb.world.policies["open_weights_restriction"].active:
+    open_weights_policy = sb.world.policies.get("open_weights_restriction")
+    if open_weights_policy is not None and open_weights_policy.active:
         r *= 0.4
     return r
 
@@ -180,19 +184,23 @@ def _beneficial_build(t, sb):
     released = [(lab, m) for lab in sb.labs for m in lab.release_history]
     if not released:
         return None
-    # attribution weighted by deployment (revenue share x model capability):
-    # the benefits flow through whoever's models the world actually uses
+
+    # Attribution weighted by deployment (revenue share x model capability):
+    # the benefits flow through whoever's models the world actually uses.
     weights = [max(0.01, lm[0].revenue_rate) * lm[1].capability_vec.general
                for lm in released]
-    total = sum(weights)
-    pick = sb.rng.random() * total
-    acc = 0.0
+    total_weight = sum(weights)
+    pick = sb.rng.random() * total_weight
+
+    # Walk the weighted list; fall back to the last entry if pick overshoots.
     lab, m = released[-1]
+    accumulated = 0.0
     for lm, w in zip(released, weights):
-        acc += w
-        if pick <= acc:
+        accumulated += w
+        if pick <= accumulated:
             lab, m = lm
             break
+
     flavors = [("disease pathway cracked", 35.0), ("materials breakthrough", 25.0),
                ("productivity surge in a major sector", 20.0)]
     text, magnitude = sb.rng.choice(flavors)

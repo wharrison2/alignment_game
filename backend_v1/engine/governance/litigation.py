@@ -66,10 +66,12 @@ def apply_litigation_action(world, lab, policy_id, spec, consts):
     st = world.policies.get(policy_id)
     if st is None or not st.active:
         return False, f"{policy_id}: not an active policy to litigate"
+
     pdef = POLICY_DEFS_BY_ID[policy_id]
     side = spec.get("side", "challenge")
     if side not in ("challenge", "defense"):
         return False, f"{policy_id}: side must be challenge/defense"
+
     tier = spec.get("tier", "amicus")
     case = _ensure_case(world, policy_id)
 
@@ -90,8 +92,8 @@ def apply_litigation_action(world, lab, policy_id, spec, consts):
             return False, f"{policy_id}: not enough cash to join"
         case.used_join.add(lab.id)
     elif tier == "fund":
-        spend = max(0.0, float(spec.get("spend", 0.0) or 0.0))
-        cost = min(spend, lab.cash)
+        requested_spend = max(0.0, float(spec.get("spend", 0.0) or 0.0))
+        cost = min(requested_spend, lab.cash)
         if cost <= 0:
             return False, f"{policy_id}: fund tier needs spend"
         points = consts.LIT_FUND_K * math.sqrt(cost)   # diminishing returns within tier
@@ -107,6 +109,7 @@ def apply_litigation_action(world, lab, policy_id, spec, consts):
     else:
         case.defense_effort += points
         case.defenders.add(lab.id)
+
     return True, f"{lab.name} {side} {pdef.name} ({tier})"
 
 
@@ -115,8 +118,10 @@ def _doj_effort(world, consts):
 
 
 def _bar(world, st, consts):
-    return (st.litigation.defense_effort + _doj_effort(world, consts)
-            + consts.LIT_CONST_FLOOR_WEIGHT * st.constitutionality)
+    """Total resistance a challenge must overcome: defense + DOJ (∝ WTR) + constitutional floor."""
+    doj = _doj_effort(world, consts)
+    constitutional_floor = consts.LIT_CONST_FLOOR_WEIGHT * st.constitutionality
+    return st.litigation.defense_effort + doj + constitutional_floor
 
 
 def resolve_litigation(labs, world, flags, rng, consts, dt, turn):
@@ -127,18 +132,22 @@ def resolve_litigation(labs, world, flags, rng, consts, dt, turn):
     sb = SimpleNamespace(labs=labs, labs_by_id={l.id: l for l in labs},
                          world=world, flags=flags, rng=rng, consts=consts,
                          dt=dt, turn=turn)
+
     for pid, st in world.policies.items():
         case = st.litigation
         if case is None or case.status == "closed":
             continue
+
         # the ACT of aggressively challenging draws political backlash (dual ledger)
         if case.fresh_challenge > 0:
-            ev = gov_news.challenge_backlash(sb, POLICY_DEFS_BY_ID[pid].name,
-                                             case.fresh_challenge, case.fresh_challenger)
-            if ev is not None:
-                events.append(ev)
+            backlash_ev = gov_news.challenge_backlash(
+                sb, POLICY_DEFS_BY_ID[pid].name,
+                case.fresh_challenge, case.fresh_challenger)
+            if backlash_ev is not None:
+                events.append(backlash_ev)
             case.fresh_challenge = 0.0
             case.fresh_challenger = None
+
         # tick a live preliminary injunction (temporary freeze of enforcement)
         if case.injunction_turns_left > 0:
             case.injunction_turns_left -= 1
@@ -146,6 +155,7 @@ def resolve_litigation(labs, world, flags, rng, consts, dt, turn):
                 news.append(f"Preliminary injunction on {POLICY_DEFS_BY_ID[pid].name} "
                             f"expired; enforcement resumes.")
             continue
+
         if case.challenge_effort <= 0:    # nobody is actually challenging
             continue
         if case.opened_turn is None:
@@ -153,21 +163,24 @@ def resolve_litigation(labs, world, flags, rng, consts, dt, turn):
 
         margin = case.challenge_effort - _bar(world, st, consts)
         case.last_margin = margin
+
         # a real case takes time: don't rule until the contest has run a few turns
         # (lets a determined challenger fund the campaign to overcome a defended rule)
         if turn - case.opened_turn < consts.LIT_MIN_CONTEST_TURNS:
             continue
+
         # A case lingers while the challenger is still building it (negative margin),
         # giving sustained funding time to accumulate; only once the challenge has
         # MADE its case (margin climbing toward / past the bar) does the court move
         # to rule. (Hopeless challenges fizzle at the slow base rate.)
-        rate = consts.LIT_RESOLVE_BASE + consts.LIT_RESOLVE_MARGIN_K * max(0.0, margin)
-        if not rng.roll_rate(rate, dt):
+        resolve_rate = consts.LIT_RESOLVE_BASE + consts.LIT_RESOLVE_MARGIN_K * max(0.0, margin)
+        if not rng.roll_rate(resolve_rate, dt):
             continue
 
-        outcome, ev, nz = _apply_outcome(sb, st, case, margin, appeals_mod)
-        events += ev
-        news += nz
+        outcome, outcome_events, outcome_news = _apply_outcome(sb, st, case, margin, appeals_mod)
+        events += outcome_events
+        news += outcome_news
+
     return events, news
 
 
@@ -178,6 +191,7 @@ def _apply_outcome(sb, st, case, margin, appeals_mod):
     pdef = POLICY_DEFS_BY_ID[case.policy_id]
     name = pdef.name
     events, news = [], []
+
     court_mult = consts.COURT_PRECEDENT_MULT[case.court_level]
     win_bar = consts.COURT_WIN_BAR[case.court_level]
     eff_margin = margin - win_bar   # higher courts demand a bigger margin to overturn
@@ -192,22 +206,26 @@ def _apply_outcome(sb, st, case, margin, appeals_mod):
         events.append(gov_news.news_event(sb, "policy_struck", name,
                                           approval=-consts.LIT_NEWS_APPROVAL_SWING,
                                           wtr=+consts.LIT_NEWS_WTR_SWING))
+
     elif eff_margin >= consts.LIT_MARGIN_WEAKEN:
         outcome = "weakened"
         st.enforcement_level = max(0.0, st.enforcement_level - consts.LIT_WEAKEN_AMOUNT)
         case.note(turn, f"{name} enforcement weakened (margin {margin:+.0f})")
         news.append(f"COURT: {name} enforcement permanently narrowed.")
+
     elif eff_margin >= consts.LIT_MARGIN_INJUNCTION:
         outcome = "injunction"
         case.injunction_turns_left = consts.LIT_INJUNCTION_TURNS
         case.note(turn, f"{name} preliminarily enjoined {consts.LIT_INJUNCTION_TURNS}q")
         news.append(f"COURT: {name} preliminarily enjoined for "
                     f"{consts.LIT_INJUNCTION_TURNS} quarters.")
+
     elif eff_margin >= consts.LIT_MARGIN_PENALTY_CAP:
         outcome = "penalty_cap"
         st.penalty_cap = consts.LIT_PENALTY_CAP_FACTOR
         case.note(turn, f"{name} penalty ceiling capped (margin {margin:+.0f})")
         news.append(f"COURT: {name} stands, but its maximum penalty is capped.")
+
     else:
         outcome = "fail"
         # a higher court rejecting the challenge REINSTATES a provisionally-struck policy
@@ -230,4 +248,5 @@ def _apply_outcome(sb, st, case, margin, appeals_mod):
         case.status = "closed"
         # final precedent updates constitutionality by court level
         appeals_mod.apply_precedent(st, case, outcome, consts)
+
     return outcome, events, news

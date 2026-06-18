@@ -40,9 +40,16 @@ class FiredEvent:
 def run_event_phase(definitions, labs, world, flags, rng, consts, dt, turn):
     """Returns list of FiredEvents. Rival existential events are suppressed
     unless the rival holds a BIG capability lead (§10 frontier rule)."""
-    sb = SimpleNamespace(labs=labs, labs_by_id={l.id: l for l in labs},
-                         world=world, flags=flags, rng=rng, consts=consts,
-                         dt=dt, turn=turn)
+    sb = SimpleNamespace(
+        labs=labs,
+        labs_by_id={l.id: l for l in labs},
+        world=world,
+        flags=flags,
+        rng=rng,
+        consts=consts,
+        dt=dt,
+        turn=turn,
+    )
     fired = []
     player = next(l for l in labs if l.is_player)
     player_best = player.best_true_general()
@@ -54,25 +61,37 @@ def run_event_phase(definitions, labs, world, flags, rng, consts, dt, turn):
             targets = [(lab, None) for lab in labs]
         else:
             targets = [(None, None)]
+
         for lab, model in targets:
             tgt = SimpleNamespace(lab=lab, model=model)
+
             rate = d.rate_fn(tgt, sb)
             if rate <= 0:
                 continue
             if not rng.roll_rate(rate, dt):
                 continue
+
             ev = d.build_fn(tgt, sb)
             if ev is None:
                 continue
+
             # frontier rule: rivals can't cause game-enders without a big lead
-            if (ev.klass == "existential" and lab is not None and not lab.is_player
-                    and lab.best_true_general() < player_best + consts.RIVAL_BIG_LEAD):
-                ev.klass = "ordinary"
-                ev.severity *= 0.5
-                ev.impact *= 0.3
-                ev.effects = [e for e in ev.effects
-                              if e[0] not in ("trigger_existential_gate", "end_game")]
-                ev.true_text += " (contained: the lab lacked a decisive lead)"
+            rival_existential = (
+                ev.klass == "existential"
+                and lab is not None
+                and not lab.is_player
+            )
+            if rival_existential:
+                rival_best = lab.best_true_general()
+                rival_lacks_decisive_lead = rival_best < player_best + consts.RIVAL_BIG_LEAD
+                if rival_lacks_decisive_lead:
+                    ev.klass = "ordinary"
+                    ev.severity *= 0.5
+                    ev.impact *= 0.3
+                    ev.effects = [e for e in ev.effects
+                                  if e[0] not in ("trigger_existential_gate", "end_game")]
+                    ev.true_text += " (contained: the lab lacked a decisive lead)"
+
             apply_effects(sb, ev)
             fired.append(ev)
     return fired

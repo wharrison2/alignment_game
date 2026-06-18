@@ -30,7 +30,8 @@ def enactment_score(world, st, pid, consts):
 def _activate(st, pdef, score, thr, turn, consts):
     st.stage = "active"
     st.enacted_turn = turn
-    strength = max(0.0, min(1.0, (score - thr) / consts.ENFORCEMENT_ACTIVATION_SCALE))
+    raw_strength = (score - thr) / consts.ENFORCEMENT_ACTIVATION_SCALE
+    strength = max(0.0, min(1.0, raw_strength))
     st.enforcement_level = consts.ENFORCEMENT_MIN + (1.0 - consts.ENFORCEMENT_MIN) * strength
     # constitutionality anchored to policy TYPE, nudged a little by passage strength
     st.constitutionality = max(0.0, min(1.0, pdef.constitutionality_base + 0.10 * strength))
@@ -41,11 +42,13 @@ def update_policies(labs, world, rng, consts, turn, dt):
     changes = []
     for pdef in POLICY_DEFS:
         st = world.policies.setdefault(pdef.id, PolicyState())
+
         # prerequisite gate (e.g. interp mandate needs a public deception incident)
         if pdef.prerequisite is not None:
             st.prerequisite_met = bool(getattr(world, pdef.prerequisite))
             if not st.prerequisite_met and st.stage == "dormant":
                 continue
+
         thr = consts.POLICY_THRESHOLDS[pdef.id]
         score = enactment_score(world, st, pdef.id, consts)
 
@@ -53,6 +56,7 @@ def update_policies(labs, world, rng, consts, turn, dt):
             if score >= thr and (pdef.prerequisite is None or st.prerequisite_met):
                 st.stage, st.intro_turn = "introduced", turn
                 changes.append(("introduced", pdef.id))
+
         elif st.stage == "introduced":
             if score < thr - consts.POLICY_INTRO_HYSTERESIS:
                 st.stage = "dormant"
@@ -61,15 +65,17 @@ def update_policies(labs, world, rng, consts, turn, dt):
                                + consts.POLICY_PASS_RATE_K * max(0.0, score - thr), dt=dt):
                 st.stage = "passed"
                 changes.append(("passed", pdef.id))
+
         elif st.stage == "passed":
-            if score < thr - consts.POLICY_INTRO_HYSTERESIS \
-                    and rng.roll_rate(consts.POLICY_STALL_RATE, dt=dt):
+            score_below_threshold = score < thr - consts.POLICY_INTRO_HYSTERESIS
+            if score_below_threshold and rng.roll_rate(consts.POLICY_STALL_RATE, dt=dt):
                 st.stage = "introduced"
                 changes.append(("stalled", pdef.id))
             elif rng.roll_rate(consts.POLICY_SIGN_RATE * max(0.1, score / max(1.0, thr)),
                                dt=dt):
                 st.stage = "signed"
                 changes.append(("signed", pdef.id))
+
         elif st.stage == "signed":
             if rng.roll_rate(consts.POLICY_ACTIVATE_RATE, dt=dt):
                 _activate(st, pdef, score, thr, turn, consts)
@@ -77,13 +83,14 @@ def update_policies(labs, world, rng, consts, turn, dt):
 
         # active policies' enforcement drifts toward WTR (attention moves on / spikes)
         if st.stage == "active":
-            target = world.wtr / 100.0
-            st.enforcement_level += ((target - st.enforcement_level)
-                                     * consts.ENFORCEMENT_WTR_DRIFT * dt)
+            wtr_target = world.wtr / 100.0
+            enforcement_drift = (wtr_target - st.enforcement_level) * consts.ENFORCEMENT_WTR_DRIFT * dt
+            st.enforcement_level += enforcement_drift
             st.enforcement_level = max(0.0, min(1.0, st.enforcement_level))
 
         # decay the standing lobby tally (hybrid: fresh spend added in _apply_action)
         st.lobby_tally *= max(0.0, 1.0 - consts.LOBBY_TALLY_DECAY * dt)
+
     return changes
 
 
@@ -120,39 +127,49 @@ def enforcement_phase(labs, world, flags, rng, consts, dt, turn):
     sb = SimpleNamespace(labs=labs, labs_by_id={l.id: l for l in labs},
                          world=world, flags=flags, rng=rng, consts=consts,
                          dt=dt, turn=turn)
+
     for pdef in POLICY_DEFS:
         st = world.policies.get(pdef.id)
         if st is None or not st.active or not pdef.defectable:
             continue
+
         # a preliminary injunction or stay-pending-appeal freezes enforcement
         case = st.litigation
         if case is not None and (case.injunction_turns_left > 0 or case.stay_active):
             continue
+
         enf = st.enforcement_level
         for lab in labs:
             if lab.safe_harbor_signed and pdef.safe_harbor_eligible:
                 continue
             if not pdef.covers(lab):
                 continue
+
             attr = f"_defected_{pdef.id}"
+
             # decide/refresh defection state this turn
             if lab.is_player:
                 defecting_now = pdef.id in getattr(lab, "active_defections", set())
             else:
                 defecting_now = rng.random() > lab.disposition.compliance
+
             if defecting_now:
                 setattr(lab, attr, True)
+
             # detection: P(caught) = enforcement × base_detection, per year
-            if getattr(lab, attr, False) and \
-                    rng.roll_rate(enf * consts.ENFORCEMENT_BASE_DETECTION
-                                  * consts.ENFORCEMENT_CATCH_RATE * 2.0, dt):
+            is_defecting = getattr(lab, attr, False)
+            catch_rate = enf * consts.ENFORCEMENT_BASE_DETECTION * consts.ENFORCEMENT_CATCH_RATE * 2.0
+            if is_defecting and rng.roll_rate(catch_rate, dt):
                 setattr(lab, attr, False)
+
                 # penalty severity scales with enforcement AND lab size (turnover)
                 size_scale = 1.0 + max(0.0, lab.market_cap) / 4000.0
                 penalty = enf * consts.DEFECTION_PENALTY * size_scale
+
                 # a litigation "penalty-cap" win clamps the ceiling (no mega-fines)
                 if st.penalty_cap is not None:
                     penalty = min(penalty, st.penalty_cap * consts.DEFECTION_PENALTY * size_scale)
+
                 approval_hit = enf * consts.DEFECTION_APPROVAL_HIT
                 ev = FiredEvent(
                     "defection_caught", "societal", "ordinary", turn, lab.id, None,
@@ -167,4 +184,5 @@ def enforcement_phase(labs, world, flags, rng, consts, dt, turn):
                              ("modify_wtr", {"amount": 2.0})])
                 apply_effects(sb, ev)
                 fired.append(ev)
+
     return fired

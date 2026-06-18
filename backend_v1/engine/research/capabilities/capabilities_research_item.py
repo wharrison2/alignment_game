@@ -33,6 +33,8 @@ class ResearchItem:
     risk_blurb: str = ""                     # used by external-researcher unlock tips
 
 
+# ── Tech-tree entries (DATA — do not reorder) ─────────────────────────────────
+
 CAPABILITY_TREE = [
     ResearchItem(
         id="scaling_laws", name="Scaling laws", phase="pretrain",
@@ -179,3 +181,4 @@ CAPABILITY_TREE = [
 ]
 
 CAPABILITY_TREE_BY_ID = {item.id: item for item in CAPABILITY_TREE}
+

@@ -45,12 +45,13 @@ def collect_tips(state, player_lab) -> list:
             if key in world.tips_fired:
                 continue
             world.tips_fired.add(key)
-            t = CAPABILITY_TREE_BY_ID.get(nid)
-            if t is None or not t.risk_blurb:
+            advance = CAPABILITY_TREE_BY_ID.get(nid)
+            if advance is None or not advance.risk_blurb:
                 continue
             who = "your lab" if lab.id == player_lab.id else lab.name
-            tips.append(_render(level, rng, consts, state,
-                                f"[{t.name} deployed by {who}] {t.risk_blurb}"))
+            tip = _render(level, rng, consts, state,
+                          f"[{advance.name} deployed by {who}] {advance.risk_blurb}")
+            tips.append(tip)
 
     # frontier tips: leading TRUE capability crossing thresholds (warn before observed)
     frontier = max((l.best_true_general() for l in state.labs), default=0.0)
@@ -58,13 +59,15 @@ def collect_tips(state, player_lab) -> list:
         if frontier >= threshold and tid not in world.tips_fired:
             world.tips_fired.add(tid)
             tips.append(_render(level, rng, consts, state, msg))
-    return [t for t in tips if t is not None]
+
+    return [tip for tip in tips if tip is not None]
 
 
 def _render(level, rng, consts, state, text):
     """Apply guidance level: explicitness, hedging (escalates with capability),
     reliability (sparse mode: sometimes wrong/contested)."""
     frontier = max((l.best_true_general() for l in state.labs), default=0.0)
+
     hedge = ""
     if frontier > consts.REGIME2_ONSET:
         hedge = (" (Researchers add: confidence in claims like this is lower than "
@@ -72,6 +75,7 @@ def _render(level, rng, consts, state, text):
     if frontier > consts.REGIME3_ONSET:
         hedge = (" (Researchers add: our methods cannot rule out that the situation "
                  "is worse than reported — and that is now a live possibility.)")
+
     if level == "hint_heavy":
         return {"source": "external_researchers", "reliability": "high",
                 "text": text + hedge + " [Counter: prioritize mechanistic interp and "
@@ -79,6 +83,7 @@ def _render(level, rng, consts, state, text):
     if level == "standard":
         return {"source": "external_researchers", "reliability": "uncurated",
                 "text": text + hedge}
+
     # sparse: sometimes dropped, sometimes contested/wrong (trust knob kept
     # conceptually separate; for v1 it rides the guidance level — see NOTES.md)
     roll = rng.random()

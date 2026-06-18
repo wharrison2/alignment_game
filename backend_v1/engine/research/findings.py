@@ -30,14 +30,17 @@ def run_safety_project(project, model, lab, turn, rng, consts, ai_assist=0.0):
     Reads TRUE stats; emits player-facing findings only."""
     av = model.alignment_vec
     conceal = model.concealment
+
     # how much of the truth this instrument sees through concealment
     visibility = 1.0 - conceal * project.spoofability
+
     # assist degrades trustworthiness: a contaminated/misaligned assistant biases
     # findings toward 'clean' (blinding your own instruments, §9b)
     assistant = lab.current_best_model
     assist_bias = 0.0
     if ai_assist > 0 and assistant is not None:
         assist_bias = ai_assist * assistant.alignment_vec.goal_misalignment * 0.6
+
     findings = []
 
     def emit(evidence, axis, text, concern, weight):
@@ -68,6 +71,7 @@ def run_safety_project(project, model, lab, turn, rng, consts, ai_assist=0.0):
             else:
                 emit("null", "jailbreak_sensitivity",
                      "red team found nothing this cycle (proves little)", 0.1, 0.15)
+
         elif project.id == "noise_injection":
             # the sandbagging tell: low spoofability by construction
             sandbagging = conceal
@@ -80,6 +84,7 @@ def run_safety_project(project, model, lab, turn, rng, consts, ai_assist=0.0):
                 emit("null", "eval_awareness",
                      "noise injection degraded performance uniformly (no sandbagging "
                      "signature found — or none detectable)", 0.08, 0.2)
+
         elif project.id == "alignment_faking_study":
             signal = (av.self_preservation * 0.6 + av.deception * 0.4) * visibility
             if rng.roll(min(0.9, signal * 1.2)):
@@ -93,21 +98,22 @@ def run_safety_project(project, model, lab, turn, rng, consts, ai_assist=0.0):
         return findings
 
     if project.evidence == "bound":
+        noise_sigma = 0.06 if project.mechanistic else 0.12
         for axis in project.reads_axes:
             seen = av.get(axis) * visibility
-            noise = 0.06 if project.mechanistic else 0.12
-            lo = max(0.0, seen * rng.uniform(0.6, 0.95) + rng.normal(0, noise))
+            lo = max(0.0, seen * rng.uniform(0.6, 0.95) + rng.normal(0, noise_sigma))
+            axis_label = axis.replace('_', ' ')
             if project.mechanistic and seen > 0.25:
                 emit("bound", axis,
                      f"interp probe: found internal features consistent with "
-                     f"{axis.replace('_',' ')} ≥ {lo:.2f} (a feature, not all of them)",
+                     f"{axis_label} ≥ {lo:.2f} (a feature, not all of them)",
                      lo, 1.5)
             elif lo > 0.18:
                 emit("bound", axis,
-                     f"probe suggests {axis.replace('_',' ')} ≥ {lo:.2f}", lo, 0.8)
+                     f"probe suggests {axis_label} ≥ {lo:.2f}", lo, 0.8)
             else:
                 emit("null", axis,
-                     f"probe found no significant {axis.replace('_',' ')} signal "
+                     f"probe found no significant {axis_label} signal "
                      f"(cannot rule out a model that has learned to hide)", 0.1, 0.3)
         return findings
 
@@ -127,20 +133,26 @@ def synthesize_worry_bar(findings, turn, consts):
     if not recent:
         return {"level": 0.0, "confidence": 0.0,
                 "summary": "no recent safety evidence collected"}
+
     wsum = sum(f["weight"] for f in recent)
     level = sum(f["concern"] * f["weight"] for f in recent) / max(1e-9, wsum)
-    mech_share = sum(f["weight"] for f in recent if f["mechanistic"]) / max(1e-9, wsum)
+
+    mech_weight = sum(f["weight"] for f in recent if f["mechanistic"])
+    mech_share = mech_weight / max(1e-9, wsum)
     volume = min(1.0, len(recent) / 10.0)
     confidence = round(min(1.0, 0.25 * volume + 0.55 * mech_share
                            + 0.20 * min(1.0, wsum / 8.0)), 2)
+
     if level < 0.25:
         desc = "low concern"
     elif level < 0.5:
         desc = "moderate concern"
     else:
         desc = "HIGH concern"
+
     qual = ("corroborated by mechanistic evidence" if mech_share > 0.3
             else "shallow evidence — behavioral only" if confidence < 0.4
             else "moderately evidenced")
+
     return {"level": round(level, 2), "confidence": confidence,
             "summary": f"{desc}, {qual}"}

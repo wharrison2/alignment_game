@@ -38,6 +38,8 @@ class SafetyProject:
     partial_coverage: float = 1.0       # mechanistic: found A feature, not ALL (§5b) — <1
 
 
+# ── Project entries (DATA — do not reorder) ───────────────────────────────────
+
 SAFETY_PROJECTS = [
     SafetyProject(
         id="behavioral_evals", name="Behavioral evals / benchmarks",
@@ -136,3 +138,4 @@ SAFETY_PROJECTS = [
 ]
 
 SAFETY_PROJECTS_BY_ID = {p.id: p for p in SAFETY_PROJECTS}
+
