@@ -103,11 +103,20 @@ def prompt_action(obs, state, lab):
     if moves["can_release"]:
         if input("release the model in training? y/[n]: ").strip().lower() == "y":
             action.release = True
-    lob = input("lobby (e.g. 'audit_requirement=for compute_cap=against') []: ").strip()
+    # lobbying on live (not-yet-active) policies: 'pid=stance' or 'pid=stance:spend'
+    lob = input("lobby ('audit_requirement=against:120 disclosure=for') []: ").strip()
     for tok in lob.split():
-        if "=" in tok:
-            pid, stance = tok.split("=", 1)
-            action.lobby[pid] = stance
+        if "=" not in tok:
+            continue
+        pid, rest = tok.split("=", 1)
+        if ":" in rest:
+            stance, spend = rest.split(":", 1)
+            action.lobby[pid] = {"stance": stance, "spend": float(spend or 0)}
+        else:
+            action.lobby[pid] = rest
+
+    _prompt_governance(action, moves)
+
     problems = validate_action(action, lab, state.world, state.consts, state.dt)
     if problems:
         print("invalid action:")
@@ -116,6 +125,50 @@ def prompt_action(obs, state, lab):
         print("re-enter this turn's action.")
         return prompt_action(obs, state, lab)
     return action
+
+
+def _prompt_governance(action, moves):
+    """Litigation / defection / eval-harness builds / safe-harbor — the remaining
+    backend actions on ACTIVE policies and the private eval harnesses, so the human
+    CLI can reach everything the agent/JSON path can."""
+    policies = moves["policies"]
+
+    litigable = [p["policy_id"] for p in policies if p.get("litigable")]
+    if litigable:
+        print(f"  active policies (litigable): {', '.join(litigable)}")
+        lit = input("  litigate ('audit_requirement=challenge:fund:200', "
+                    "tiers amicus|join|fund) []: ").strip()
+        for tok in lit.split():
+            if "=" not in tok:
+                continue
+            pid, rest = tok.split("=", 1)
+            parts = rest.split(":")
+            side = parts[0] if parts and parts[0] else "challenge"
+            tier = parts[1] if len(parts) > 1 else "amicus"
+            spend = float(parts[2]) if len(parts) > 2 and parts[2] else 0.0
+            action.litigation[pid] = {"side": side, "tier": tier, "spend": spend}
+
+    defectable = [p for p in policies if "defect_preview" in p]
+    if defectable:
+        for p in defectable:
+            dp = p["defect_preview"]
+            print(f"  defect {p['policy_id']}: catch ~{dp['catch_prob_per_year']:.0%}/yr, "
+                  f"penalty ${dp['penalty_if_caught']:.0f}M if caught")
+        d = input("  defect which active policies? (space-separated ids) []: ").strip()
+        for pid in d.split():
+            action.defect[pid] = True
+
+    buildable = [h for h in moves["eval_harnesses"] if "next_cost" in h]
+    if buildable:
+        for h in buildable:
+            print(f"  harness {h['harness_id']} (L{h['level']}, {h['action']}): "
+                  f"${h['next_cost']:.0f}M, {h['next_years']}y")
+        be = input("  build/upgrade which harnesses? (space-separated ids) []: ").strip()
+        for hid in be.split():
+            action.build_evals[hid] = True
+
+    if input("  sign safe-harbor compliance code? y/[n]: ").strip().lower() == "y":
+        action.sign_safe_harbor = True
 
 
 def _committed(action, moves):

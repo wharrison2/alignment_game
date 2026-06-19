@@ -75,6 +75,7 @@ def _condense(obs):
             "max_run_compute": legal_moves["max_run_compute"],
             "can_release": legal_moves["can_release"],
             "policies": legal_moves["policies"],
+            "eval_harnesses": legal_moves["eval_harnesses"],
         },
         "game_over": obs_dict["game_over"], "outcome": obs_dict["outcome"],
         "action_schema": {
@@ -83,7 +84,12 @@ def _condense(obs):
             "commission_run": {"compute": "<$M>"},
             "release": "true/false",
             "lobby": {"<policy_id>": {"stance": "for|against|abstain", "spend": "<$M>"}},
+            "litigation": {"<active_policy_id>": {"side": "challenge|defense",
+                                                  "tier": "amicus|join|fund",
+                                                  "spend": "<$M, fund tier>"}},
             "defect": {"<active_policy_id>": "true (violate at catch-risk; see policies[].defect_preview)"},
+            "sign_safe_harbor": "true/false (compliance code -> protection on eligible policies)",
+            "build_evals": {"<harness_id>": "true (build/upgrade one level; see legal_moves.eval_harnesses)"},
         },
     }
 
