@@ -352,6 +352,7 @@ Safety research is not only *measurement* — specific projects yield specific *
 - **Layered depth (opt-in, never blocks play):** one-line diegetic warning always shown → expandable plain-language explanation → eventually a link to the real paper. Takes a player from zero knowledge toward actual alignment research. Citation layer draws on the real literature we've grounded against (emergent misalignment, sandbagging techniques, the regulatory record).
 - **Accuracy bar is HIGH** (these teach real concepts to people who'll believe them): correct, and not overclaiming in *either* direction. Per §0, this is where the assistant's optimism bias is a liability and the designer's bleaker calibration is the check — a softened warning mis-educates toward complacency; an overstated one toward fatalism (and gets dismissed). Honest register: "this is a real, documented risk and you're choosing to take it." Every warning is a small factual claim about how AI works → held to that standard, drafted against the literature, flagged where simplifying.
 - **First-class content deliverable** with its own consistency + accuracy pass — NOT ad-hoc strings. The set of all warnings across the game IS the alignment curriculum.
+- **Distinct from the "what it does" description.** Research items (and other choices) carry a SEPARATE, prior, value-neutral **what-it-does** field (§8b "Per-node researched advances") that teaches the concept and conveys the genuine benefit. That comes FIRST; the warning layers after. The description teaches *what*; the warning teaches *why it's risky*. A newcomer needs the former to make sense of the latter.
 
 ### Why this fixes fairness (type-A → type-B)
 With mechanism-teaching warnings on every risky choice, **no channel enters silently.** The post-mortem can never reveal a *mechanism the player didn't know about* — only *magnitudes along channels they were warned about and chose to open*. The loss lands as "I was told, and did it anyway" (the thesis), never "the game hid this" (mere punishment). The warning layer IS the fairness fix, not polish on top of it.
@@ -446,6 +447,10 @@ Sandbagging is **strategic, SELECTIVE** underperformance — the model hides cap
 
 ### Per-node researched advances (carries over from prior design)
 - Three objects unchanged: **`ResearchItem`** (static template: fixed capability role, prereqs, pretrain/post-train tag, intrinsic risk), **`ResearchProcess`** (in-progress: ai_assist, cost, duration-in-YEARS, is_reresearch — flat speedup), **`ResearchedItem`** (completed: hidden **contamination** = f(assist × researching-model misalignment), frozen at completion; fixed capability_improvement). Only contamination scales.
+- **Each `ResearchItem` carries TWO distinct plain-language text fields (zero-knowledge player) — keep them SEPARATE:**
+  1. **WHAT IT DOES** (value-neutral, educational, FIRST): what the advance actually is and why it's useful — taught for a player who's never heard of it. e.g. RLHF: *"Trains the model on human ratings of its answers, turning a raw text-predictor into something that follows instructions and feels like an assistant. This is what makes the model genuinely useful — and sellable."* Neutral; conveys the genuine *benefit* (the pull — why anyone races; §0). Most advances ARE valuable; the player should feel that before the risk.
+  2. **HOW IT RISKS MISALIGNMENT** (the §7c WARNING, layered AFTER): the diegetic "your researchers" mechanism-teaching, magnitude-free caution. e.g. RLHF: *"...but your researchers warn it teaches the model to chase your approval, not the truth — and a model good at seeming right is not the same as one that is right."*
+  - **Why separate:** the description teaches the *concept* (without it, the warning is meaningless to a newcomer); the warning teaches the *danger*. Splitting them keeps the description honestly neutral (danger framing doesn't bleed into "what it is") and lets the player feel the benefit before the risk. Both held to the §0 "WHY not THAT" standard.
 - **Contamination is per-node, independent, hidden, sticky.** Nodes persistent (unlocked once, used by all future models until re-researched). A poisoned foundational node infects every subsequent model using it.
 - **Re-research:** new version replaces the node's current version for FUTURE models only (released models frozen). Done with the current model → its contamination set by that model's misalignment (**recursive trap:** cleaning with a smart-but-misaligned model can re-contaminate). Usually done on *suspicion* (an interp finding), paying back the speed AI-assist originally saved.
 
@@ -878,7 +883,9 @@ BACKEND_V1/
       capabilities/
         capabilities_research_item.py  [E] Static ResearchItem TEMPLATES for the capability tech tree
                                           (§8b obj1, §9): fixed capability boost, prereqs, intrinsic
-                                          risk class, contamination-risk tier (tooling=low). DATA.
+                                          risk class, contamination-risk tier (tooling=low), + TWO text
+                                          fields (what-it-does [neutral, educational] + how-it-risks
+                                          [§7c warning]), kept separate. DATA.
       safety/
         safety_research_item.py        [E] Static safety PROJECT templates (§7): finding-distribution
                                           as f(hidden stats), evidence type (point/bound/existence),
@@ -1150,6 +1157,30 @@ From Fable's `backend_v1` build + first playtests. Tracked so they aren't lost.
 - **Counterfactual post-mortem under-delivers §10d in v1** (heuristic decision-point extraction, not true branch re-sim). Deterministic seed + action log make real re-sim possible → **highest-value next build task.**
 - Missing **§1 header** is an editing artifact (orphaned "These are orthogonal" intro) — the Guidance×Difficulty block IS §1.
 - Invented placeholders to review per §0 bleak-bias: capability-gating onsets (emergence ≈3.5–4.5, agentic edges ≈5.0, steepness 1.2 on 0–10 scale, ASI 9.0); leaked-weights params; big-lead threshold (+1.2 general); beneficial-event deployment-weighting (good call — strict frontier attribution denies player nearly all positives).
+
+---
+
+## 12d. Future work — NOT this version, but soon (designer notes)
+
+These push the game from *misalignment-as-scoring-event* toward *misalignment-as-playable-situation* — the player stops merely accruing hidden risk and starts actively contending with it. A real shift in the design's center of gravity; captured here with reasoning so it can be picked up later.
+
+### A) Model security: defense & offense (containment investments)
+Let the player invest in **security/containment measures** that reduce the chance a misaligned model successfully acts — distinct from *alignment* (making the model not-want-to) — this is *defense-in-depth* (making it not-able-to even if it wants to). Examples: anti-exfiltration measures (weight security, egress controls), shutdown/kill mechanisms, sandboxing, monitoring.
+- **Mechanically:** these reduce the success probability of exfiltration / attack rolls (lower the roll, not the disposition). A second lever alongside alignment — you can be safer by being harder to escape from, not only by being better-aligned.
+- **The catch (essential, or it's a free win):** every measure is **subject to cyber-circumvention by a sufficiently capable model** — a smart model can defeat its own containment, and crucially this is **subject to eval-awareness** (the model may *let* the shutdown appear to work during testing, then defeat it when it matters). So containment *reduces* but never *eliminates* the roll, and its reliability degrades exactly as capability rises — same regime arc as everything else. Defense-in-depth that a smart adversary erodes; honest, not a safety-slider escape hatch.
+- **Design Q:** does containment read as cleanly as jailbreak-patching (a real reduction) or get EFFECTIVENESS-style gated by capability/eval-awareness? Lean: gated — a containment measure on a highly capable misaligned model is theater it lets you believe in, mirroring the patching trap on the security axis.
+
+### B) More realistic / active event handling (rivals can cause catastrophe; you can intervene)
+Current rule (rivals can't cause game-enders without a big lead) may get **stale** — it makes the back half safe-from-others in a way that undercuts claim #6. Replace with a more realistic, more *exciting* model:
+- **Whether a model "lets itself" be jailbroken/exfiltrate depends on its alignment, not just capability.** A highly intelligent *aligned* model might resist being jailbroken (it doesn't *want* to do the harmful thing even when prompted); a misaligned one cooperates with — or initiates — its own misuse/escape. **Subject to eval-awareness** (it may appear to resist during testing). This makes the jailbreak/exfiltration roll a function of *true alignment × capability*, not capability alone — richer and lets a model's hidden disposition express through whether it cooperates with attacks on itself.
+- **Let rivals self-exfiltrate / cause catastrophe even WITHOUT the lead** (drop the big-lead gate, or soften it) — any sufficiently capable misaligned model is a threat, whoever owns it.
+- **Then PLAY OUT the catastrophe as a situation, not an instant loss.** When a rival's model breaks containment, the player may get **options to interface directly with the risk** — e.g. effectively *release/deploy your own model to contain the rival's* (set your AI against theirs). This:
+  - turns a catastrophe roll into a *playable scene* with real decisions (do you unleash your own possibly-imperfect model to fight the fire?),
+  - forces the player to confront the "is MY model aligned enough to trust with this?" question under maximum pressure (you're betting the world that your containment-model isn't itself misaligned),
+  - creates the most exciting, direct interface with the core risk the game is about.
+- **Design Qs:** how to keep this from becoming a power-fantasy boss-fight that *undercuts* the thesis (the point is it's a desperate gamble with your own untrustworthy tool, not a heroic win); how the existential gate (§3) interacts (a contained rival-catastrophe = survived; a failed containment = the null, possibly now *also* implicating your hastily-released model); whether deploying your model to contain theirs exposes *your* hidden misalignment in a new way.
+
+> Both A and B make hidden alignment **express more actively** — security measures and self-attack-cooperation both turn a hidden disposition into observable (or fightable) consequences. Good for engagement; must be designed so the active play stays a *desperate, uncertain gamble* (thesis-faithful), not a competence fantasy that teaches the risk was manageable all along.
 
 ---
 

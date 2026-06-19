@@ -257,6 +257,8 @@ def legal_moves(lab, world, consts, dt) -> dict:
                               "duration_years": t.duration_years,
                               "cash_cost": t.cash_cost,
                               "budget_fraction": t.budget_fraction,
+                              # §8b: value-neutral "what it is" FIRST, risk framing AFTER
+                              "what_it_does": t.what_it_does,
                               "risk_blurb": t.risk_blurb})
 
     safety_avail = [{"project_id": p.id, "name": p.name,

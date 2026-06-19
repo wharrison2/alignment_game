@@ -50,13 +50,20 @@ export function openProjectModal(pid){
   const { project, isSafety } = found;
   const W = OBS.legal_moves.warnings;
 
+  // §8b: the value-neutral "what it does" comes FIRST (teaches the concept + the
+  // genuine benefit), then the risk layers after.
   const desc = isSafety
     ? `${project.blurb || ""}<div class="dim" style="margin-top:4px">evidence:
         ${project.evidence} · spoofability ${project.spoofability}${
         project.intervention ? ` · intervenes on ${(project.target_axis||"").replace(/_/g," ")}` : ""}</div>`
-    : `${project.risk_blurb || ""}`;
+    : `${project.what_it_does || ""}`;
 
-  const warns = projectWarnings(project, isSafety)
+  // Risk layer AFTER: the node's own risk framing (capability items), then the
+  // generic §7c catalog warning(s) for the knobs this choice opens.
+  const nodeRisk = (!isSafety && project.risk_blurb)
+    ? `<div class="warn-item"><div class="warn-line">⚠ your researchers warn — ${project.risk_blurb}</div></div>`
+    : "";
+  const warns = nodeRisk + projectWarnings(project, isSafety)
     .map(w => warningHTML(W.catalog, w.id, w.emphasised)).join("");
 
   $("modal-body").innerHTML = `
