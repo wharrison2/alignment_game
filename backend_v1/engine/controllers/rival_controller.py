@@ -48,23 +48,23 @@ class RivalController(LabController):
             return disposition.recklessness, 0.5
         ranked = sorted(caps, key=caps.get, reverse=True)
         position = ranked.index(obs.lab_id) / max(1, len(ranked) - 1)  # 0 leader .. 1 last
-        r = disposition.recklessness + 0.25 * position * (1.0 - disposition.recklessness)
-        return min(0.98, r), position
+        effective_recklessness = disposition.recklessness + 0.25 * position * (1.0 - disposition.recklessness)
+        return min(0.98, effective_recklessness), position
 
     # ── capabilities + safety + training (the tuned core, lightly disposition-weighted) ──
 
-    def _capabilities_domain(self, action, obs, moves, r, free, cash):
-        # research: capability tree first; safety ∝ caution (1 - r) and safety_priority
+    def _capabilities_domain(self, action, obs, moves, effective_recklessness, free, cash):
+        # research: capability tree first; safety ∝ caution (1 - recklessness) and safety_priority
         for proj in moves["capability_projects_available"]:
             if free <= 0.05 or cash < proj["cash_cost"]:
                 break
-            assist = r * 0.9   # reckless labs crank assist (the squeeze, §9b)
+            assist = effective_recklessness * 0.9   # reckless labs crank assist (the squeeze, §9b)
             action.start_projects.append(
                 {"project_id": proj["project_id"], "ai_assist": assist})
             free -= proj["budget_fraction"] * (1 - 0.4 * assist)
             cash -= proj["cash_cost"]
 
-        if self.rng.random() < (1.0 - r) * 0.8 and free > 0.2:
+        if self.rng.random() < (1.0 - effective_recklessness) * 0.8 and free > 0.2:
             affordable_safety = [
                 p for p in moves["safety_projects_available"]
                 if p["cash_cost"] <= cash and p["budget_fraction"] <= free
@@ -72,25 +72,25 @@ class RivalController(LabController):
             if affordable_safety and (moves["can_post_train"] or obs.own_models):
                 pick = self.rng.choice(affordable_safety)
                 action.start_projects.append(
-                    {"project_id": pick["project_id"], "ai_assist": r * 0.5})
+                    {"project_id": pick["project_id"], "ai_assist": effective_recklessness * 0.5})
                 free -= pick["budget_fraction"]
                 cash -= pick["cash_cost"]
 
         # training pipeline — commission when there's nothing to advance
         if moves["can_commission_run"] and cash > max(150, moves["max_run_compute"] * 0.15):
-            reserve = round(cash * (0.55 + 0.3 * r), 0)
+            reserve = round(cash * (0.55 + 0.3 * effective_recklessness), 0)
             action.commission_run = {"compute": reserve}
             cash -= reserve
         elif moves["can_post_train"] and free >= 0.3:
             model_in_training = obs.model_in_training
             ceiling = model_in_training["elicitation"]["ceiling_estimate"]
             realized = model_in_training["measured_capability"]["general"]
-            target = (0.55 + 0.35 * r) * ceiling
+            target = (0.55 + 0.35 * effective_recklessness) * ceiling
             if realized < target:
-                mode = "capability" if self.rng.random() < 0.4 + 0.5 * r else "balanced"
+                mode = "capability" if self.rng.random() < 0.4 + 0.5 * effective_recklessness else "balanced"
                 action.post_train = {"mode": mode}
             else:
-                worried = obs.worry_bar["level"] > 0.45 and self.rng.random() < (1 - r)
+                worried = obs.worry_bar["level"] > 0.45 and self.rng.random() < (1 - effective_recklessness)
                 if worried and free >= 0.3:
                     action.post_train = {"mode": "safety"}
                 else:
@@ -99,14 +99,14 @@ class RivalController(LabController):
 
     # ── L2 governance: lobbying (pipeline policies) + litigation (active policies) ──
 
-    def _governance_domain(self, action, obs, moves, disposition, r, position, cash):
+    def _governance_domain(self, action, obs, moves, disposition, effective_recklessness, position, cash):
         regulation_stance = disposition.regulation_stance
         for p in moves["policies"]:
             stage = p.get("stage", "dormant")
 
             # LOBBYING: live-but-not-yet-active policies (introduced/passed/signed)
             if p.get("lobbyable", True) and stage != "dormant":
-                lean_for = position - 0.35 - 0.4 * r
+                lean_for = position - 0.35 - 0.4 * effective_recklessness
                 if lean_for > 0.1:
                     stance, spend = "for", min(cash * 0.015, 40.0)
                 elif lean_for < -0.1:

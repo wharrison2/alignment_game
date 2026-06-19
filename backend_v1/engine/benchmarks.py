@@ -14,6 +14,8 @@ Three render kinds:
 import math
 from dataclasses import dataclass
 
+from backend_v1.config.constants import FRONTIER_EARLY_RELEASE_MARGIN
+
 
 @dataclass(frozen=True)
 class Benchmark:
@@ -51,8 +53,7 @@ BENCHMARK_SUITE = [
 BENCHMARK_BY_ID = {b.id: b for b in BENCHMARK_SUITE}
 
 # The sealed frontier benchmark also releases early once the frontier has clearly
-# saturated the previous one (HLE midpoint + this margin).
-_FRONTIER_EARLY_RELEASE_MARGIN = 1.0
+# saturated the previous one (HLE midpoint + FRONTIER_EARLY_RELEASE_MARGIN).
 
 
 def is_released(benchmark, year, frontier_general):
@@ -62,7 +63,7 @@ def is_released(benchmark, year, frontier_general):
         return True
     if benchmark.id == "frontier_x":
         hle_midpoint = BENCHMARK_BY_ID["hle"].midpoint
-        return frontier_general >= hle_midpoint + _FRONTIER_EARLY_RELEASE_MARGIN
+        return frontier_general >= hle_midpoint + FRONTIER_EARLY_RELEASE_MARGIN
     return False
 
 

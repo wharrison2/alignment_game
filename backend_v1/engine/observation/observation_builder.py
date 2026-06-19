@@ -210,10 +210,11 @@ def build_observation(state, lab, tips, policy_news, public_events,
 
     work_budget_free = round(budget_pool(lab, state.dt) - committed_budget(lab), 3)
 
-    mit = lab.model_in_training
+    model_in_training = lab.model_in_training
     model_in_training_view = (
-        {**_model_view(mit), "elicitation": _elicitation_projection(mit, lab, consts)}
-        if mit is not None else None
+        {**_model_view(model_in_training),
+         "elicitation": _elicitation_projection(model_in_training, lab, consts)}
+        if model_in_training is not None else None
     )
 
     active_policy_ids = [pid for pid, st in state.world.policies.items() if st.active]

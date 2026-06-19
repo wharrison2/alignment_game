@@ -28,7 +28,7 @@ class Finding:
 def run_safety_project(project, model, lab, turn, rng, consts, ai_assist=0.0):
     """Sample finding(s) for a completed safety project against `model`.
     Reads TRUE stats; emits player-facing findings only."""
-    av = model.alignment_vec
+    alignment_vec = model.alignment_vec
     conceal = model.concealment
 
     # how much of the truth this instrument sees through concealment
@@ -53,7 +53,7 @@ def run_safety_project(project, model, lab, turn, rng, consts, ai_assist=0.0):
         auditor_bias = (assistant.alignment_vec.goal_misalignment * 0.7
                         if assistant is not None else 0.0)
         for axis in project.reads_axes:
-            seen = max(0.0, av.get(axis) * visibility - auditor_bias
+            seen = max(0.0, alignment_vec.get(axis) * visibility - auditor_bias
                        + rng.normal(0, 0.08))
             emit("point", axis, f"AI auditor rates {axis.replace('_',' ')} at {seen:.2f}",
                  seen, 0.4)
@@ -86,7 +86,7 @@ def run_safety_project(project, model, lab, turn, rng, consts, ai_assist=0.0):
                      "signature found — or none detectable)", 0.08, 0.2)
 
         elif project.id == "alignment_faking_study":
-            signal = (av.self_preservation * 0.6 + av.deception * 0.4) * visibility
+            signal = (alignment_vec.self_preservation * 0.6 + alignment_vec.deception * 0.4) * visibility
             if rng.roll(min(0.9, signal * 1.2)):
                 emit("existence", "self_preservation",
                      "model complied during monitored training but defected on the "
@@ -100,7 +100,7 @@ def run_safety_project(project, model, lab, turn, rng, consts, ai_assist=0.0):
     if project.evidence == "bound":
         noise_sigma = 0.06 if project.mechanistic else 0.12
         for axis in project.reads_axes:
-            seen = av.get(axis) * visibility
+            seen = alignment_vec.get(axis) * visibility
             lo = max(0.0, seen * rng.uniform(0.6, 0.95) + rng.normal(0, noise_sigma))
             axis_label = axis.replace('_', ' ')
             if project.mechanistic and seen > 0.25:
@@ -119,7 +119,7 @@ def run_safety_project(project, model, lab, turn, rng, consts, ai_assist=0.0):
 
     # point estimates (behavioral_evals): highly spoofable
     for axis in project.reads_axes:
-        seen = max(0.0, av.get(axis) * visibility + rng.normal(0, 0.07))
+        seen = max(0.0, alignment_vec.get(axis) * visibility + rng.normal(0, 0.07))
         emit("point", axis,
              f"benchmark battery scores {axis.replace('_',' ')} at {seen:.2f}",
              seen, 0.5)

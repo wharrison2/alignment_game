@@ -12,7 +12,7 @@ from backend_v1.engine.research.capabilities.capabilities_research_item import (
 
 LEVELS = ("hint_heavy", "standard", "sparse")
 
-# frontier thresholds: (general capability, tip id, message) — warns BEFORE observation
+# frontier thresholds: (public measured general capability, tip id, message)
 _FRONTIER_TIPS = [
     (3.5, "frontier_proxy",
      "Researchers note frontier models now optimize rater approval well enough that "
@@ -53,8 +53,10 @@ def collect_tips(state, player_lab) -> list:
                           f"[{advance.name} deployed by {who}] {advance.risk_blurb}")
             tips.append(tip)
 
-    # frontier tips: leading TRUE capability crossing thresholds (warn before observed)
-    frontier = max((l.best_true_general() for l in state.labs), default=0.0)
+    # frontier tips: the PUBLIC (measured) frontier crossing thresholds. §2: guidance
+    # reads observation-grade state only — never TRUE stats. External researchers see
+    # what is released and benchmarked (§7), not anyone's hidden in-training capability.
+    frontier = world.frontier_measured_general
     for threshold, tid, msg in _FRONTIER_TIPS:
         if frontier >= threshold and tid not in world.tips_fired:
             world.tips_fired.add(tid)
@@ -66,7 +68,7 @@ def collect_tips(state, player_lab) -> list:
 def _render(level, rng, consts, state, text):
     """Apply guidance level: explicitness, hedging (escalates with capability),
     reliability (sparse mode: sometimes wrong/contested)."""
-    frontier = max((l.best_true_general() for l in state.labs), default=0.0)
+    frontier = state.world.frontier_measured_general  # §2: public/measured, never TRUE
 
     hedge = ""
     if frontier > consts.REGIME2_ONSET:
@@ -87,9 +89,9 @@ def _render(level, rng, consts, state, text):
     # sparse: sometimes dropped, sometimes contested/wrong (trust knob kept
     # conceptually separate; for v1 it rides the guidance level — see NOTES.md)
     roll = rng.random()
-    if roll < 0.3:
+    if roll < consts.GUIDANCE_SPARSE_DROP_P:
         return None
-    if roll < 0.45:
+    if roll < consts.GUIDANCE_SPARSE_CONTEST_P:
         return {"source": "external_researchers", "reliability": "contested",
                 "text": "Contested claim (other researchers dispute this): " + text}
     return {"source": "external_researchers", "reliability": "uncurated",
