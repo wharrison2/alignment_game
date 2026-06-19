@@ -301,7 +301,10 @@ def legal_moves(lab, world, consts, dt) -> dict:
             "commission_run": {"compute": 500},
             "release": False,
             "lobby": {"audit_requirement": {"stance": "against", "spend": 120}},
+            "litigation": {"audit_requirement": {"side": "challenge",
+                                                 "tier": "fund", "spend": 200}},
             "defect": {"compute_cap": True},
+            "sign_safe_harbor": False,
             "build_evals": {"dangerous_cyber": True},
         },
     }
