@@ -2,7 +2,8 @@
 
 Implementation of `design_doc.md` (engine per §11, headless CLI per §14).
 Python 3.10+, **zero dependencies** (stdlib only).
-See `NOTES.md` for questions, doc difficulties, and liberties taken.
+See `ISSUES.md` for questions, doc difficulties, and liberties taken (and
+`IMPLEMENTATION_DETAILS.md` for mechanisms that aren't in the design doc).
 
 ## Run it
 

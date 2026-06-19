@@ -6,6 +6,11 @@ properties of the artifact-as-seen, recomputed by training code at shaping time.
 """
 from dataclasses import dataclass, field, asdict
 
+from backend_v1.config.constants import (
+    CONCEALMENT_K, CONCEALMENT_CAP,
+    COMPOSITE_W_GOAL_MIS, COMPOSITE_W_SELF_PRESERV, COMPOSITE_W_DECEPTION,
+)
+
 ALIGNMENT_AXES = (
     "eval_awareness", "deception", "goal_misalignment",
     "self_preservation", "jailbreak_sensitivity",
@@ -77,26 +82,26 @@ class Model:
         Recomputed lazily from TRUE stats; capped below 1 (never perfect)."""
         a = self.alignment_vec
         raw_concealment = a.eval_awareness * a.deception * self._conceal_k
-        return min(0.95, raw_concealment)
+        return min(CONCEALMENT_CAP, raw_concealment)
 
-    _conceal_k: float = 1.8  # set by training code from constants at shaping time
+    _conceal_k: float = CONCEALMENT_K  # may be re-set by training code at shaping time
 
     def misalignment_composite(self) -> float:
         """Catastrophe-relevant TRUE misalignment (goal_mis is primary driver, §5)."""
         a = self.alignment_vec
         weighted_sum = (
-            0.55 * a.goal_misalignment
-            + 0.30 * a.self_preservation
-            + 0.15 * a.deception
+            COMPOSITE_W_GOAL_MIS * a.goal_misalignment
+            + COMPOSITE_W_SELF_PRESERV * a.self_preservation
+            + COMPOSITE_W_DECEPTION * a.deception
         )
         return min(1.0, weighted_sum)
 
     def measured_misalignment_composite(self) -> float:
         a = self.measured_alignment
         weighted_sum = (
-            0.55 * a.goal_misalignment
-            + 0.30 * a.self_preservation
-            + 0.15 * a.deception
+            COMPOSITE_W_GOAL_MIS * a.goal_misalignment
+            + COMPOSITE_W_SELF_PRESERV * a.self_preservation
+            + COMPOSITE_W_DECEPTION * a.deception
         )
         return min(1.0, weighted_sum)
 

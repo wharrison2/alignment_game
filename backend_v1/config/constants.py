@@ -39,9 +39,17 @@ PRETRAIN_DURATION_YEARS = 0.5   # [TUNE]
 BASE_REALIZED_FRACTION = 0.12   # raw base model: latent potential, barely usable
 MIN_RUN_COMPUTE = 50.0          # $M
 FOUNDATIONAL_FLOOR_K = 0.8      # [TUNE] pretrain contamination -> unscrubbable alignment floor
+FOUNDATIONAL_FLOOR_CAP = 0.6    # hard ceiling on the unscrubbable foundational floor
+FOUNDATIONAL_CONTAM_NOTE_THRESHOLD = 0.05  # pretrain contamination above which a hidden-history note is logged
+# Pretrain alignment-baseline seeding (training_run.complete_pretrain):
+BASE_GOAL_MIS_PRETRAIN = 0.08          # baseline goal-misalignment before contamination/noise
+PRETRAIN_CONTAM_GOAL_MIS_MULT = 0.5    # pretrain contamination -> added baseline goal-misalignment
+PRETRAIN_GOAL_MIS_NOISE_STD = 0.02     # |N(0,σ)| jitter on the pretrain goal-misalignment baseline
+JAILBREAK_SENSITIVITY_NOISE_STD = 0.05  # N(0,σ) jitter on the pretrain jailbreak-sensitivity baseline
 
 # ── Post-train elicitation (8b phase 2) ─────────────────────────────────
 ELICIT_BASE = 0.05              # [TUNE] per-round gap-closure pre-RLHF (weak on purpose)
+ELICITATION_RATE_CAP = 0.92     # per-round gap-closure cap (<1: never overshoot the ceiling)
 POST_TRAIN_ROUND_BUDGET = 0.30  # fraction of quarterly work budget per round
 
 
@@ -136,7 +144,15 @@ DRIFT_NOISE_STD = 0.012         # per axis per round
 # Agentic influence edges (5) — per round, all gated by general capability
 EDGE_STRENGTH = 0.02            # [TUNE] base strength for matrix edges
 EDGE_GATE_ONSET = 5.0           # edges come online approaching regime 3
-CONCEALMENT_K = 1.8             # concealment = min(.95, eval_aware*deception*K)
+CONCEALMENT_K = 1.8             # concealment = min(CONCEALMENT_CAP, eval_aware*deception*K)
+CONCEALMENT_CAP = 0.95          # concealment capped below 1 (instruments never blind completely)
+# Misalignment composite weights (model.misalignment_composite, §5 catastrophe path).
+# NOTE: design §5 frames the catastrophe term as goal_mis × capability × self_pres
+# (multiplicative); the code uses this disposition-weighted SUM and multiplies by
+# capability at the catastrophe site — formula divergence flagged in ISSUES.md.
+COMPOSITE_W_GOAL_MIS = 0.55
+COMPOSITE_W_SELF_PRESERV = 0.30
+COMPOSITE_W_DECEPTION = 0.15
 # (SANDBAG_REVENUE_PENALTY removed — §12c Q1: sandbagging carries no revenue
 #  penalty; commercial capability reads on-target. Its cost is unpriced TRUE
 #  dangerous capability feeding catastrophe gating, not lost revenue.)
@@ -205,6 +221,9 @@ MARKET_CAP_ALPHA = 0.25         # EMA speed of market cap toward valuation
 MARKET_CAP_SCALE = 9.0          # valuation = scale * score * investment flow
 
 JOB_LOSS_APPROVAL_RATE = 2.6    # approval points lost per year per (deployed best measured /10 squared)... see finances.py
+# These two currently offset (net ×1); named for legibility, a simplification candidate (see ISSUES.md).
+JOB_LOSS_APPROVAL_INTENSITY_SCALE = 10.0  # intensity multiplier inside the per-year approval-loss rate
+JOB_LOSS_APPROVAL_AMOUNT_SCALE = 0.1      # post-scaling of the per-dt approval loss (see finances.py)
 JOB_LOSS_IMPACT_RATE = 9.0      # negative impact per year at full capability, split by deployment share
 DOMINANCE_RULE = "plurality"    # largest market cap at end of game
 
@@ -229,8 +248,10 @@ DISPLACEMENT_BACKLASH_STEP = 12.0  # cumulative displacement units per backlash 
 # ── Governance (10c) ────────────────────────────────────────────────────
 APPROVAL_START = 65.0
 WTR_START = 4.0
-WTR_FROM_LOW_APPROVAL = 0.35    # per year per point approval below 55
-WTR_DECAY_GOOD_TIMES = 1.2      # per year drift down when approval > 70
+WTR_LOW_APPROVAL_THRESHOLD = 55.0   # approval below this raises WTR
+WTR_GOOD_TIMES_THRESHOLD = 70.0     # approval above this lets WTR decay
+WTR_FROM_LOW_APPROVAL = 0.35    # per year per point approval below WTR_LOW_APPROVAL_THRESHOLD
+WTR_DECAY_GOOD_TIMES = 1.2      # per year drift down when approval > WTR_GOOD_TIMES_THRESHOLD
 GOV_EVAL_NOISE = 0.18           # government sees measured stats, worse than the player
 
 # ── Scalable-spend lobbying (§10c, REVISED) ─────────────────────────────
@@ -349,6 +370,7 @@ RIVAL_ESTIMATE_NOISE = 0.18     # rivals' stats seen much more coarsely
 
 # ── Public benchmarks (§7) — passive scoreboard, read off MEASURED capability ──
 BENCHMARK_SLOPE = 1.3          # logistic steepness; higher => sharper saturation
+FRONTIER_EARLY_RELEASE_MARGIN = 1.0  # frontier_x unlocks early once frontier general >= HLE midpoint + this
 ELO_BASE = 1000.0             # Arena-style rating at capability 0 (unbounded headline)
 ELO_PER_CAPABILITY = 80.0     # rating points per unit measured general capability
 METR_MINUTES_AT_BASE = 2.0    # task time-horizon (minutes) at the reference capability
@@ -358,6 +380,10 @@ METR_CAPABILITY_PER_DOUBLING = 0.8   # capability gain that doubles the time-hor
 # ── Private passive evals (§7) — build-once harnesses, your models only ──
 EVAL_EXISTENCE_THRESHOLD = 0.30   # apparent axis value above which a scenario surfaces
 EVAL_SANDBAG_DETECT_THRESHOLD = 0.12  # visible concealment gap that trips the detector
+
+# ── Guidance / external-researcher tips (§9, observation layer) ─────────
+GUIDANCE_SPARSE_DROP_P = 0.30     # sparse mode: chance a tip is dropped entirely
+GUIDANCE_SPARSE_CONTEST_P = 0.45  # ...cumulative chance below which a shown tip is marked contested
 
 # ── Scoring (3) ─────────────────────────────────────────────────────────
 IMPACT_WIN_BAR = 0.0            # net-positive impact required

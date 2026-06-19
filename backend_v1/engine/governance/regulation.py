@@ -13,10 +13,10 @@ from backend_v1.engine.events.effects import apply_effects
 
 
 def update_wtr(world, rng, consts, dt):
-    if world.public_approval < 55:
-        world.wtr += rng.amount_per_dt(
-            consts.WTR_FROM_LOW_APPROVAL * (55 - world.public_approval), dt)
-    elif world.public_approval > 70:
+    if world.public_approval < consts.WTR_LOW_APPROVAL_THRESHOLD:
+        approval_deficit = consts.WTR_LOW_APPROVAL_THRESHOLD - world.public_approval
+        world.wtr += rng.amount_per_dt(consts.WTR_FROM_LOW_APPROVAL * approval_deficit, dt)
+    elif world.public_approval > consts.WTR_GOOD_TIMES_THRESHOLD:
         world.wtr -= rng.amount_per_dt(consts.WTR_DECAY_GOOD_TIMES, dt)
     world.wtr = max(0.0, min(100.0, world.wtr))
 

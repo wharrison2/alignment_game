@@ -8,6 +8,7 @@
 - `design_doc.md` — authoritative *what we build* (mechanics, thesis, the model).
 - `CLAUDE.md` (this) — authoritative *how we build* (procedures, code standards).
 - `ISSUES.md` — **active** build-notes companion (see §5): contradictions found, liberties taken, decisions made. Write to it; trust it.
+- `IMPLEMENTATION_DETAILS.md` — descriptive catalog of subsystems/fields/structures that exist in the **code** but aren't in the design doc (e.g. the buyout mechanic, the eval-harness build/upgrade economy, `turn_context.py`/`rules.py`). Not authoritative — the design doc still wins on intent; this just keeps the gap discoverable. Keep it current when you add an undocumented mechanism.
 - `README.md` — useful **run / entry-point reference** (the server plus the CLI tools: `cli.run_game`, `cli.strategy_report`, `cli.agent_session`, batch tuning). Good for *running* things headlessly; its "see `NOTES.md`" pointer is stale (that role is now `ISSUES.md`).
 - `NOTES.md`, `GAMEPLAY_ISSUES.md`, `PLAYBOOK.md`, `STRATEGY_REPORT.md` — historical records from previous tasks. **Not authoritative**; read only if you're chasing the history of a specific decision.
 
