@@ -10,6 +10,7 @@ from backend_v1.engine.research.capabilities.capabilities_research_item import (
 )
 from backend_v1.engine.research.safety.safety_research_item import SAFETY_PROJECTS_BY_ID
 from backend_v1.engine.governance.policies import POLICY_DEFS
+from backend_v1.engine.observation.warnings import warning_payload
 from backend_v1.engine.rules import (
     assist_potency, assist_speed_potency, effective_fraction,
     budget_pool, committed_budget,
@@ -107,6 +108,10 @@ def validate_action(action: Action, lab, world, consts, dt) -> list[str]:
 
         if not 0.0 <= assist <= 1.0:
             problems.append(f"{pid}: ai_assist must be in [0,1], got {assist}")
+
+        if any(p.template_id == pid for p in lab.in_progress):
+            problems.append(f"{pid} is already in progress")
+            continue
 
         if pid in CAPABILITY_TREE_BY_ID:
             t = CAPABILITY_TREE_BY_ID[pid]
@@ -239,23 +244,29 @@ def legal_moves(lab, world, consts, dt) -> dict:
     pool = budget_pool(lab, dt)
     committed = committed_budget(lab)
 
-    # capability projects: unlocked and prereqs met, not yet researched
+    # projects already underway aren't offered again (they show under "in progress")
+    in_progress_ids = {p.template_id for p in lab.in_progress}
+
+    # capability projects: unlocked and prereqs met, not yet researched, not underway
     cap_avail = []
     for t in CAPABILITY_TREE_BY_ID.values():
-        if t.id in lab.researched_advances:
+        if t.id in lab.researched_advances or t.id in in_progress_ids:
             continue
         if all(q in lab.researched_advances for q in t.prereqs):
             cap_avail.append({"project_id": t.id, "name": t.name, "phase": t.phase,
                               "duration_years": t.duration_years,
                               "cash_cost": t.cash_cost,
-                              "budget_fraction": t.budget_fraction})
+                              "budget_fraction": t.budget_fraction,
+                              "risk_blurb": t.risk_blurb})
 
     safety_avail = [{"project_id": p.id, "name": p.name,
                      "duration_years": p.duration_years, "cash_cost": p.cash_cost,
                      "budget_fraction": p.budget_fraction, "evidence": p.evidence,
+                     "spoofability": p.spoofability, "blurb": p.blurb,
                      "intervention": p.intervention,
                      "target_axis": p.target_axis}
-                    for p in SAFETY_PROJECTS_BY_ID.values()]
+                    for p in SAFETY_PROJECTS_BY_ID.values()
+                    if p.id not in in_progress_ids]
 
     return {
         "work_budget_free": round(pool - committed, 3),
@@ -272,6 +283,7 @@ def legal_moves(lab, world, consts, dt) -> dict:
             "max_reduction": consts.ASSIST_MAX_REDUCTION,
             "speedup": consts.ASSIST_SPEEDUP,
         },
+        "warnings": warning_payload(),
         "can_post_train": lab.model_in_training is not None,
         "post_train_modes": list(consts.POST_TRAIN_MODES),
         "post_train_round_budget": consts.POST_TRAIN_ROUND_BUDGET,

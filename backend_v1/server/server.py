@@ -140,8 +140,34 @@ class Handler(BaseHTTPRequestHandler):
             self._json(SESSION.postmortem())
         elif self.path == "/api/truth":
             self._json(SESSION.truth_payload())
+        elif self.path.startswith("/js/") or self.path.endswith(".css"):
+            self._static(self.path)
         else:
             self._json({"errors": ["not found"]}, 404)
+
+    def _static(self, url_path):
+        """Serve frontend static assets (the js/ modules, any css) from
+        FRONTEND_DIR, with a path-traversal guard. Playtest tool — no caching."""
+        rel = url_path.lstrip("/").split("?", 1)[0]
+        root = os.path.realpath(FRONTEND_DIR)
+        target = os.path.realpath(os.path.join(root, rel))
+        if not (target == root or target.startswith(root + os.sep)):
+            self._json({"errors": ["forbidden"]}, 403)
+            return
+        ctype = ("text/javascript" if target.endswith(".js")
+                 else "text/css" if target.endswith(".css")
+                 else "application/octet-stream")
+        try:
+            with open(target, "rb") as f:
+                body = f.read()
+        except OSError:
+            self._json({"errors": ["not found"]}, 404)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", f"{ctype}; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def do_POST(self):
         global SESSION

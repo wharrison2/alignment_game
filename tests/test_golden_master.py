@@ -42,13 +42,15 @@ _OPENING = Action(start_projects=[{"project_id": "scaling_laws", "ai_assist": 0.
                   commission_run={"compute": 300})
 
 # Baselines captured with --record on the reconciled (legibility + structural
-# + §7 features) engine.
+# + §7 features) engine. Re-recorded after the in-progress dedup fix in
+# legal_moves/validate_action (projects underway are no longer re-offered, so the
+# scripted controller stops double-starting them — an intentional trajectory change).
 EXPECTED = {
-    "0-balanced-realistic": "7ac97e1953c5f7a3eee60b8371e26d33f84254c697cd67440fe706af69733d43",
-    "3-aggressive-realistic": "6169e68f2eb9c6bd307945fab092fcf260d07ff6eb97714ce43fdc8ed01266cc",
-    "7-cautious-realistic": "3951432d70922521ca51f56128ada77572782230c0054492dd62292b512e7eb4",
-    "1-balanced-easy": "6378c90f2c9f8b595c44fd7db78ef188b9c4cbc33f320067e8d7eb924cd57b88",
-    "5-aggressive-impossible": "fedac192e4a32bf7dcdfd44140e75ba64c96bff11f1f89908d2dfe6892d1ad48",
+    "0-balanced-realistic": "9b3972428ea5fd9845e0b786b3f19f628b6b98aebe0fd4c8a3b69d50342e95bf",
+    "3-aggressive-realistic": "858b4f966a32644e3f261d8806db2617db52998762e514a54dc12757391b4af6",
+    "7-cautious-realistic": "eb61bc5875ebe3079b5a330eb35e86dec9b4f52983a40abbb773cc9e1be9c643",
+    "1-balanced-easy": "e846eff46af6f50e39b6f12e8040bf0cd01e161d0c5face2381cd07addd47932",
+    "5-aggressive-impossible": "75b3def5fa4e0f8ef22a95ca88d468a871216ae92fa7ba79cc0c9f77f960cb9c",
 }
 
 
