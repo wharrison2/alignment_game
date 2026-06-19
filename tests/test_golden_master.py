@@ -42,15 +42,18 @@ _OPENING = Action(start_projects=[{"project_id": "scaling_laws", "ai_assist": 0.
                   commission_run={"compute": 300})
 
 # Baselines captured with --record on the reconciled (legibility + structural
-# + §7 features) engine. Re-recorded after the in-progress dedup fix in
-# legal_moves/validate_action (projects underway are no longer re-offered, so the
-# scripted controller stops double-starting them — an intentional trajectory change).
+# + §7 features) engine. Re-recorded after the §9b investment-momentum fix:
+# investor confidence is now a PERSISTENT per-lab accumulator carried across
+# releases (instead of being recomputed from "quarters since last release" and
+# reset at every release), so a release that beats its bar no longer drops the
+# market cap — an intentional trajectory change that moves cash/market_cap in
+# every game's TRUE log.
 EXPECTED = {
-    "0-balanced-realistic": "9b3972428ea5fd9845e0b786b3f19f628b6b98aebe0fd4c8a3b69d50342e95bf",
-    "3-aggressive-realistic": "858b4f966a32644e3f261d8806db2617db52998762e514a54dc12757391b4af6",
-    "7-cautious-realistic": "eb61bc5875ebe3079b5a330eb35e86dec9b4f52983a40abbb773cc9e1be9c643",
-    "1-balanced-easy": "e846eff46af6f50e39b6f12e8040bf0cd01e161d0c5face2381cd07addd47932",
-    "5-aggressive-impossible": "75b3def5fa4e0f8ef22a95ca88d468a871216ae92fa7ba79cc0c9f77f960cb9c",
+    "0-balanced-realistic": "b1d0420ce6a8b5faf8cad1265769d9a76ba357a63572cff5cf3a923473aa446f",
+    "3-aggressive-realistic": "e993c77b70822ba2b2692949cef0b3efa7a9032b07b30bc030894d5e915e5ccc",
+    "7-cautious-realistic": "14ba6e2e4f07a1ac0f42d14905ccd52cb4ae6981f99ea68dbbccc4181bd10d84",
+    "1-balanced-easy": "1ce275b908103950deaa200d5ad0c8116f0e087717214662e997ee6f8cf8f3cc",
+    "5-aggressive-impossible": "5cbab8a1b2678086025b66c0e2bba86fbceff9dbdc65270d62b613416ed35feb",
 }
 
 
