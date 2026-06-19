@@ -86,12 +86,26 @@ described.
   `FRONTIER_EARLY_RELEASE_MARGIN`. §9 says the world releases harder benchmarks on a
   schedule; the capability-triggered early unlock is implementation.
 
-## Finance (`engine/finances/finances.py`)
+## Finance (`engine/finances/`)
 
-- **Job-loss drag** — continuous (not event-based) approval/impact pressure as a
-  function of `world.frontier_measured_general`; impact attributed by revenue share.
-  Note `JOB_LOSS_APPROVAL_INTENSITY_SCALE`/`_AMOUNT_SCALE` currently offset (net ×1):
-  a documented simplification candidate (see ISSUES.md).
+- **Job-loss drag** (`finances.py`) — continuous (not event-based) approval/impact
+  pressure as a function of `world.frontier_measured_general`; impact attributed by
+  revenue share. Note `JOB_LOSS_APPROVAL_INTENSITY_SCALE`/`_AMOUNT_SCALE` currently
+  offset (net ×1): a documented simplification candidate (see ISSUES.md).
+- **Persistent investor-confidence momentum** (`investment.py`, field
+  `lab.investment_momentum`) — §9b describes the *behavior* (grace window, rising
+  bar, beat→reward / miss→cliff) but not the state shape. Momentum is a per-lab
+  accumulator advanced one step per turn in `update_investment_momentum`:
+  - on a release: `confidence = 1 + SCORE_MOMENTUM_GROWTH·growth_term`; a BEAT
+    (`growth_term ≥ 0`) carries momentum forward via `max(confidence, momentum)`
+    (no drop), a MISS resets it down to that sub-1 confidence (the cliff);
+  - within the grace window with no release: momentum grows at
+    `SCORE_GRACE_GROWTH / SCORE_GRACE_YEARS` per year;
+  - past grace with no release: momentum decays at `SCORE_RELEASE_DECAY` per year.
+  `lab_score` reads this field directly. This replaced an earlier *stateless*
+  formulation that recomputed the grace ramp off "quarters since last release" and
+  reset it at every release — which dropped the market cap after each release (the
+  "slanted staircase"). No new tunables; reuses the existing `SCORE_*` constants.
 
 ## Events & governance modules absent from the §11 map
 
@@ -136,3 +150,17 @@ The `Action` dataclass carries, in addition to the documented
   the AI-assist trade-off knobs (`potency`, `speed_potency`, `max_reduction`,
   `speedup`) so a headless agent can predict an action's budget/time cost. Not in the
   §14 sketch.
+- **Full action coverage on every path.** All `Action` fields are reachable from both
+  the interactive human CLI and the agent paths. The interactive `run_game`
+  (`_prompt_governance`) prompts for lobby spend, litigation (side/tier/spend), defect
+  (with the catch-risk preview), eval-harness build/upgrade, and `sign_safe_harbor`;
+  `agent_session._condense` surfaces the `eval_harnesses` board and advertises
+  `litigation` / `defect` / `sign_safe_harbor` / `build_evals` in its `action_schema`.
+
+## Frontend (`simple_frontend_v1/js/main.js`) — start-game gate
+
+- **Mandatory new-game modal.** On load, `init()` forces `showNewGame({initial: true})`,
+  which renders without a cancel button (and the overlay has no backdrop-dismiss), so a
+  game cannot be skipped. A module-level `started` flag is set only when `newGame()`
+  completes; `render()` keeps `#endturn` disabled and `endTurn()` early-returns until
+  then. A turn cannot be advanced until a game is explicitly started through the modal.
