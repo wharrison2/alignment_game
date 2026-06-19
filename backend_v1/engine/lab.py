@@ -46,6 +46,10 @@ class Lab:
     last_release_measured_general: float = 0.0
     prev_release_measured_general: float = 0.0
     last_score: float = 0.0                     # investment score, fed to market cap
+    # Persistent investor-confidence momentum (§9b). Carried across releases so a
+    # release that BEATS its risen bar never drops the slope — growth is continuous,
+    # the cliff is reserved for a MISS or for sitting past the grace window.
+    investment_momentum: float = 0.0
     # scoring (§3)
     impact_ledger: float = 0.0              # running externality integral
     impact_positives: float = 0.0           # tracked separately for the loss screen
