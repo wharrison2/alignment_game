@@ -303,10 +303,10 @@ DISPLACEMENT_BACKLASH_STEP = 12.0  # cumulative displacement units per backlash 
 
 # ── Governance (10c) ────────────────────────────────────────────────────
 APPROVAL_START = 65.0
-WTR_START = 4.0
+WTR_START = 6.0
 WTR_LOW_APPROVAL_THRESHOLD = 55.0   # approval below this raises WTR
 WTR_GOOD_TIMES_THRESHOLD = 70.0     # approval above this lets WTR decay
-WTR_FROM_LOW_APPROVAL = 0.35    # per year per point approval below WTR_LOW_APPROVAL_THRESHOLD
+WTR_FROM_LOW_APPROVAL = 0.50    # per year per point approval below WTR_LOW_APPROVAL_THRESHOLD
 WTR_DECAY_GOOD_TIMES = 1.2      # per year drift down when approval > WTR_GOOD_TIMES_THRESHOLD
 GOV_EVAL_NOISE = 0.18           # government sees measured stats, worse than the player
 
@@ -325,7 +325,7 @@ LOBBY_MIN_CAP_MULT = 0.2       # floor on the log multiplier (small labs still m
 # Once INTRODUCED (WTR crossed the intro threshold — the real, reactive-and-late
 # gate), a policy should walk to active in a few turns, not stall forever. WTR's
 # slow rise keeps regulation late; the pipeline latency on top should be modest.
-POLICY_PASS_BASE = 1.1         # introduced->passed per-year BASE rate once on the board
+POLICY_PASS_BASE = 1.4         # introduced->passed per-year BASE rate once on the board
 POLICY_PASS_RATE_K = 0.05      # + per year per (score - intro_thr) above the line
 POLICY_SIGN_RATE = 2.2         # passed->signed per-year baseline (momentum: usually quick)
 POLICY_ACTIVATE_RATE = 3.0     # signed->active per-year baseline

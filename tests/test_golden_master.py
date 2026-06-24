@@ -131,12 +131,18 @@ _OPENING = Action(start_projects=[{"project_id": "scaling_laws", "ai_assist": 0.
 # shaping, so the misalignment-by-default fix holds). Lower per-round creep shifts every
 # model's TRUE alignment trajectory, so every digest moves. Determinism holds (same seed
 # → identical run); intentional balance change, NOT an RNG/firewall regression (§8).
+# Re-recorded for the "regulatory appetite" bump (ISSUES.md): WTR_START 4->6,
+# WTR_FROM_LOW_APPROVAL 0.35->0.5, POLICY_PASS_BASE 1.1->1.4 (regulation stirs earlier,
+# responds faster to harm, passes quicker). Policies enact on different turns, shifting
+# the scripted rivals' lobby/litigation decisions and the WTR-driven litigation math, so
+# every digest moves. Determinism holds (same seed → identical run); intentional balance
+# change, NOT an RNG/firewall regression (CLAUDE.md §8).
 EXPECTED = {
-    "0-balanced-realistic": "ace7828123f0c36b82be12c828e50befbe8ffb56fa16647c13ada946be1947d9",
-    "3-aggressive-realistic": "c6ffce2e5d99138c937eef5194343c9011e3b7243858696d0d47d613509a3f6b",
-    "7-cautious-realistic": "e4f405ca4decc381fa5838d7bc0fa8fe756d2febffc1c13fa145451cac7af271",
-    "1-balanced-easy": "f7e8f867176679ed1e263d7555ef7fa8eaca70fca42012731bd9778e8e342798",
-    "5-aggressive-impossible": "1d05ff71c1b8ed2ce7a503c7463689b9ef5aede0bb9416fee76063a3b101c38b",
+    "0-balanced-realistic": "05473a6370a4a06f07f8d27c984bb1591d41f5b87f2b9901b1bca3f808a6cbbb",
+    "3-aggressive-realistic": "b750990e3f9e5da13c2e891f64591015e48388cab39c81e9dbf46a3c9807f0f2",
+    "7-cautious-realistic": "4180362b4ecd67e8fc1723c966c06ecf1e7e3e870593c1472b2eda59d52b83ba",
+    "1-balanced-easy": "9aa7a7c6bfdf485ab5c41b8093b59c44ac8926da693dd20019b7b1b94184e885",
+    "5-aggressive-impossible": "41a214125e245675296d0a44fb58e67aa86cee0e0f4aab3e7b8bec8595452690",
 }
 
 
