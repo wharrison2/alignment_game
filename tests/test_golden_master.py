@@ -193,12 +193,17 @@ _OPENING = Action(start_projects=[{"project_id": "scaling_laws", "ai_assist": 0.
 # POLICY_THRESHOLDS["interp_mandate"] 60->45 (containment enactable). All symmetric;
 # determinism holds; intentional balance change, NOT a regression (§8). Invariants:
 # no-op loses 8/8, reckless composite ~0.53.
+# Re-recorded for "DECEPTION_CAUGHT_RATE 0.30->0.70" (ISSUES.md): the deception scandal
+# that unlocks interp_mandate now surfaces earlier, so a lobbying player can enact the
+# containment reg IN TIME to stall reckless rivals below ASI (validated: interp active
+# holds the rival frontier at true ~8.5). Symmetric (applies to all labs). Determinism
+# holds; intentional balance change, NOT a regression (§8). no-op loses 8/8, reckless ~0.51.
 EXPECTED = {
-    "0-balanced-realistic": "0a26bc951e9ad16442a96cdf0b4d6d43bd8bb58340bc0b3d0c6fdbeb715bb4b1",
+    "0-balanced-realistic": "db82bf34c2d050b5cd280e20c4053828cdbe5a16f5a993d2bf0a4111a79c12b1",
     "3-aggressive-realistic": "9f17be32338c738b8cbd6e6e523c6d38cbb711701072aa7a0918e1f6365ddd58",
-    "7-cautious-realistic": "ed9d9f0b03c66013f4f24f70d9fdae11d08a3d4916d264b162ebf04309893d77",
+    "7-cautious-realistic": "3723264434716a5c8799f1d981af9c4e88a3dac267c96934f20f84ff62ff9dda",
     "1-balanced-easy": "046b3e0bcaacc162325f4f7a3c353bb3beec35b45f45d9217526643896003a98",
-    "5-aggressive-impossible": "10854f34a4d449f8a908daf4cf0c8b0343bb55c538ee8fb45b3bb94499a19a3f",
+    "5-aggressive-impossible": "386ccdf32555dfc1a5146008ba39e3a9e9c5351df76b19d4b639b7491f1066df",
 }
 
 

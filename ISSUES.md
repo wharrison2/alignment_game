@@ -1632,3 +1632,18 @@ So even at threshold 45, interp_mandate stays dormant and rivals win the race.
 interp_mandate in time for a lobbying player to enact it and stall reckless rivals below ASI
 — making the clean governance win path actually reachable. Symmetric (applies to all labs).
 Needs designer sign-off + a replay to validate.
+
+### DECEPTION_CAUGHT_RATE 0.30 -> 0.70 — containment now enactable IN TIME (validated)
+
+The containment blocker (prior note) was that interp_mandate's prerequisite — a public
+deception scandal — fired too late. Raised DECEPTION_CAUGHT_RATE 0.30->0.70 so a deceptive
+rival's scandal surfaces earlier (~mid-game). VALIDATED in a seed-2 playtest: interp_mandate
+reached ACTIVE (enf high) mid-game and HELD the reckless rivals below ASI — at turn 34 the
+rival leader was stalled at true general 8.54 (not even training further), all rivals < 9,
+while the player kept building. The clean "win by governance" path is now mechanically open
+(contain the reckless via governance, then climb to aligned ASI at leisure). Symmetric;
+non-trivial preserved (no-op loses 8/8; reckless composite ~0.51). Determinism re-recorded.
+
+(NB: a clean END-TO-END hand-win demonstration under this balance is the remaining step;
+the validation run itself was sloppy — applied un-researched deliberative -> dropped
+post-trains -> over-elicited a model -> not a clean win — but containment behaved correctly.)
