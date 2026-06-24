@@ -1239,3 +1239,31 @@ The chosen 0.45 is an assistant-picked balance number per §0 — flagged for th
 designer. The horizon score is **display-only** (no game logic reads it), so this is
 pure calibration: golden master and full suite unchanged. `fmtBenchScore` (`views.js`)
 extended to format months/years so the recalibrated top reads cleanly.
+
+---
+
+## Task: AI-assist inert (and hidden) without a deployed model
+
+**Symptom.** You could set AI-assist on a research item with no released model. It
+"shouldn't be possible" in the UI, and it changed backend behavior.
+
+**Cause.** With no `lab.current_best_model`, assist_potency() already zeroes the
+budget discount, contamination, and finding bias — so assist *looked* like a no-op.
+But `ResearchProcess.tick()` applies a duration-VARIANCE term whenever `ai_assist > 0`
+*regardless of potency*: `effective_dt *= 1 + assist_speed + variance_draw*0.35*ai_assist`.
+With no assistant `assist_speed` is 0 but the variance still rode in — a control with
+no model behind it nonetheless jittered completion timing (mean-neutral, pure noise).
+
+**Fix (two layers).**
+- **Backend root cause** (`turn_pipeline._apply_research_action`): when `assistant is
+  None`, store `ai_assist=0` on the ResearchProcess, so assist is inert end to end
+  ("no model ⇒ assist does literally nothing"). `rng.normal()` is still drawn
+  unconditionally per process per turn, so determinism/draw-count is unchanged — only
+  whether the drawn value is *used*. Golden master re-recorded (the scripted player
+  requests assist before its first release); determinism holds. See the note above the
+  EXPECTED block in `tests/test_golden_master.py`.
+- **Frontend** (`actions.legal_moves` + `research.js`/`views.js`/`strings.js`): added
+  `legal_moves.assist.available = current_best_model is not None`; the per-card assist
+  input is suppressed (replaced by a "needs a released model" hint) when unavailable,
+  so the control can't be set in the first place. `queueProject`/`carryOutProject`
+  already default a missing slider to 0, so suppression is safe.

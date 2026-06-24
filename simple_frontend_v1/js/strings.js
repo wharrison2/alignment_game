@@ -163,6 +163,7 @@ export const STRINGS = {
   "truth.trajectory.summary": "per-turn trajectory ({count})",
 
   // ── Research panel ─────────────────────────────────────────────────────────
+  "research.assistHint.noModel": "AI-assist needs a released model to do the labor — you have none yet, so it has no effect. Ship a model and it becomes available (potent, and contaminating, as capability rises).",
   "research.assistHint.weak": "AI-assist has little effect yet — your model isn't capable enough to help research. It grows potent (and contaminating) as capability rises.",
   "research.assistHint.potent": "AI-assist potency {budget} (budget) / {speed} (speed) — assist now meaningfully shrinks budget &amp; time. It is also the contamination vector.",
   "research.capability.empty": "tree exhausted",
@@ -178,6 +179,7 @@ export const STRINGS = {
 
   // ── Research-item cards (research.js) ───────────────────────────────────────
   "ritem.assist": "AI-assist",
+  "ritem.assistUnavailable": "AI-assist · needs a released model",
   "ritem.clickHint": "· click card for details &amp; warning ▸",
   "ritem.yearsRemaining": "~{years}y remaining",
   "ritem.assistTag": "assist {value}",

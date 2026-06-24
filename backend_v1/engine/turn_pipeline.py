@@ -261,9 +261,16 @@ def _apply_research_action(state, lab, action):
         if is_re:
             duration *= (1.0 - consts.RERESEARCH_SPEEDUP)   # flat speedup
         assistant = lab.current_best_model
+        # No deployed model ⇒ nothing exists to do the assisted labor, so AI-assist
+        # is fully inert: force it to 0 here. assist_potency() already zeroes the
+        # budget discount, contamination, and finding bias with no current_best_model;
+        # the one thing that still leaked through was ResearchProcess.tick(), which
+        # injects duration VARIANCE whenever ai_assist > 0 regardless of potency.
+        # Clamping keeps "no model ⇒ assist does literally nothing" true end to end.
+        assist_in_effect = assist if assistant is not None else 0.0
         lab.in_progress.append(ResearchProcess(
             process_id=f"{lab.id}-P{turn}-{pid}", kind=kind, template_id=pid,
-            lab_id=lab.id, ai_assist=assist, started_turn=turn,
+            lab_id=lab.id, ai_assist=assist_in_effect, started_turn=turn,
             duration_years_remaining=duration, budget_fraction_effective=frac,
             is_reresearch=is_re,
             assisting_model_id=assistant.id if assistant else None,

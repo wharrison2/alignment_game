@@ -930,8 +930,13 @@ function excludeQueued(items){
 export function renderProjects(){
   const lm = OBS.legal_moves;
   const assistParams = lm.assist;
+  // No deployed model ⇒ no assistant ⇒ the per-card assist control is suppressed
+  // (and the backend treats any assist as 0). This single flag drives every list.
+  const assistAvailable = assistParams.available;
 
-  const hint = assistParams.potency < 0.05
+  const hint = !assistAvailable
+    ? `<div class="dim" style="margin-bottom:6px">${t("research.assistHint.noModel")}</div>`
+    : assistParams.potency < 0.05
     ? `<div class="dim" style="margin-bottom:6px">${t("research.assistHint.weak")}</div>`
     : `<div class="dim" style="margin-bottom:6px">${t("research.assistHint.potent", {
         budget: assistParams.potency.toFixed(2),
@@ -940,7 +945,7 @@ export function renderProjects(){
   $("cap-projects").innerHTML = hint;
   // append the capability cards beneath the assist hint
   renderAvailableInto("cap-projects", excludeQueued(lm.capability_projects_available),
-    capabilityKindTag, t("research.capability.empty"), /*append=*/true);
+    capabilityKindTag, t("research.capability.empty"), /*append=*/true, assistAvailable);
 
   // Safety projects are a MIX: measurement EVALUATIONS (return findings) and
   // INTERVENTIONS (fine-tuning-style edits that remediate a target axis via the
@@ -954,9 +959,9 @@ export function renderProjects(){
 
   // Research tab: evaluations, then the §8b pre/post-training ADVANCES to unlock.
   renderAvailableItems("safety-projects", safetyEvaluations,
-    safetyKindTag, t("research.safety.empty"));
+    safetyKindTag, t("research.safety.empty"), assistAvailable);
   renderAvailableItems("safety-advances", excludeQueued(lm.safety_advances_available),
-    safetyKindTag, t("research.safetyAdvances.empty"));
+    safetyKindTag, t("research.safetyAdvances.empty"), assistAvailable);
 
   // Lab tab: the interventions, with a one-line note that they shape the model in
   // training and bite at the next post-train round.
@@ -964,18 +969,18 @@ export function renderProjects(){
     `<div class="dim" style="margin-bottom:6px">${t("lab.interventions.hint")}</div>`;
   $("safety-interventions").innerHTML = interventionsHint;
   renderAvailableInto("safety-interventions", safetyInterventions,
-    safetyKindTag, t("lab.interventions.empty"), /*append=*/true);
+    safetyKindTag, t("lab.interventions.empty"), /*append=*/true, assistAvailable);
 
   renderCompletedAdvances("completed-advances", OBS.researched_advances,
     t("research.completed.empty"));
 }
 
 // Small adapter so the capability panel can keep its assist hint above the cards.
-function renderAvailableInto(containerId, items, kindOf, emptyText, append){
+function renderAvailableInto(containerId, items, kindOf, emptyText, append, assistAvailable){
   const container = $(containerId);
   if(!container) return;
   const hintHTML = append ? container.innerHTML : "";
-  renderAvailableItems(containerId, items, kindOf, emptyText);
+  renderAvailableItems(containerId, items, kindOf, emptyText, assistAvailable);
   if(append) container.innerHTML = hintHTML + container.innerHTML;
 }
 
