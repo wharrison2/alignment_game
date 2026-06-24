@@ -74,17 +74,22 @@ export async function apply(payload){
 function collectFeed(){
   const turn = OBS.turn;
 
+  // Each item keeps its TYPE label separate from the message body, so the view
+  // can render the label as a tag and the text in its own area (not "tip(...)").
   OBS.new_findings.forEach(finding => FEED.unshift(
-    {turn, cls:"finding", text:`[${finding.evidence}] ${finding.text}`}));
+    {turn, cls:"finding", label:t("feed.finding.label", {evidence:finding.evidence}),
+     text:finding.text}));
 
   OBS.tips.forEach(tip => FEED.unshift(
-    {turn, cls:"tip", text:t("feed.tip", {reliability:tip.reliability, text:tip.text})}));
+    {turn, cls:"tip", label:t("feed.tip.label", {reliability:tip.reliability}),
+     text:tip.text}));
 
   OBS.policy_news.forEach(newsItem => FEED.unshift(
-    {turn, cls:"news", text:newsItem}));
+    {turn, cls:"news", label:t("feed.news.label"), text:newsItem}));
 
   OBS.public_events.forEach(event => FEED.unshift(
-    {turn, cls:"event", text:t("feed.event", {category:event.category, text:event.text})}));
+    {turn, cls:"event", label:t("feed.event.label", {category:event.category}),
+     text:event.text}));
 
   if(FEED.length>400) FEED.length = 400;
 }

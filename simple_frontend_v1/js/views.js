@@ -783,9 +783,17 @@ export function renderRivals(){
 
 export function renderFeed(){
   const cssClass = {finding:"good", tip:"warn", event:"bad", news:"", intervention:"good"};
+  // Each entry is a box: a TYPE label tag on its own line, then the message body.
+  // esc() the label/text — feed copy is backend-authored but can interpolate the
+  // player-entered lab name, which must never reach innerHTML unescaped.
   $("log").innerHTML = FEED.map(feedItem =>
-    `<div><span class="dim">t${feedItem.turn}</span>
-     <span class="${cssClass[feedItem.cls]||''}">${feedItem.text}</span></div>`).join("");
+    `<div class="feed-item feed-${feedItem.cls}">
+       <div class="feed-head">
+         <span class="feed-label ${cssClass[feedItem.cls]||''}">${esc(feedItem.label||feedItem.cls)}</span>
+         <span class="feed-turn dim">t${feedItem.turn}</span>
+       </div>
+       <div class="feed-text">${esc(feedItem.text)}</div>
+     </div>`).join("");
 }
 
 // ── Governance panel ──────────────────────────────────────────────────────────

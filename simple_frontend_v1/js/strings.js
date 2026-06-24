@@ -61,9 +61,11 @@ export const STRINGS = {
   "postmortem.newGame": "new game",
   "postmortem.inspectBoard": "inspect final board",
 
-  // ── Feed line prefixes (collectFeed in core) ───────────────────────────────
-  "feed.tip": "tip ({reliability}): {text}",
-  "feed.event": "EVENT [{category}] {text}",
+  // ── Feed item TYPE labels (collectFeed in core); message body is separate ──
+  "feed.tip.label": "tip · {reliability}",
+  "feed.event.label": "event · {category}",
+  "feed.finding.label": "finding · {evidence}",
+  "feed.news.label": "news",
 
   // ── Market / cap chart ─────────────────────────────────────────────────────
   "caps.empty": "no turns played yet — END TURN to begin",

@@ -43,8 +43,9 @@
   /* The market-cap graph is kept as a DELIBERATE dark "chart panel" on the light
      page — a finance/terminal convention that reads as credible, and the saturated
      lab line colors (core.js COLORS) sit better on dark than on pale paper. */
-  #capgraph-big{display:block;width:100%;height:54vh;min-height:340px;background:#11161c;
-    border:1px solid var(--line);border-radius:6px}
+  /* graph fills with the page background (not a dark panel) in a SQUARE box */
+  #capgraph-big{display:block;width:100%;height:54vh;min-height:340px;background:var(--bg);
+    border:1px solid var(--line);border-radius:0}
   /* market-cap graph internals (built in views.drawCaps). Lines/tickers thicken
      on hover; ticker text is forced sans-serif so the later serif skin leaves it. */
   #capgraph-big .cap-line{fill:none;stroke-width:1.4;cursor:pointer;
@@ -59,16 +60,35 @@
     font-size:11px;font-weight:700;fill:#06121c;pointer-events:none;
     text-transform:uppercase}
   #capgraph-big .cap-axis-text{font-family:"SF Mono",Menlo,Consolas,monospace;
-    font-size:11px;fill:#7d8a97}
-  #capgraph-big .cap-gridline{stroke:#26303a;stroke-width:1}
+    font-size:11px;fill:var(--dim)}
+  #capgraph-big .cap-gridline{stroke:var(--line);stroke-width:1}
   .row{display:flex;gap:6px;align-items:center;margin:3px 0;flex-wrap:wrap}
   .dim{color:var(--dim)} .bad{color:var(--bad)} .warn{color:var(--warn)}
   .good{color:#1a7a3f}
   table{border-collapse:collapse;width:100%}
   td,th{padding:2px 6px;text-align:left;border-bottom:1px solid var(--line);
         font-size:12px}
-  #log{max-height:300px;overflow-y:auto}
-  #log div{padding:3px 0;border-bottom:1px dotted var(--line)}
+  /* Market page: newsfeed (scrollable, boxed items) on the left, graph on the right */
+  .market-grid{display:grid;grid-template-columns:320px minmax(0,1fr);gap:10px;
+               align-items:start}
+  .market-feed{display:flex;flex-direction:column;max-height:74vh}
+  #log{overflow-y:auto;flex:1;min-height:0;display:flex;flex-direction:column;gap:6px}
+  /* each feed entry is its own box with a TYPE label separate from the message */
+  .feed-item{background:var(--panel2);border:1px solid var(--line);border-radius:5px;
+             border-left:3px solid var(--line);padding:6px 8px}
+  .feed-item.feed-finding,.feed-item.feed-intervention{border-left-color:#1a7a3f}
+  .feed-item.feed-tip{border-left-color:var(--warn)}
+  .feed-item.feed-event{border-left-color:var(--bad)}
+  .feed-item.feed-news{border-left-color:var(--acc)}
+  .feed-head{display:flex;align-items:baseline;justify-content:space-between;gap:6px;
+             margin-bottom:3px}
+  .feed-label{font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+              padding:1px 6px;border-radius:3px;background:var(--panel);
+              border:1px solid var(--line)}
+  .feed-turn{font-size:10px}
+  .feed-text{font-size:12px;line-height:1.4}
+  @media(max-width:760px){.market-grid{grid-template-columns:1fr}
+    .market-feed{max-height:40vh}}
   .bar{height:10px;background:var(--panel2);border:1px solid var(--line);
        border-radius:5px;overflow:hidden;flex:1}
   .bar i{display:block;height:100%}
@@ -168,12 +188,18 @@
 
 <div id="views">
 
-  <!-- ── MARKET (home): the big legible anchor ── -->
+  <!-- ── MARKET (home): the big legible anchor + the newsfeed ── -->
   <section class="view active" data-view="market">
-    <div class="panel">
-      <h3>Market cap — you vs rivals (the legible metric; alignment is not)</h3>
-      <svg id="capgraph-big" preserveAspectRatio="none"></svg>
-      <div id="caplegend" style="margin-top:8px"></div>
+    <div class="market-grid">
+      <div class="panel market-feed">
+        <h3>Feed — findings · tips · events · news</h3>
+        <div id="log"></div>
+      </div>
+      <div class="panel">
+        <h3>Market cap — you vs rivals (the legible metric; alignment is not)</h3>
+        <svg id="capgraph-big" preserveAspectRatio="none"></svg>
+        <div id="caplegend" style="margin-top:8px"></div>
+      </div>
     </div>
   </section>
 
@@ -225,24 +251,20 @@
     </div>
   </section>
 
-  <!-- ── INTEL: epistemics + rivals + feed ── -->
+  <!-- ── INTEL: epistemics + rivals (the feed now lives on the Market page) ── -->
   <section class="view" data-view="intel">
     <div class="cols2">
-      <div>
-        <div class="panel">
-          <h3>Worry bar (LEVEL vs CONFIDENCE — synthesis of evidence you collected)</h3>
-          <div class="row"><span style="width:80px">level</span>
-            <div class="bar"><i id="wb-level" style="background:var(--bad)"></i></div>
-            <span id="wb-level-n"></span></div>
-          <div class="row"><span style="width:80px">confidence</span>
-            <div class="bar"><i id="wb-conf" style="background:var(--acc)"></i></div>
-            <span id="wb-conf-n"></span></div>
-          <div class="dim" id="wb-summary"></div>
-        </div>
-        <div class="panel"><h3>Rivals (public info only)</h3><div id="rivals"></div></div>
+      <div class="panel">
+        <h3>Worry bar (LEVEL vs CONFIDENCE — synthesis of evidence you collected)</h3>
+        <div class="row"><span style="width:80px">level</span>
+          <div class="bar"><i id="wb-level" style="background:var(--bad)"></i></div>
+          <span id="wb-level-n"></span></div>
+        <div class="row"><span style="width:80px">confidence</span>
+          <div class="bar"><i id="wb-conf" style="background:var(--acc)"></i></div>
+          <span id="wb-conf-n"></span></div>
+        <div class="dim" id="wb-summary"></div>
       </div>
-      <div class="panel"><h3>Feed — findings · tips · events · news</h3>
-        <div id="log"></div></div>
+      <div class="panel"><h3>Rivals (public info only)</h3><div id="rivals"></div></div>
     </div>
   </section>
 
