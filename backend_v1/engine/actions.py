@@ -330,6 +330,10 @@ def legal_moves(lab, world, consts, dt) -> dict:
         # the duration speedup): effective_budget = base*(1 - max_reduction*assist*potency)
         # and effective_years ≈ base / (1 + speedup*assist*speed_potency).
         "assist": {
+            # available only once a RELEASED model exists to do the labor — with
+            # none, assist is inert end to end (turn_pipeline clamps it to 0), so the
+            # frontend hides the control rather than offer a no-op.
+            "available": lab.current_best_model is not None,
             "potency": round(assist_potency(lab, consts), 3),
             "speed_potency": round(assist_speed_potency(lab, consts), 3),
             "max_reduction": consts.ASSIST_MAX_REDUCTION,

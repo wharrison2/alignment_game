@@ -35,6 +35,7 @@ class Observation:
     legal_moves: dict
     benchmarks: list = field(default_factory=list)   # §7 public scoreboard (you + rivals)
     evals: list = field(default_factory=list)        # §7 private passive harnesses (yours only)
+    alignment_evidence: dict = field(default_factory=dict)  # Intel dossier: findings grouped by model
     game_over: bool = False
     outcome: dict | None = None
 

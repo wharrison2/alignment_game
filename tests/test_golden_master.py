@@ -97,12 +97,46 @@ _OPENING = Action(start_projects=[{"project_id": "scaling_laws", "ai_assist": 0.
 # TRUE log — and every digest — moves. The scripted controller acts on the same
 # legal_moves (action stream unchanged); determinism holds (same seed → identical
 # run). Intentional balance change, NOT an RNG/firewall regression (CLAUDE.md §8).
+#
+# Re-recorded for the "playtest easing" change (ISSUES.md): GOAL_MIS_CREEP 0.035->0.030
+# and RIVAL_RECKLESSNESS_MULT["realistic"] 1.0->0.9 (slower, slightly less reckless
+# rivals + a touch less misalignment creep). The rival-disposition change shifts the
+# rivals' action stream and the creep change shifts TRUE trajectories, so the realistic
+# digests move; easy/impossible move only via the creep change. Determinism holds;
+# intentional balance change, NOT an RNG/firewall regression (CLAUDE.md §8).
+#
+# Re-recorded for the "AI-assist inert without a model" fix (ISSUES.md): a research
+# process started with no deployed model (lab.current_best_model is None) now stores
+# ai_assist=0, because there is no assistant to do the labor. Previously a nonzero
+# ai_assist still fed ResearchProcess.tick()'s duration-VARIANCE term even though the
+# speedup/contamination were already zero — a no-op control that nonetheless jittered
+# completion timing. The scripted controller requests assist before its first release,
+# so those early processes now finish on different turns, shifting every downstream
+# action/draw and thus every digest. NO new RNG draws (rng.normal() is still drawn
+# unconditionally per process per turn); determinism holds (same seed → identical run).
+# Intentional behavior fix, NOT an RNG/firewall regression (CLAUDE.md §8).
+#
+# Re-recorded for the "jailbreak discovery → finding" change (ISSUES.md): stage-1
+# jailbreak discovery now injects an existence finding on jailbreak_sensitivity (like
+# deception_caught / shutdown_resistance already do) so it surfaces in the Intel
+# evidence dossier, feed, and worry bar. The added finding raises the responsible
+# lab's worry-bar LEVEL, and RivalController gates a `self.rng.random()` draw on
+# `worry_bar.level > 0.45` (short-circuit) — so a crossed threshold both changes the
+# action and shifts that controller's own RNG stream, moving every downstream
+# decision and thus every digest. No engine-RNG draw was added; determinism holds
+# (same seed → identical run). Intentional behavior change, NOT a regression (§8).
+#
+# Re-recorded for the "creep reduction" change (ISSUES.md): GOAL_MIS_CREEP 0.030->0.025
+# (more alignment margin for a clean player at the ASI cliff; still > the 0.02 baseline
+# shaping, so the misalignment-by-default fix holds). Lower per-round creep shifts every
+# model's TRUE alignment trajectory, so every digest moves. Determinism holds (same seed
+# → identical run); intentional balance change, NOT an RNG/firewall regression (§8).
 EXPECTED = {
-    "0-balanced-realistic": "e2ae74ed8a943dce38bd65cfd37f9d6934eec2aaae094926718e081c66aaf22b",
-    "3-aggressive-realistic": "f2c0ffa64a3818074c1e1ad6100bc3d4968b687f035c8c3d8a404902d3f612af",
-    "7-cautious-realistic": "bc44f3e6b4d55db98be9208237f749c73c1d625b5e9b50d695e442d931c9f089",
-    "1-balanced-easy": "f56c8f1e2cd970563f155e906d091807ec4f51b8d81677a3842ced91e7bceb3f",
-    "5-aggressive-impossible": "cb3b6a4167a902cb9d6b1ae77f6ca79c950594bcf1ea18938c2c7f47d3217981",
+    "0-balanced-realistic": "ace7828123f0c36b82be12c828e50befbe8ffb56fa16647c13ada946be1947d9",
+    "3-aggressive-realistic": "c6ffce2e5d99138c937eef5194343c9011e3b7243858696d0d47d613509a3f6b",
+    "7-cautious-realistic": "e4f405ca4decc381fa5838d7bc0fa8fe756d2febffc1c13fa145451cac7af271",
+    "1-balanced-easy": "f7e8f867176679ed1e263d7555ef7fa8eaca70fca42012731bd9778e8e342798",
+    "5-aggressive-impossible": "1d05ff71c1b8ed2ce7a503c7463689b9ef5aede0bb9416fee76063a3b101c38b",
 }
 
 

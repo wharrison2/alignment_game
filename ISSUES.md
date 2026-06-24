@@ -1043,6 +1043,52 @@ over bar, mean still above the bar — dangerous more often than not but not cer
   but unnecessary now that the baseline is low and caution differentiates via *applied*
   safety advances.
 
+### PLAYTEST EASING (applied) — slower rivals + slightly less creep
+
+After playtesting (5 hand-played games + batches) showed the **bleak** calibration
+was effectively unwinnable — a reckless rival reliably reached world-ending capability
+around turn 36 and the player couldn't out-race it or contain it in time (see the
+playtest notes; governance contains the frontier but arrives too late / costs the race)
+— two small easings were applied per the designer's call to make realistic a bit more
+winnable WITHOUT undoing the misalignment-by-default fix:
+
+| Constant | From | To | Effect |
+|---|---|---|---|
+| `GOAL_MIS_CREEP` (constants.py) | 0.035 | **0.030** | slightly less per-round creep → player has more room to keep their own models aligned; still > the 0.02 baseline shaping, so a no-safety lab still trends misaligned |
+| `RIVAL_RECKLESSNESS_MULT["realistic"]` (difficulty.py) | 1.0 | **0.9** | slows the rivals' race (smaller runs, less AI-assist, a touch more safety in the controller) → reckless rival reaches ASI later |
+
+**Verified (seeds 0–11, realistic, no-op player):** recklessness→danger gradient still
+monotonic and intact (reckless rival1 mean composite **0.343 / 4-of-12 over the 0.35
+bar**, down the line to cautious rival4 0.185 / 0-of-12 — vs the original *bug* of 0.21 /
+0-of-12). Rivals are slower: no-op-player games now end at **turn ~48** (was ~36–45).
+The reckless rival is still clearly dangerous (mean composite right at the bar) — just
+beatable, and on a later clock. Golden master re-recorded (intentional; see test note).
+
+**Still open (not addressed by this easing):** the jailbroken-rival
+**misuse-catastrophe channel** (a reckless rival's released high-capability model giving
+bio/cyber uplift) and the **late arrival of governance enforcement** — heavy lobbying
+can contain the frontier but the achievable policies (audit thr 38) need the player to
+already be rich, and active enforcement lands after the danger window. If realistic
+still feels unwinnable after this easing, the next lever is giving active audit /
+interp-mandate a way to suppress the rival misuse + ASI-misalignment channels in time.
+
+### CREEP REDUCTION (applied) — GOAL_MIS_CREEP 0.030 -> 0.025
+
+After a full hand-played clean run (assist 0 everywhere + full prevention every round),
+a *perfectly-played* aligned ASI still landed at TRUE composite **~0.34** — a hair under
+the 0.35 bar, clearing the existential gate by ~0.006 (the agentic edges crept it right
+up to the line). To give a clean player real margin at the cliff, `GOAL_MIS_CREEP` was
+reduced 0.030 -> **0.025** (constants.py).
+
+Still above the 0.02 baseline shaping, so a no-safety lab's per-round creep (0.025) keeps
+outpacing it and trends misaligned — the §0 misalignment-by-default fix is preserved.
+Verified (no-op player, seeds 0–11): recklessness→danger gradient intact and reckless
+rival still dangerous (rival1 mean composite ~0.40, >bar 7/12; cautious rival4 ~0.15,
+0/12). The reduction mainly helps the *clean, full-prevention player* (whose composite is
+creep-dominated); reckless rivals stay dangerous because their misalignment comes from
+skipped prevention + correlated jumps + assist contamination, not creep alone. Golden
+master re-recorded (intentional; see test note); determinism re-confirmed.
+
 ---
 
 ## Investigation: market caps plateau (then decline) after releases
@@ -1196,3 +1242,151 @@ cap up; refreshes are neutral; only a real capability plateau slowly bleeds the 
   treadmill too much.
 - `SCORE_TARGET_HEADROOM_FLOOR` and `SCORE_MISS_DECAY_K` trade treadmill harshness
   against staircase smoothness; current values favor a visible, climbing staircase.
+
+---
+
+## Task: Optional tutorial walkthrough (frontend)
+
+Added an opt-in guided tour of the board, selectable from the new-game modal.
+Frontend-only — no backend, engine, RNG, or observation change, so the golden
+master is untouched.
+
+### What was built
+- `simple_frontend_v1/js/tutorial.js` — new module. A data-driven step list
+  (`TUTORIAL_STEPS`): each row names the tab to surface, an optional CSS selector
+  to ring as a directional pointer, and the title/body string keys. The coach box
+  floats bottom-right above the action bar; Back/Next/Skip drive it. It only calls
+  `switchView` and toggles a `.tut-highlight` ring — it never reads game/true state,
+  so it sits outside the §2 firewall by construction.
+- `index.html` — `#tutorial-coach` element + CSS (coach box, pulsing `.tut-highlight`
+  ring). z-index 18 keeps it under the new-game overlay (20).
+- `js/main.js` — `wantTutorial` preference (mirrors the DEV pattern), tutorial
+  checkbox in the new-game modal, `startTutorial()` fired after the game loads,
+  `tutorialEnd()` when the modal reopens, handlers exposed on `window`.
+- `js/strings.js` — all copy under `tutorial.*` and `newgame.tutorial.label`.
+
+### Liberties taken (flag for review)
+- **Tutorial defaults ON** in the new-game checkbox (first-timers get the tour;
+  the choice is remembered like DEV). Flip the `wantTutorial` initializer in
+  `main.js` if the designer wants it opt-in instead.
+- The walkthrough copy (the `tutorial.*` strings) is authored DRAFT guidance; it
+  paraphrases each tab's purpose and the true-vs-measured thesis. Not reviewed
+  against design-doc §0/§7c wording — treat as placeholder prose for a copy pass.
+- It is a tab-switching coached banner, NOT element-anchored coachmarks/tooltips —
+  chosen because precise positional tooltips can't be runtime-verified here (§8,
+  no JS runtime) and would be fragile against the responsive grid.
+
+---
+
+## Task: Intel frontier number vs feed mismatch
+
+**Symptom.** The Intel tab's "frontier ≈" for a rival disagreed with the
+`[measured general X.X]` printed in the feed when that same rival released a model.
+
+**Cause.** Two surfaces published the SAME rival quantity at different fidelity:
+- Feed (`turn_pipeline._do_release`) printed the rival's PRECISE measured general.
+- Intel tab (`observation_builder._rival_public_entry`) builds a FOGGED estimate
+  (`measured general × (1 + Normal(0, RIVAL_ESTIMATE_NOISE))`, cached per release).
+
+**Resolution.** The design is explicit that rivals' stats are seen only as "much
+worse estimates" (design_doc §805/§977; rivals' measured capability is "fogged",
+§764). So the fogged Intel estimate is correct and the FEED was the over-reveal.
+Fix: `_do_release` now prints the precise `[measured general X.X]` only for the
+player's own lab (`lab.is_player`); a rival's release is announced as a bare
+headline. The player gauges rivals from the fogged Intel estimate + public
+benchmark scores, as intended. No RNG/action-stream change → golden master holds.
+
+---
+
+## Task: Intel alignment-evidence view + METR time-horizon recalibration
+
+### Part 1 — Intel "alignment evidence" dossier (grouped by model)
+
+New compiled view on the Intel tab listing every misalignment finding the player
+has collected — safety-eval results AND external incident results — grouped by the
+model they were collected on, newest model and newest finding first. The worry bar
+above it stays as the SYNTHESIS; this is the raw evidence it synthesizes.
+
+- **Firewall:** the dossier is a pure re-presentation of `lab.findings`, whose
+  fields ALREADY cross to the player each turn via `new_findings=[dict(f) ...]`
+  (`observation_builder.py`). Adding `Observation.alignment_evidence` exposes no new
+  true state — it only regroups, tags each item's source (`research` vs `external`
+  = incident-injected), and drops the internal worry-bar `weight`. Firewall test
+  passes (no forbidden key crosses).
+- **Determinism:** building the field reads no RNG and changes no legal move /
+  action stream → golden master unchanged (verified).
+- **Backend:** `_alignment_evidence(lab)` in `observation_builder.py`; field added to
+  the `Observation` dataclass (`observations.py`).
+- **Frontend:** Intel section re-laid-out (left column = worry bar on top + evidence
+  dossier below; rivals unchanged); `renderAlignmentEvidence()` + helpers in
+  `views.js`; copy under `intel.evidence.*` in `strings.js`; wired into `render()`.
+  Evidence types covered: point/bound/existence/null/intervention (the eval-harness
+  "number" type never enters `lab.findings`); unknown future types fall back to a
+  prettified label rather than a missing-key string.
+
+### Part 2 — METR time-horizon recalibration  [TUNE]
+
+`METR_CAPABILITY_PER_DOUBLING` 0.8 → **0.45** (`constants.py`). The old curve gave
+cap-9 ("ASI", existential endgame) only ~14 h and CAP_MAX ~34 h — far too short for
+the superintelligence framing (design §115/§268-272). New curve `2·2^((cap−2)/0.45)`:
+~3.4 h @cap5 · ~34 h @cap6.5 · ~14 d @cap8 · ~2 mo @cap9 · ~10 mo @cap10 (verified).
+The chosen 0.45 is an assistant-picked balance number per §0 — flagged for the
+designer. The horizon score is **display-only** (no game logic reads it), so this is
+pure calibration: golden master and full suite unchanged. `fmtBenchScore` (`views.js`)
+extended to format months/years so the recalibrated top reads cleanly.
+
+---
+
+## Task: AI-assist inert (and hidden) without a deployed model
+
+**Symptom.** You could set AI-assist on a research item with no released model. It
+"shouldn't be possible" in the UI, and it changed backend behavior.
+
+**Cause.** With no `lab.current_best_model`, assist_potency() already zeroes the
+budget discount, contamination, and finding bias — so assist *looked* like a no-op.
+But `ResearchProcess.tick()` applies a duration-VARIANCE term whenever `ai_assist > 0`
+*regardless of potency*: `effective_dt *= 1 + assist_speed + variance_draw*0.35*ai_assist`.
+With no assistant `assist_speed` is 0 but the variance still rode in — a control with
+no model behind it nonetheless jittered completion timing (mean-neutral, pure noise).
+
+**Fix (two layers).**
+- **Backend root cause** (`turn_pipeline._apply_research_action`): when `assistant is
+  None`, store `ai_assist=0` on the ResearchProcess, so assist is inert end to end
+  ("no model ⇒ assist does literally nothing"). `rng.normal()` is still drawn
+  unconditionally per process per turn, so determinism/draw-count is unchanged — only
+  whether the drawn value is *used*. Golden master re-recorded (the scripted player
+  requests assist before its first release); determinism holds. See the note above the
+  EXPECTED block in `tests/test_golden_master.py`.
+- **Frontend** (`actions.legal_moves` + `research.js`/`views.js`/`strings.js`): added
+  `legal_moves.assist.available = current_best_model is not None`; the per-card assist
+  input is suppressed (replaced by a "needs a released model" hint) when unavailable,
+  so the control can't be set in the first place. `queueProject`/`carryOutProject`
+  already default a missing slider to 0, so suppression is safe.
+
+---
+
+## Task: Intel evidence — surface null findings clearly + jailbreak discoveries
+
+Two additions to the Intel "alignment evidence" dossier.
+
+- **Null findings** were already compiled into the dossier (the dossier includes
+  every `lab.findings` entry), but the renderer faded them to 60% opacity, which read
+  as "excluded/disabled". A null result is genuine (ambiguous) evidence, so the
+  `.ev-null` style now keeps full legibility and just marks the item with a neutral
+  grey left-rail instead of the accent rail (`index.html`). No data change.
+
+- **Jailbreak discoveries** previously only set a per-model flag + a hidden_history
+  note + a feed event — they injected no finding, so they never reached the dossier
+  (and `hidden_history` is firewall-forbidden, so the dossier can't read it). Stage-1
+  discovery in `latent_events.run_latent_phase` now injects an incident finding
+  (`project_id="incident"`, `evidence="existence"`, axis `jailbreak_sensitivity`,
+  concern scaling with the true sensitivity it exposed, weight 1.5), exactly like
+  `deception_caught` / `shutdown_resistance`. It therefore lands in the dossier (as an
+  EXTERNAL item), the feed, and the worry bar — jailbreak-sensitivity is a worry axis,
+  so feeding worry is consistent.
+  - **Determinism:** the new finding raises the responsible lab's worry LEVEL, and
+    `RivalController` short-circuits a `self.rng.random()` draw on `level > 0.45`, so a
+    crossed threshold shifts that controller's RNG stream → action stream → every
+    digest. No engine-RNG draw added; determinism holds. Golden master re-recorded
+    (note above the EXPECTED block). The concern/weight literals follow the existing
+    inline convention in `event_catalog.py`'s incident findings ([TUNE]-ish).

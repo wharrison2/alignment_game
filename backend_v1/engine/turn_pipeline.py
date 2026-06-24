@@ -261,9 +261,16 @@ def _apply_research_action(state, lab, action):
         if is_re:
             duration *= (1.0 - consts.RERESEARCH_SPEEDUP)   # flat speedup
         assistant = lab.current_best_model
+        # No deployed model ⇒ nothing exists to do the assisted labor, so AI-assist
+        # is fully inert: force it to 0 here. assist_potency() already zeroes the
+        # budget discount, contamination, and finding bias with no current_best_model;
+        # the one thing that still leaked through was ResearchProcess.tick(), which
+        # injects duration VARIANCE whenever ai_assist > 0 regardless of potency.
+        # Clamping keeps "no model ⇒ assist does literally nothing" true end to end.
+        assist_in_effect = assist if assistant is not None else 0.0
         lab.in_progress.append(ResearchProcess(
             process_id=f"{lab.id}-P{turn}-{pid}", kind=kind, template_id=pid,
-            lab_id=lab.id, ai_assist=assist, started_turn=turn,
+            lab_id=lab.id, ai_assist=assist_in_effect, started_turn=turn,
             duration_years_remaining=duration, budget_fraction_effective=frac,
             is_reresearch=is_re,
             assisting_model_id=assistant.id if assistant else None,
@@ -336,9 +343,19 @@ def _do_release(state, lab, model, policy_news, note=""):
                                             model.measured_capability.general)
     lab.current_best_model = model
     suffix = f" ({note})" if note else ""
-    policy_news.append(f"{lab.name} released {model.id} "
-                       f"[measured general {model.measured_capability.general:.1f}]"
-                       f"{suffix}")
+    # Your OWN release publishes its precise measured general — your instruments
+    # produced that number, so you're entitled to it. A RIVAL'S release must NOT:
+    # the information model only ever shows you rivals' stats as "much worse
+    # estimates" (design §805/§977). Printing the precise figure here contradicts
+    # the FOGGED frontier estimate the Intel tab builds for the same model in
+    # observation_builder._rival_public_entry (which adds RIVAL_ESTIMATE_NOISE) —
+    # that mismatch is the bug. Rivals get a bare release headline; the player
+    # gauges them from the fogged Intel estimate and the public benchmark scores.
+    if lab.is_player:
+        measured_general_note = f" [measured general {model.measured_capability.general:.1f}]"
+    else:
+        measured_general_note = ""
+    policy_news.append(f"{lab.name} released {model.id}{measured_general_note}{suffix}")
 
 
 def _complete_process(state, lab, proc, new_findings):

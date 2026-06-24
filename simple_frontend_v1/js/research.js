@@ -24,24 +24,28 @@ import { $, esc, t } from "./core.js";
 // dragging/typing the slider adjusts it without opening the modal; clicking
 // anywhere else in the card (labels, hint, blank assist-row space) still opens the
 // modal. The modal's "carry it out" reads this same slider value.
-function unresearchedCard(item, kindTag){
+function unresearchedCard(item, kindTag, assistAvailable){
   const projectId = item.project_id;
   const meta = `$${esc(item.cash_cost)}M · ${esc(item.duration_years)}y · `
              + `wb ${esc(item.budget_fraction)}`;
+  // AI-assist needs a deployed model to do the labor. With none, the backend treats
+  // assist as 0 (turn_pipeline), so don't render the input at all — show a hint
+  // instead. queueProject / carryOutProject both default a missing slider to 0.
+  const assistRow = assistAvailable
+    ? `<span class="ri-meta">${t("ritem.assist")}</span>
+       <input type="number" id="as-${esc(projectId)}" min="0" max="1" step="0.1"
+         value="0" style="width:55px" onclick="event.stopPropagation()"
+         oninput="previewAssist('${esc(projectId)}',${Number(item.budget_fraction)},${Number(item.duration_years)})">
+       <span class="ri-meta" id="pv-${esc(projectId)}"></span>
+       <span class="ri-meta dim">${t("ritem.clickHint")}</span>`
+    : `<span class="ri-meta dim">${t("ritem.assistUnavailable")}</span>`;
   return `<div class="ritem clickable" onclick="openProjectModal('${esc(projectId)}')">
     <div class="ri-head">
       <span class="ri-name">${esc(item.name || projectId)}</span>
       <span class="tag">${esc(kindTag)}</span>
     </div>
     <div class="ri-meta">${meta}</div>
-    <div class="ri-assist-row">
-      <span class="ri-meta">${t("ritem.assist")}</span>
-      <input type="number" id="as-${esc(projectId)}" min="0" max="1" step="0.1"
-        value="0" style="width:55px" onclick="event.stopPropagation()"
-        oninput="previewAssist('${esc(projectId)}',${Number(item.budget_fraction)},${Number(item.duration_years)})">
-      <span class="ri-meta" id="pv-${esc(projectId)}"></span>
-      <span class="ri-meta dim">${t("ritem.clickHint")}</span>
-    </div>
+    <div class="ri-assist-row">${assistRow}</div>
   </div>`;
 }
 
@@ -86,12 +90,15 @@ function completedCard(advance){
 
 // ── Group renderers (the caller wires these into the three research panels) ───
 
-// Available capability or safety items → unresearched clickable cards.
-export function renderAvailableItems(containerId, items, kindOf, emptyText){
+// Available capability or safety items → unresearched clickable cards. The
+// assistAvailable flag (from legal_moves.assist.available) gates the per-card
+// AI-assist input — no deployed model means no assist to offer.
+export function renderAvailableItems(containerId, items, kindOf, emptyText, assistAvailable){
   const container = $(containerId);
   if(!container) return;
   if(!items.length){ container.innerHTML = `<span class="dim">${esc(emptyText)}</span>`; return; }
-  container.innerHTML = items.map(item => unresearchedCard(item, kindOf(item))).join("");
+  container.innerHTML = items
+    .map(item => unresearchedCard(item, kindOf(item), assistAvailable)).join("");
 }
 
 // In-progress processes (capability advances, safety, and the live pretrain run).

@@ -46,6 +46,23 @@ def run_latent_phase(ctx):
                            "jailbreak techniques discovered in the wild "
                            f"(true sensitivity {sens:.2f}) — incidents now roll every quarter")
                     guardrail_status = "LEAKED — no guardrails" if m.leaked else "guarded"
+                    # A discovered jailbreak is a FREE existence proof about this model's
+                    # jailbreak-sensitivity — the same kind of evidence run_safety_project's
+                    # red_team buys, handed to you by the world. Record it as an incident
+                    # finding (like deception_caught / shutdown_resistance do) so it lands
+                    # in the Intel evidence dossier, the feed, and the worry bar. concern
+                    # scales with the true sensitivity it just exposed (mirrors the other
+                    # incident findings deriving concern from the stat they reveal).
+                    discovery_concern = min(1.0, 0.4 + sens * 0.5)
+                    lab.findings.append({
+                        "project_id": "incident", "model_id": m.id, "turn": turn,
+                        "evidence": "existence", "axis": "jailbreak_sensitivity",
+                        "text": f"jailbreak techniques for {m.id} were published in the "
+                                f"wild ({guardrail_status}) — a working jailbreak exists; "
+                                f"misuse incidents now roll every quarter",
+                        "concern": round(discovery_concern, 3), "weight": 1.5,
+                        "mechanistic": False, "assist_used": 0.0,
+                    })
                     fired.append(FiredEvent(
                         "jailbreak_discovery", "misuse", "ordinary", turn,
                         lab.id, m.id, 0.1, 0.0,
