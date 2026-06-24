@@ -1,1 +1,8 @@
 /.claude
+
+# Python bytecode — never deploy or track compiled artifacts.
+__pycache__/
+*.pyc
+
+# Saved CLI/agent sessions (cli.agent_session pickles).
+*.pkl

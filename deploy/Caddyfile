@@ -1,0 +1,26 @@
+# Caddy reverse proxy for the alignment game.
+#
+# Caddy terminates TLS for you: on first start (with the domain's DNS already
+# pointing at this droplet and ports 80/443 open) it automatically obtains and
+# renews a free Let's Encrypt certificate, and redirects all HTTP to HTTPS. The
+# Python backend stays on localhost:8000 and is never exposed directly.
+#
+# Replace BOTH domains below with yours, copy to /etc/caddy/Caddyfile, then:
+#   sudo systemctl reload caddy
+
+yourdomain.com, www.yourdomain.com {
+	encode gzip
+
+	# Forward everything to the internal Python server (systemd unit `alignment`).
+	reverse_proxy 127.0.0.1:8000
+
+	# Security headers. HSTS tells browsers to only ever use HTTPS for this site.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options    "nosniff"
+		X-Frame-Options           "DENY"
+		Referrer-Policy           "no-referrer"
+		# Don't advertise the server software.
+		-Server
+	}
+}
