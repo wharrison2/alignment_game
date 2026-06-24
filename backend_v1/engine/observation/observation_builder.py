@@ -82,6 +82,7 @@ def _rival_public_entry(other, lab, state, consts):
     entry = {
         "lab_id": other.id,
         "name": other.name,
+        "ticker": other.ticker,
         "market_cap": round(other.market_cap, 1),
         "released_models": len(other.release_history),
     }
@@ -98,23 +99,77 @@ def _rival_public_entry(other, lab, state, consts):
     return entry
 
 
+def _research_template(template_id):
+    """Look up the catalog template for a research process by id, across BOTH the
+    capability tree and the safety advances (they research with the same machinery).
+    Returns None for plain safety PROJECTS (measure/intervene), which carry their own
+    blurb on the legal-moves side rather than the §8b what_it_does/risk fields."""
+    from backend_v1.engine.research.capabilities.capabilities_research_item import (
+        CAPABILITY_TREE_BY_ID,
+    )
+    from backend_v1.engine.research.safety.safety_advance_item import SAFETY_ADVANCES_BY_ID
+    if template_id in CAPABILITY_TREE_BY_ID:
+        return CAPABILITY_TREE_BY_ID[template_id]
+    if template_id in SAFETY_ADVANCES_BY_ID:
+        return SAFETY_ADVANCES_BY_ID[template_id]
+    return None
+
+
 def _in_progress_entries(lab, state):
-    """Serialised view of all active projects, including any live training run."""
-    active_project_entries = [
-        {
-            "project_id": p.template_id,
-            "kind": p.kind,
-            "ai_assist": p.ai_assist,
-            "years_remaining_estimate": round(max(0.0, p.duration_years_remaining), 2),
+    """Serialised view of all active projects, including any live training run. NAME
+    and PHASE are looked up from the catalog so the frontend can render the same card
+    it uses for the available item. NO hidden process fields cross (no assisting-model
+    id, no contamination, no goal-mis of the assisting model)."""
+    active_project_entries = []
+    for process in lab.in_progress:
+        template = _research_template(process.template_id)
+        entry = {
+            "project_id": process.template_id,
+            "name": template.name if template is not None else process.template_id,
+            "kind": process.kind,
+            "phase": template.phase if template is not None else None,
+            "ai_assist": process.ai_assist,
+            "years_remaining_estimate": round(max(0.0, process.duration_years_remaining), 2),
         }
-        for p in lab.in_progress
-    ]
+        active_project_entries.append(entry)
+
     training_run_entry = (
-        [{"project_id": "pretrain_run", "kind": "training",
+        [{"project_id": "pretrain_run", "name": "Pretrain run", "kind": "training",
+          "phase": "pretrain", "ai_assist": 0.0,
           "years_remaining_estimate": round(lab.training_run.duration_years_remaining, 2)}]
         if lab.training_run is not None else []
     )
     return active_project_entries + training_run_entry
+
+
+def _researched_advance_entries(lab):
+    """COMPLETED advances (both capability and safety) the frontend can show as
+    read-only cards. ONLY non-secret, value-neutral fields cross this boundary — the
+    §8b what_it_does text, the name/phase/kind, and the completion turn. The hidden
+    fields on the ResearchedItem (contamination, researcher_model_id,
+    researched_with_assist) are TRUE state and never leave observation_builder."""
+    entries = []
+    for node_id, researched_item in lab.researched_advances.items():
+        template = _research_template(node_id)
+        if template is None:
+            continue
+        kind = ("safety_advance"
+                if node_id in _safety_advance_ids() else "capability")
+        entries.append({
+            "id": node_id,
+            "name": template.name,
+            "version": researched_item.version,
+            "phase": template.phase,
+            "kind": kind,
+            "what_it_does": template.what_it_does,
+            "completed_turn": researched_item.completed_turn,
+        })
+    return entries
+
+
+def _safety_advance_ids():
+    from backend_v1.engine.research.safety.safety_advance_item import SAFETY_ADVANCES_BY_ID
+    return set(SAFETY_ADVANCES_BY_ID)
 
 
 def _benchmark_cards(state, lab, consts):
@@ -236,6 +291,7 @@ def build_observation(state, lab, tips, policy_news, public_events,
         own_models=[_model_view(m) for m in lab.release_history],
         model_in_training=model_in_training_view,
         in_progress=_in_progress_entries(lab, state),
+        researched_advances=_researched_advance_entries(lab),
         new_findings=[dict(f) for f in new_findings],
         worry_bar=synthesize_worry_bar(lab.findings, state.turn, consts),
         rival_public=rivals_pub,
