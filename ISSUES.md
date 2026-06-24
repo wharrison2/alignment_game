@@ -1499,3 +1499,40 @@ Two fixes from the high-effort review of the centralization commit:
   `*.true` template structurally cannot reach a mid-game observation — the earlier
   flat table enforced this only by convention. Determinism preserved (event
   `true_text` is byte-identical; golden master unmoved).
+
+---
+
+## Task: queue-time budget/cash enforcement (frontend)
+
+**Symptom reported.** Queuing ("carry out") an item didn't visibly update the cash
+chip, and overruns were only rejected at END TURN by the backend `validate_action`.
+The player wanted to be stopped at the moment of queuing, on either resource.
+
+**What I did (all frontend — no backend/RNG/observation change; golden master
+unmoved).**
+- `core.js` now owns the affordability model: `cashLeft()` mirrors `budgetLeft()`
+  (the cash half of `actions.validate_action`'s `cash_needed`), and `queueFits()`
+  reports whether the whole `pending` queue still fits BOTH resources. Queue sites
+  follow a mutate→`queueFits()`→revert-on-fail pattern, so the *frontend* now
+  refuses an unaffordable start_project / commission_run / post-train round/advance
+  before it's queued. Backend `validate_action` is unchanged and remains the
+  authority (defense in depth) — this is a UX pull-forward, not a new trust boundary.
+- The cash chip (and budget chip) now show what's LEFT after the queue and flag red
+  when negative; the modal "carry out" stays open and shows the reason inline on a
+  rejection (the queue error line sits behind the overlay).
+
+**Bug found en route.** `budgetLeft()`/`renderQueue()` searched only the capability
+and safety-PROJECT lists, not `safety_advances_available`. A queued safety ADVANCE
+therefore dropped out of the budget preview entirely. Centralized all three lists in
+`core.queueableProjects()`, which fixes it.
+
+**Liberties / gaps flagged for review.**
+- **Litigation amicus/join fixed costs aren't exposed to the frontend.** `cashLeft()`
+  can only preview the *typed* litigation spend (the "fund" tier); the amicus/join
+  flat fees (`LIT_AMICUS_COST`/`LIT_JOIN_COST`) live backend-only, so the cash chip
+  under-counts those tiers. Backend still enforces the full cost at end-turn. Fix
+  would be exposing the two constants in `legal_moves`.
+- **Governance spends (lobby/litigation) are advisory, not hard-blocked.** They're
+  typed `oninput` number fields; clamping mid-keystroke is worse UX than letting the
+  cash chip go red and having the backend reject at end-turn. Only the discrete
+  "carry out / queue" buttons are hard-blocked. Noted as a deliberate scope line.

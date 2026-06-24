@@ -1,7 +1,7 @@
 "use strict";
 // ── main: master render, overlays, dev-mode gate, bootstrap + window wiring ──
 import {
-  $, fmt$, api, apply, OBS, pending, budgetLeft,
+  $, fmt$, api, apply, OBS, pending, budgetLeft, cashLeft,
   setRender, setOnGameOver, resetFeed, t,
 } from "./core.js";
 import {
@@ -26,10 +26,18 @@ function render(){
   // Top bar chips
   $("t-turn").textContent = OBS.turn;
   $("t-year").textContent = OBS.year.toFixed(2);
-  $("t-cash").textContent = fmt$(OBS.cash);
+  // Cash and budget chips show what's LEFT after everything queued this turn, so the
+  // player sees an action's cost the moment they queue it. Queue-time guards keep
+  // both from going negative via discrete actions; governance spends are typed, so
+  // flag the chip red if those push a resource below zero (backend still enforces).
+  const cashRemaining = cashLeft();
+  $("t-cash").textContent = fmt$(cashRemaining);
+  $("t-cash").classList.toggle("bad", cashRemaining < 0);
   $("t-rev").textContent  = fmt$(OBS.revenue_rate);
   $("t-inv").textContent  = fmt$(OBS.investment_rate);
-  $("t-budget").textContent = budgetLeft().toFixed(2);
+  const budgetRemaining = budgetLeft();
+  $("t-budget").textContent = budgetRemaining.toFixed(2);
+  $("t-budget").classList.toggle("bad", budgetRemaining < -1e-9);
   $("t-appr").textContent = OBS.public_approval;
   $("t-chatter").textContent = OBS.regulatory_chatter;
   $("t-policies").textContent = OBS.active_policies.length ?

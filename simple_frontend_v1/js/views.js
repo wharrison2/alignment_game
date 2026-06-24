@@ -6,7 +6,7 @@
 import {
   $, fmt$, OBS, NAMES, TICKERS, HIST, FEED, TRUTH, pending, esc,
   COLORS, ENF_COLOR,
-  effFraction, effYears, budgetLeft, render, t,
+  effFraction, effYears, budgetLeft, queueableProjects, queueFits, render, t,
 } from "./core.js";
 import {
   renderAvailableItems, renderInProgressItems, renderCompletedAdvances,
@@ -612,7 +612,18 @@ function postTrainSafetyHTML(){
 // Toggle whether a post-train round runs this turn. Starting one preserves any
 // already-chosen advances; turning it off clears the queued post_train entirely.
 export function togglePostTrain(on){
+  const previous = pending.post_train;   // restore this if starting a round overruns budget
   pending.post_train = on ? {applied_safety: pending.post_train?.applied_safety || []} : null;
+  if(on){
+    const fit = queueFits();
+    if(!fit.ok){
+      pending.post_train = previous;     // revert: the round didn't fit the work-budget
+      $("errors").textContent = fit.reason;
+      renderTraining();                  // re-sync the checkbox to the reverted state
+      return;
+    }
+  }
+  $("errors").textContent = "";
   renderTraining(); renderQueue();
   $("t-budget").textContent = budgetLeft().toFixed(2);
 }
@@ -621,9 +632,23 @@ export function togglePostTrain(on){
 export function togglePostTrainSafety(advanceId, on){
   if(!pending.post_train) pending.post_train = {applied_safety: []};
   const applied = pending.post_train.applied_safety;
-  if(on){ if(!applied.includes(advanceId)) applied.push(advanceId); }
-  else  { pending.post_train.applied_safety = applied.filter(id => id !== advanceId); }
+  if(on){
+    if(!applied.includes(advanceId)){
+      applied.push(advanceId);
+      const fit = queueFits();
+      if(!fit.ok){
+        applied.pop();                   // revert: this advance pushed the round over budget
+        $("errors").textContent = fit.reason;
+        renderTraining();                // re-sync the checkbox to the reverted state
+        return;
+      }
+    }
+  } else {
+    pending.post_train.applied_safety = applied.filter(id => id !== advanceId);
+  }
+  $("errors").textContent = "";
   renderQueue();
+  $("t-budget").textContent = budgetLeft().toFixed(2);
 }
 
 export function toggleRelease(on){
@@ -699,10 +724,19 @@ export function queueRun(){
   const chosenSafety = applicable
     .filter(advance => $("prts-" + advance.advance_id)?.checked)
     .map(advance => advance.advance_id);
+  const previousRun = pending.commission_run;   // restore this if the new run overruns cash
   pending.commission_run = {
     compute: parseFloat($("run-compute").value || 0),
     applied_safety: chosenSafety,
   };
+  const fit = queueFits();
+  if(!fit.ok){
+    pending.commission_run = previousRun;       // revert: the run's compute didn't fit cash
+    $("errors").textContent = fit.reason;
+    renderPretrain();                           // re-sync the run controls to the reverted state
+    return;
+  }
+  $("errors").textContent = "";
   render();
 }
 
@@ -986,10 +1020,22 @@ function renderAvailableInto(containerId, items, kindOf, emptyText, append, assi
   if(append) container.innerHTML = hintHTML + container.innerHTML;
 }
 
+// Queue a research item. Returns {ok, reason}: on success the item is queued and a
+// full re-render runs; on failure (it would overrun work-budget or cash) NOTHING is
+// queued and `reason` says which limit it breached — the modal caller surfaces it
+// inline, and it's also written to the queue error line for the non-modal path.
 export function queueProject(pid){
   const assistValue = parseFloat($("as-"+pid)?.value || 0);
   pending.start_projects.push({project_id:pid, ai_assist:isNaN(assistValue)?0:assistValue});
+  const fit = queueFits();
+  if(!fit.ok){
+    pending.start_projects.pop();   // revert: this item didn't fit the budget/cash
+    $("errors").textContent = fit.reason;
+    return fit;
+  }
+  $("errors").textContent = "";
   render();
+  return fit;
 }
 
 export function unqueueProject(pid){
@@ -1381,8 +1427,7 @@ export function toggleDefect(pid, on){
 // ── Turn queue display ────────────────────────────────────────────────────────
 export function renderQueue(){
   const items = [];
-  const allProjects = OBS.legal_moves.capability_projects_available
-                      .concat(OBS.legal_moves.safety_projects_available);
+  const allProjects = queueableProjects();
 
   // Queued project starts with optional assist annotation.
   pending.start_projects.forEach(queued => {

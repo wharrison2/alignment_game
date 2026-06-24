@@ -337,6 +337,9 @@ export const STRINGS = {
   "queue.lobby": "lobby {stance} {policy}{spend}",
   "queue.litigate": "litigate {side} {policy} ({tier}{spend})",
   "queue.defect": "DEFECT {policy}",
+  // queue-time affordability rejections (shown when an action won't fit this turn)
+  "queue.cantAfford.budget": "can't queue: {over} over your work-budget — unqueue something, or add AI-assist to shrink it",
+  "queue.cantAfford.cash": "can't queue: ${over}M over your cash on hand — unqueue something first",
 };
 
 // Look up authored copy by key, filling any {placeholder} tokens from params.
