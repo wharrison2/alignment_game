@@ -187,12 +187,18 @@ _OPENING = Action(start_projects=[{"project_id": "scaling_laws", "ai_assist": 0.
 # levers (fines->valuation, faster reg enactment, rival recklessness). Every lab’s
 # economy/dynamics shift, so digests move; determinism holds; NOT an RNG/firewall
 # regression (§8). Invariants: no-op loses 8/8, reckless rival composite ~0.53.
+# Re-recorded for the "symmetric balance pass" (ISSUES.md): designer-agreed world-lever
+# values — fines floor 0.25->0.20 & K 0.7->0.9 (devalue reckless defectors), buyout
+# trigger 0.55->0.62 & base-rate 0.9->0.7 (a clean leader can hold dominance), and
+# POLICY_THRESHOLDS["interp_mandate"] 60->45 (containment enactable). All symmetric;
+# determinism holds; intentional balance change, NOT a regression (§8). Invariants:
+# no-op loses 8/8, reckless composite ~0.53.
 EXPECTED = {
     "0-balanced-realistic": "0a26bc951e9ad16442a96cdf0b4d6d43bd8bb58340bc0b3d0c6fdbeb715bb4b1",
     "3-aggressive-realistic": "9f17be32338c738b8cbd6e6e523c6d38cbb711701072aa7a0918e1f6365ddd58",
     "7-cautious-realistic": "ed9d9f0b03c66013f4f24f70d9fdae11d08a3d4916d264b162ebf04309893d77",
-    "1-balanced-easy": "d1cd124c52fea31464f2be233f452f9c2e8a2a5c13dabf75e8d4386114f4756b",
-    "5-aggressive-impossible": "1e457054d428ba1ec6df3b33179a81fcac643d0d4cbf5ddf2975a3ef6ad35dca",
+    "1-balanced-easy": "046b3e0bcaacc162325f4f7a3c353bb3beec35b45f45d9217526643896003a98",
+    "5-aggressive-impossible": "10854f34a4d449f8a908daf4cf0c8b0343bb55c538ee8fb45b3bb94499a19a3f",
 }
 
 

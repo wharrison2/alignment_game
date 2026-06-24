@@ -348,7 +348,7 @@ POLICY_THRESHOLDS = {           # INTRODUCTION thresholds: score crosses => on t
     "disclosure": 30.0,
     "audit_requirement": 38.0,
     "open_weights_restriction": 42.0,
-    "interp_mandate": 60.0,     # also requires a public deception incident first
+    "interp_mandate": 45.0,     # also requires a public deception incident first
     "compute_cap": 97.0,        # near-impossible to enact — deliberately (the lesson)
 }
 AUDIT_DELAY_YEARS = 0.25
@@ -409,10 +409,10 @@ RIVAL_DISPOSITIONS = [
 # A crushed rival is acquired, recapitalized, renamed, and relaunched as a
 # hungry entrant, so a dominant player can never permanently clear the board and
 # coast to a pressure-free win. All [TUNE]; see engine/events/buyouts.py.
-BUYOUT_TRIGGER_CONCENTRATION = 0.55  # leader's market-cap share before acquirers circle
+BUYOUT_TRIGGER_CONCENTRATION = 0.62  # leader's market-cap share before acquirers circle
 BUYOUT_TARGET_CAP_FRACTION = 0.20    # a target sits below this fraction of the leader's cap
 BUYOUT_TARGET_VIABLE_CASH = 250.0    # ...and below this cash (can't fund a serious run)
-BUYOUT_BASE_RATE_PER_YEAR = 0.9      # per-year hazard once the field is concentrated...
+BUYOUT_BASE_RATE_PER_YEAR = 0.7      # per-year hazard once the field is concentrated...
 BUYOUT_CONCENTRATION_GAIN = 2.0      # ...rising the more monopolistic the leader is
 BUYOUT_COOLDOWN_TURNS = 6            # minimum turns between buyouts (acquisitions take time)
 BUYOUT_CAPITAL_FRACTION = 0.45       # war chest = this fraction of the leader's cash...
@@ -468,8 +468,8 @@ DIFFICULTY_SCALED = [
 # money to regulatory penalties. fines_factor = max(FLOOR, 1 - K * fines_paid/max(REF, cap)).
 # Only DEFECTORS (reckless rivals) are fined, so this rewards a clean+compliant record
 # and the player governance lobbying (ISSUES.md "fines->valuation").
-FINES_VALUATION_K = 0.7
-FINES_VALUATION_FLOOR = 0.25
+FINES_VALUATION_K = 0.9
+FINES_VALUATION_FLOOR = 0.20
 FINES_VALUATION_REF = 1500.0
 FINES_VALUATION_REVENUE_YEARS = 2.0  # fines judged against ~2 years of revenue
 

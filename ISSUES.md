@@ -1606,3 +1606,29 @@ reach aligned ASI first). The stale winning replay (tests/winning_replay_seed2.j
 recorded under the now-removed buffs and no longer reproduces. Remaining work is an iterative
 world-parameter tune (recklessness / creep / WTR / buyout / fines) + a fresh hand-played win
 demonstration under the symmetric rules.
+
+### Symmetric balance pass + the containment-timing blocker (playtest diagnosis)
+
+Designer-agreed symmetric world-lever values applied: FINES_VALUATION_FLOOR 0.25->0.20,
+FINES_VALUATION_K 0.7->0.9 (devalue reckless defectors); BUYOUT_TRIGGER 0.55->0.62,
+BUYOUT_BASE_RATE 0.9->0.7 (a clean leader can hold dominance); POLICY_THRESHOLDS
+["interp_mandate"] 60->45 (containment threshold lowered). Recklessness 0.7, creep 0.025
+unchanged. Invariants verified: no-op loses 8/8; reckless composite ~0.53.
+
+**Careful economy-first playtest (seed 2) — still a LOSS, root cause found.** Built four
+strong, genuinely clean (composite <0.16), jailbreak-hardened models and a healthy economy,
+but reckless rivals reached misaligned ASI first. The clean "win by governance" path is
+blocked by a CHAIN of gates on the only effective containment reg (interp_mandate):
+  1. It needs a PUBLIC DECEPTION SCANDAL to even reach the board (world.deception_incident
+     _public, set by the `deception_caught` event).
+  2. That event's rate = DECEPTION_CAUGHT_RATE(0.30) x true_deception x general/CAP_MAX
+     ~= 3%/turn even for a deceptive rival, so the scandal surfaces only when rivals are
+     already near ASI — too late to enact + stall them.
+  3. Rivals also counter-lobby AGAINST interp_mandate (out-spending the player's pro-lobby).
+So even at threshold 45, interp_mandate stays dormant and rivals win the race.
+
+**OPEN — next lever (proposed, not yet applied):** raise DECEPTION_CAUGHT_RATE (e.g. 0.30
+->~0.7) so a deceptive rival's scandal surfaces EARLIER (~general 6-7, mid-game), unlocking
+interp_mandate in time for a lobbying player to enact it and stall reckless rivals below ASI
+— making the clean governance win path actually reachable. Symmetric (applies to all labs).
+Needs designer sign-off + a replay to validate.
