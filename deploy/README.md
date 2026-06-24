@@ -166,6 +166,52 @@ curl -s https://yourdomain.com/api/truth      # must be exactly {"turns": []}
 
 ---
 
+## Step 8 — DDoS & bot protection (Cloudflare, free) — strongly recommended before sharing the link
+
+A single droplet cannot absorb a volumetric flood on its own — the network pipe
+saturates regardless of code. The fix is to put **Cloudflare's free tier** in
+front: it soaks up volumetric attacks, filters bots, hides your droplet's real IP,
+and gives you per-IP rate limiting — all with no code. The backend already has
+matching app-level backstops (a per-game turn cap, a cached post-mortem so it
+can't be made to re-simulate on demand, a request-concurrency limit that sheds to
+503, and a body-size cap), but those protect the box *after* traffic arrives;
+Cloudflare keeps most abusive traffic from arriving at all.
+
+**Do this AFTER Steps 1–7 work over HTTPS** (Caddy needs to get its certificate
+first; doing it before Cloudflare proxying avoids a confusing chicken-and-egg with
+the certificate challenge).
+
+1. **Add the domain to Cloudflare.** Create a free account at cloudflare.com →
+   "Add a site" → enter `yourdomain.com`. Cloudflare scans your existing DNS and
+   gives you **two nameservers**.
+2. **Point GoDaddy at Cloudflare.** In GoDaddy → your domain → Nameservers →
+   "Change" → "I'll use my own nameservers" → paste Cloudflare's two nameservers.
+   (This moves DNS hosting to Cloudflare; propagation can take up to a few hours.)
+3. **Turn on proxying.** In Cloudflare → DNS, make sure the `@` and `www` **A
+   records point to `<droplet-ip>`** with the **orange cloud ON** (Proxied). The
+   orange cloud is what routes traffic through Cloudflare and hides your origin IP.
+4. **Set TLS mode to Full (strict).** Cloudflare → SSL/TLS → Overview →
+   **Full (strict)**. This keeps HTTPS all the way to the droplet and validates
+   Caddy's real certificate.
+5. **Lock the firewall to Cloudflare** so attackers can't bypass the proxy by
+   hitting the droplet IP directly. Either use DigitalOcean's Cloud Firewall to
+   allow 80/443 only from Cloudflare's published IP ranges
+   (https://www.cloudflare.com/ips/), or keep `ufw` but restrict those ports to
+   those ranges. (SSH/22 stays open to you.)
+6. **Turn on bot + rate-limit protection** (Cloudflare dashboard):
+   - **Security → Bots → Bot Fight Mode: On** (free) — challenges obvious bots.
+   - **Security → WAF → Rate limiting rules**: the free plan includes one rule.
+     Add: *if URI path starts with `/api/`, more than ~60 requests per minute per
+     IP → Block (or Managed Challenge)*. This directly throttles `/api/new` and
+     `/api/action` floods.
+   - Optionally flip **"Under Attack Mode"** on temporarily if you're ever
+     actively targeted — it shows an interstitial challenge to every visitor.
+
+After this, re-verify the site still loads over HTTPS and a game plays end to end
+(the cookie and same-origin requests work identically through Cloudflare).
+
+---
+
 ## Optional but recommended follow-ups
 
 These harden the box further; none block launch.
@@ -202,8 +248,12 @@ changed that file, resolve the merge there — both sets of changes are wanted.
 
 ## Capacity note
 
-The backend is Python's stdlib `http.server` (thread-per-request). Behind Caddy
-this is fine for a low-to-moderate-traffic game. If you ever outgrow it, the
-handlers are thin wrappers over `Session`, so they port cleanly to Flask/FastAPI
-under gunicorn/uvicorn — at which point the in-memory session registry would move
-to a shared store (Redis/DB). Out of scope until you actually have the load.
+The backend is Python's stdlib `http.server` (thread-per-request), but it now
+sheds load past a concurrency cap (503) instead of spawning unbounded threads,
+times out slow connections, caps body size, bounds per-game length, and caches the
+post-mortem — so a single client can't cheaply exhaust it. Behind Caddy and
+Cloudflare this is fine for a low-to-moderate-traffic game. If you ever outgrow it,
+the handlers are thin wrappers over `Session`, so they port cleanly to
+Flask/FastAPI under gunicorn/uvicorn — at which point the in-memory session
+registry would move to a shared store (Redis/DB). Out of scope until you actually
+have the load.

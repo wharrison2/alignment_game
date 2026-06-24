@@ -56,9 +56,45 @@ MAX_BODY_BYTES = 64 * 1024
 # HttpOnly keeps page JS (and thus any XSS) from ever reading it.
 SESSION_COOKIE = "sid"
 
+# ── Load-shedding bounds (INVENTED for deployment — see ISSUES.md) ─────────────
+# Hard ceiling on a single game's length. A real game ends far sooner (~50-60
+# turns), so this never touches legitimate play; it just guarantees one session
+# can't be driven to an unbounded number of (CPU-costly) engine steps, even if a
+# client requests a huge max_turns or a game somehow fails to terminate.
+MAX_GAME_TURNS = 500
+
+# Per-request socket timeout (seconds): caps how long one handler can hold a
+# worker thread waiting on a slow or stalled client. Defense-in-depth — a reverse
+# proxy already buffers requests, but this bounds the backend directly too.
+REQUEST_TIMEOUT_SECONDS = 30
+
+# Hard ceiling on requests processed at once. Past this we shed load with 503
+# instead of spawning unbounded worker threads / running unbounded concurrent
+# engine steps under a connection flood. Generous for real play (each request is
+# a quick single turn); the edge (rate limiting) is the first line, this is the
+# backstop if a flood gets through.
+MAX_CONCURRENT_REQUESTS = 32
+_request_slots = threading.BoundedSemaphore(MAX_CONCURRENT_REQUESTS)
+
 
 class _BodyTooLarge(Exception):
     """Raised by _read_body when a request declares more bytes than MAX_BODY_BYTES."""
+
+
+def clamp_max_turns(raw_value):
+    """Bound a client-supplied max_turns to MAX_GAME_TURNS. None (the normal
+    'play to a natural end' case) is capped too — real games end far sooner, so
+    legitimate play is unaffected; this only removes the one client-tunable that
+    could lengthen a single session's compute/memory without limit."""
+    if raw_value is None:
+        return MAX_GAME_TURNS
+    try:
+        requested_turns = int(raw_value)
+    except (TypeError, ValueError):
+        return MAX_GAME_TURNS
+    if requested_turns < 1:
+        return MAX_GAME_TURNS
+    return min(requested_turns, MAX_GAME_TURNS)
 
 
 class Session:
@@ -75,6 +111,9 @@ class Session:
         # interleave a step; `last_access` drives LRU eviction in the registry.
         self.lock = threading.Lock()
         self.last_access = time.monotonic()
+        # Cache for the post-mortem (built once the game is over). Building it
+        # re-simulates counterfactual branches and is expensive, so we memoize.
+        self._postmortem_cache = None
 
     def player_observation(self):
         if self.observations is not None:
@@ -138,7 +177,14 @@ class Session:
     def postmortem(self):
         if not self.state.game_over:
             return {"errors": ["game is not over"]}
-        return build_postmortem(self.engine.logger, self.state, self.player.id, resim=True)
+        # The game is frozen once it's over, so the post-mortem is deterministic.
+        # Build it once and reuse it: re-running build_postmortem (which replays
+        # counterfactual branches) on every call would let a client amplify load
+        # by spamming /api/postmortem on a finished game.
+        if self._postmortem_cache is None:
+            self._postmortem_cache = build_postmortem(
+                self.engine.logger, self.state, self.player.id, resim=True)
+        return self._postmortem_cache
 
 
 # ── Session registry ──────────────────────────────────────────────────────────
@@ -181,8 +227,30 @@ def lookup_session(token):
 
 
 class Handler(BaseHTTPRequestHandler):
+    # StreamRequestHandler applies this to the socket: a slow client can hold a
+    # worker thread for at most REQUEST_TIMEOUT_SECONDS before the read times out.
+    timeout = REQUEST_TIMEOUT_SECONDS
+
     def log_message(self, fmt, *args):   # quiet
         pass
+
+    def handle(self):
+        # Load-shed past MAX_CONCURRENT_REQUESTS rather than let a connection
+        # flood spawn unbounded threads / concurrent engine steps. setup() has
+        # already created self.wfile, so we can answer 503 without parsing the
+        # request. The slot is always released, even if the handler raises.
+        if not _request_slots.acquire(blocking=False):
+            try:
+                self.wfile.write(b"HTTP/1.1 503 Service Unavailable\r\n"
+                                 b"Content-Length: 0\r\n"
+                                 b"Connection: close\r\n\r\n")
+            except OSError:
+                pass
+            return
+        try:
+            super().handle()
+        finally:
+            _request_slots.release()
 
     # ── Response helpers ──────────────────────────────────────────────────────
     def _json(self, payload, code=200, set_cookie_token=None):
@@ -337,7 +405,7 @@ class Handler(BaseHTTPRequestHandler):
                 difficulty=body.get("difficulty", "realistic"),
                 guidance=body.get("guidance", "standard"),
                 rivals=body.get("rivals"),
-                max_turns=body.get("max_turns"))
+                max_turns=clamp_max_turns(body.get("max_turns")))
         except ValueError as e:
             self._json({"errors": [str(e)]}, 400)
             return

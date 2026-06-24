@@ -155,3 +155,32 @@ changes are confined to `backend_v1/server/server.py`; the engine, RNG, and
   behind Caddy — adequate for hobby traffic, not a hardened app server. Migration path
   (Flask/FastAPI + gunicorn/uvicorn + shared session store) noted in `deploy/README.md`.
   Revisit only if real load appears.
+
+## Sub-task: DoS / bot hardening (server layer + edge)
+
+`/security-review` excludes DoS by design, so this was a separate pass. The threat
+that matters for a single droplet is *asymmetric* application-layer load (a cheap
+request that is expensive to serve) plus volumetric floods. Volumetric is handled
+at the edge (Cloudflare, documented in `deploy/README.md` Step 8 — free tier hides
+the origin IP and rate-limits `/api/*`). The app-level backstops, all in `server.py`:
+
+- **`MAX_GAME_TURNS = 500`** + `clamp_max_turns()` — bounds one session's compute/
+  memory. The client could previously pass any `max_turns` (or rely on uncapped);
+  real games end ~50-60 turns so this never affects play, it just removes the one
+  client-tunable that set session lifetime. INVENTED — see ISSUES note above.
+- **Post-mortem caching** (`Session._postmortem_cache`) — `build_postmortem(resim=True)`
+  replays counterfactual branches (expensive). The game is frozen once over, so the
+  result is memoized; this removes a "spam `/api/postmortem` to amplify CPU" vector.
+- **`REQUEST_TIMEOUT_SECONDS = 30`** (`Handler.timeout`) — a slow/stalled client can
+  hold a worker thread for at most 30s before the socket read times out.
+- **`MAX_CONCURRENT_REQUESTS = 32`** + a `BoundedSemaphore` in `Handler.handle()` —
+  past the cap we answer 503 rather than spawn unbounded threads / run unbounded
+  concurrent engine steps. INVENTED; generous for real play, a backstop behind edge
+  rate limiting.
+- (Already present from the HTTPS task: `MAX_BODY_BYTES` 64 KB → 413, and `MAX_SESSIONS`
+  LRU eviction. Note the eviction has a griefing edge — a `/api/new` flood can evict
+  real players' in-progress games; the real mitigation is edge rate limiting on
+  `/api/new`, hence Cloudflare.)
+
+All are server-layer; the golden-master digest is unchanged. Numbers are INVENTED
+deployment knobs (not game balance) — tune to the real droplet.

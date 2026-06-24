@@ -8,8 +8,25 @@
 # Replace BOTH domains below with yours, copy to /etc/caddy/Caddyfile, then:
 #   sudo systemctl reload caddy
 
+# Global options: explicit timeouts blunt slow-client (slowloris) connection
+# holding at the edge, before anything reaches the backend.
+{
+	servers {
+		timeouts {
+			read_body   10s
+			read_header 5s
+			idle        2m
+		}
+	}
+}
+
 yourdomain.com, www.yourdomain.com {
 	encode gzip
+
+	# Reject oversized request bodies at the edge (the backend also caps this).
+	request_body {
+		max_size 64KB
+	}
 
 	# Forward everything to the internal Python server (systemd unit `alignment`).
 	reverse_proxy 127.0.0.1:8000
