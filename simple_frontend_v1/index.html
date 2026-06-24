@@ -13,8 +13,12 @@
     --serif:Georgia,"Iberian","Times New Roman",Cambria,"Liberation Serif",serif;
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--txt);
-       font:14px/1.5 var(--serif)}
+  /* Full-viewport flex column: top bar, nav, scrolling content, then the action
+     bar as the LAST item — so the content area fills the space between them with
+     no magic-number height math, and the action bar always sits at the bottom. */
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.5 var(--serif);
+       display:flex;flex-direction:column;overflow:hidden}
   h3{margin:0 0 8px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;
      color:var(--dim);font-weight:700}
   button{background:var(--panel2);color:var(--txt);border:1px solid var(--line);
@@ -25,17 +29,20 @@
   input,select{background:#ffffff;color:var(--txt);border:1px solid var(--line);
                border-radius:3px;padding:3px 6px;font:inherit}
   input[type=number]{width:90px}
-  #topbar{display:flex;flex-wrap:wrap;gap:14px;align-items:center;
+  #topbar{flex:0 0 auto;display:flex;flex-wrap:wrap;gap:14px;align-items:center;
           padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--line);
-          position:sticky;top:0;z-index:5}
+          z-index:5}
   .chip b{color:var(--acc)}
-  #nav{display:flex;gap:4px;align-items:center;padding:6px 14px;background:var(--panel);
-       border-bottom:1px solid var(--line);position:sticky;top:37px;z-index:4}
+  #nav{flex:0 0 auto;display:flex;gap:4px;align-items:center;padding:6px 14px;
+       background:var(--panel);border-bottom:1px solid var(--line);z-index:4}
   #nav button{border-radius:5px 5px 0 0;padding:6px 16px;letter-spacing:.04em}
   #nav button.active{background:var(--acc);color:#ffffff;font-weight:700;border-color:var(--acc)}
-  #views{padding:10px 10px 72px}  /* bottom room for the fixed #queue bar */
+  /* the content area fills the remaining height and scrolls internally */
+  #views{flex:1 1 auto;min-height:0;overflow-y:auto;padding:10px}
   .view{display:none}
   .view.active{display:block}
+  /* the market view fills the whole content area so its columns reach the bottom */
+  .view[data-view="market"]{height:100%}
   .cols2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .cols3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;
@@ -72,7 +79,7 @@
   /* Market page fills the viewport between the nav and the fixed action bar:
      feed (left) and the graph+info column (right) both stretch to the bottom. */
   .market-grid{display:grid;grid-template-columns:320px minmax(0,1fr);gap:10px;
-               height:calc(100vh - 160px);min-height:380px}
+               height:100%;min-height:380px}
   /* feed extends to the bottom; items scroll inside it regardless of how many */
   .market-feed{display:flex;flex-direction:column;height:100%}
   /* right column: graph panel (≈⅔) on top, separate market-info panel (≈⅓).
@@ -113,8 +120,9 @@
   .bar{height:10px;background:var(--panel2);border:1px solid var(--line);
        border-radius:5px;overflow:hidden;flex:1}
   .bar i{display:block;height:100%}
-  /* the per-turn action bar is ALWAYS pinned across the bottom of the viewport */
-  #queue{position:fixed;left:0;right:0;bottom:0;background:var(--panel);
+  /* the per-turn action bar is the LAST flex item in the body column, so it
+     always sits across the bottom of the viewport (no fixed positioning) */
+  #queue{flex:0 0 auto;background:var(--panel);
          border-top:1px solid var(--line);padding:8px 14px;display:flex;
          gap:10px;align-items:center;flex-wrap:wrap;z-index:5}
   #queue .item{background:var(--panel2);border:1px solid var(--line);
