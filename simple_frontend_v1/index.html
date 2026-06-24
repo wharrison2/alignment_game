@@ -75,11 +75,12 @@
                height:calc(100vh - 160px);min-height:380px}
   /* feed extends to the bottom; items scroll inside it regardless of how many */
   .market-feed{display:flex;flex-direction:column;height:100%}
-  /* right column: graph panel (≈⅔) on top, separate market-info panel (≈⅓)
-     filling down to the screen bottom */
-  .market-right{display:flex;flex-direction:column;gap:10px;height:100%;min-height:0}
-  .market-graph-panel{flex:2 1 0;display:flex;flex-direction:column;min-height:0}
-  .market-info-panel{flex:1 1 0;display:flex;flex-direction:column;min-height:0}
+  /* right column: graph panel (≈⅔) on top, separate market-info panel (≈⅓).
+     CSS-grid fr rows fill the column exactly, so the info panel's bottom lands
+     on the grid bottom — level with the feed (flex-grow can leave a gap here). */
+  .market-right{display:grid;grid-template-rows:2fr 1fr;gap:10px;height:100%;min-height:0}
+  .market-graph-panel{display:flex;flex-direction:column;min-height:0}
+  .market-info-panel{display:flex;flex-direction:column;min-height:0}
   /* finance snapshot (market cap / ARR / P/E / YoY); cards stretch to fill */
   .capmetrics{flex:1;display:grid;grid-template-columns:repeat(4,1fr);
               grid-auto-rows:1fr;gap:8px;min-height:0}
@@ -106,9 +107,8 @@
   .feed-text{font-size:12px;line-height:1.4}
   @media(max-width:760px){.market-grid{grid-template-columns:1fr;height:auto}
     .market-feed{height:46vh}
-    .market-right{height:auto}
-    .market-graph-panel{flex:none;height:46vh}
-    .market-info-panel{flex:none}
+    .market-right{display:flex;flex-direction:column;height:auto}
+    .market-graph-panel{height:46vh}
     .capmetrics{grid-template-columns:repeat(2,1fr);grid-auto-rows:auto}}
   .bar{height:10px;background:var(--panel2);border:1px solid var(--line);
        border-radius:5px;overflow:hidden;flex:1}
