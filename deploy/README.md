@@ -75,12 +75,41 @@ adduser --system --group alignment
 Deploy from the `main` branch (merge the `deploy-https` branch into `main` first —
 see "Merging this work" at the bottom).
 
+We do a **minimal checkout**: shallow history (no old commits) + no docs in the
+working tree. This keeps the server footprint small without affecting the repo or
+any other machine — those keep the full history and all the docs.
+
 ```bash
-git clone <your-repo-url> /opt/alignment_game
+# --depth 1        : only the latest commit, not the whole history
+# --filter=blob:none: don't download file contents we won't check out (e.g. the .md)
+#                     — honored by GitHub/GitLab; a "filtering not recognized"
+#                       warning on other hosts is harmless (you just keep the docs
+#                       in history, still excluded from the working tree below)
+# --no-checkout    : don't populate files yet, so we can set the exclusion first
+git clone --depth 1 --filter=blob:none --no-checkout \
+  --branch main <your-repo-url> /opt/alignment_game
+cd /opt/alignment_game
+
+# Exclude every .md from the working tree (code stays). Persists across updates.
+git sparse-checkout init --no-cone
+git sparse-checkout set '/*' '!*.md'
+
+git checkout main
 chown -R alignment:alignment /opt/alignment_game
 ```
 
-To update later: `cd /opt/alignment_game && git pull && systemctl restart alignment`.
+Result: `.git` is a fraction of its full size and no `.md` files sit on the server,
+while your laptop and the repo are untouched. (Code is intact — verify with
+`ls backend_v1/server/server.py`.)
+
+To update later (stays shallow, keeps docs excluded):
+
+```bash
+cd /opt/alignment_game
+git fetch --depth 1 origin main
+git reset --hard origin/main
+systemctl restart alignment
+```
 
 ---
 
@@ -253,20 +282,21 @@ Also consider disabling SSH password login in `/etc/ssh/sshd_config`
 | Backend logs              | `journalctl -u alignment -n 100 -f`                |
 | Reload Caddy after edit   | `systemctl reload caddy`                           |
 | Caddy / cert logs         | `journalctl -u caddy -n 100 -f`                    |
-| Deploy new code           | `cd /opt/alignment_game && git pull && systemctl restart alignment` |
+| Deploy new code           | `cd /opt/alignment_game && git fetch --depth 1 origin main && git reset --hard origin/main && systemctl restart alignment` |
 
-### Why `git pull` is safe for your config
+### Why updating is safe for your config
 
-Nothing host-specific lives in the repo. The two config files are **templates copied
-out of the repo** — your live `/etc/systemd/system/alignment.service` and
-`/etc/caddy/Caddyfile` are separate copies a pull never touches. The only per-host
-value, your domain, lives in the `systemctl edit caddy` override (also outside the
-repo). The backend bind address is `127.0.0.1` on every machine (it must be —
-that keeps the server behind Caddy), and your droplet's public IP lives only in
-GoDaddy DNS, never in the code. So a pull updates code and leaves all host values
-intact. If a pull ever changes a *template* (`deploy/Caddyfile` /
-`deploy/alignment.service`) and you want the improvement, re-run its `cp` step;
-your `DOMAIN` override and paths still apply.
+Nothing host-specific lives in the repo, so `git reset --hard origin/main` (which
+discards any drift in the checkout) is safe here. The two config files are
+**templates copied out of the repo** — your live `/etc/systemd/system/alignment.service`
+and `/etc/caddy/Caddyfile` are separate copies an update never touches. The only
+per-host value, your domain, lives in the `systemctl edit caddy` override (also
+outside the repo). The backend bind address is `127.0.0.1` on every machine (it
+must be — that keeps the server behind Caddy), and your droplet's public IP lives
+only in GoDaddy DNS, never in the code. The shallow + sparse settings persist, so
+updates stay small and the `.md` files never reappear. If an update changes a
+*template* (`deploy/Caddyfile` / `deploy/alignment.service`) and you want the
+improvement, re-run its `cp` step; your `DOMAIN` override and paths still apply.
 
 ---
 
