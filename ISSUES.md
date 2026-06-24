@@ -103,3 +103,84 @@ master; a designer may want to collapse them to a single honest coefficient.
 - **§12 "Resolved this session (kept as a record, no longer open)".** A record of
   settled decisions; a candidate for archiving to keep the live "open decisions"
   index scannable. Flagged lightly — designer's call, not urgent.
+
+---
+
+# Task: HTTPS deployment + multi-session hardening (server layer)
+
+Goal: make the game deployable as a public HTTPS site (DigitalOcean droplet +
+GoDaddy domain + Caddy reverse proxy) for many concurrent players. All code
+changes are confined to `backend_v1/server/server.py`; the engine, RNG, and
+`observation_builder` are untouched, so the golden-master digest is unaffected.
+
+### Liberties taken (flagged for review)
+
+- **Invented deployment constants** in `server.py` (no design-doc basis — these are
+  ops knobs, not game balance):
+  - `MAX_SESSIONS = 500` — registry cap; beyond it the least-recently-used game is
+    evicted (≈160 MB ceiling at ~320 KB/game). Chosen for a 1 GB droplet; raise/lower
+    to fit the real box. An evicted player silently falls back to the new-game modal.
+  - `MAX_BODY_BYTES = 64 * 1024` — max accepted POST body (real payloads are <1 KB);
+    guards `_read_body` against a forged `Content-Length`.
+  - Session cookie `sid`: `HttpOnly; Path=/; SameSite=Lax`, plus `Secure` only when
+    `ALIGNMENT_DEPLOY=production` (a Secure cookie is dropped over local plain HTTP).
+
+- **`ALIGNMENT_DEPLOY=production` flag.** Closes the debug `/api/truth` god-view
+  endpoint (returns `{"turns": []}`) and sets the Secure cookie attribute. Local/dev
+  (unset) keeps the Truth tab working. This closes a real firewall hole: `/api/truth`
+  was previously open to anyone, and the normal player flow hits it every turn
+  (`core.js` `apply()`), so it could not simply be removed — hence the empty-payload
+  approach (CLAUDE.md §0.3).
+
+### Implementation choices with design consequences
+
+- **Infra randomness/time vs engine determinism (§0.4).** Session tokens use
+  `secrets.token_urlsafe` and LRU bookkeeping uses `time.monotonic()`. These are
+  HTTP-infrastructure concerns and are deliberately **not** routed through the seeded
+  engine RNG — they don't affect the simulation and must not be confused with a
+  determinism violation. Same seed + same actions still produces a bit-identical game.
+
+- **Per-session locking.** Each `Session` carries its own `threading.Lock`; a separate
+  registry lock guards only the `OrderedDict`. Different players run concurrently;
+  requests on the *same* game serialize. No cross-game contention.
+
+- **No frontend changes.** The frontend already uses same-origin relative `fetch`, so
+  the session cookie flows automatically and HTTPS "just works". A cookieless/evicted
+  visitor receives `{"errors": ["no active game — start a new game"]}`, which the
+  existing `apply()` error path handles by keeping the new-game modal up.
+
+### Open question for the designer
+
+- **Production server choice.** Kept Python's stdlib `http.server` (thread-per-request)
+  behind Caddy — adequate for hobby traffic, not a hardened app server. Migration path
+  (Flask/FastAPI + gunicorn/uvicorn + shared session store) noted in `deploy/README.md`.
+  Revisit only if real load appears.
+
+## Sub-task: DoS / bot hardening (server layer + edge)
+
+`/security-review` excludes DoS by design, so this was a separate pass. The threat
+that matters for a single droplet is *asymmetric* application-layer load (a cheap
+request that is expensive to serve) plus volumetric floods. Volumetric is handled
+at the edge (Cloudflare, documented in `deploy/README.md` Step 8 — free tier hides
+the origin IP and rate-limits `/api/*`). The app-level backstops, all in `server.py`:
+
+- **`MAX_GAME_TURNS = 500`** + `clamp_max_turns()` — bounds one session's compute/
+  memory. The client could previously pass any `max_turns` (or rely on uncapped);
+  real games end ~50-60 turns so this never affects play, it just removes the one
+  client-tunable that set session lifetime. INVENTED — see ISSUES note above.
+- **Post-mortem caching** (`Session._postmortem_cache`) — `build_postmortem(resim=True)`
+  replays counterfactual branches (expensive). The game is frozen once over, so the
+  result is memoized; this removes a "spam `/api/postmortem` to amplify CPU" vector.
+- **`REQUEST_TIMEOUT_SECONDS = 30`** (`Handler.timeout`) — a slow/stalled client can
+  hold a worker thread for at most 30s before the socket read times out.
+- **`MAX_CONCURRENT_REQUESTS = 32`** + a `BoundedSemaphore` in `Handler.handle()` —
+  past the cap we answer 503 rather than spawn unbounded threads / run unbounded
+  concurrent engine steps. INVENTED; generous for real play, a backstop behind edge
+  rate limiting.
+- (Already present from the HTTPS task: `MAX_BODY_BYTES` 64 KB → 413, and `MAX_SESSIONS`
+  LRU eviction. Note the eviction has a griefing edge — a `/api/new` flood can evict
+  real players' in-progress games; the real mitigation is edge rate limiting on
+  `/api/new`, hence Cloudflare.)
+
+All are server-layer; the golden-master digest is unchanged. Numbers are INVENTED
+deployment knobs (not game balance) — tune to the real droplet.
