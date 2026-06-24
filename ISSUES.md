@@ -965,6 +965,35 @@ over bar, mean still above the bar — dangerous more often than not but not cer
   but unnecessary now that the baseline is low and caution differentiates via *applied*
   safety advances.
 
+### PLAYTEST EASING (applied) — slower rivals + slightly less creep
+
+After playtesting (5 hand-played games + batches) showed the **bleak** calibration
+was effectively unwinnable — a reckless rival reliably reached world-ending capability
+around turn 36 and the player couldn't out-race it or contain it in time (see the
+playtest notes; governance contains the frontier but arrives too late / costs the race)
+— two small easings were applied per the designer's call to make realistic a bit more
+winnable WITHOUT undoing the misalignment-by-default fix:
+
+| Constant | From | To | Effect |
+|---|---|---|---|
+| `GOAL_MIS_CREEP` (constants.py) | 0.035 | **0.030** | slightly less per-round creep → player has more room to keep their own models aligned; still > the 0.02 baseline shaping, so a no-safety lab still trends misaligned |
+| `RIVAL_RECKLESSNESS_MULT["realistic"]` (difficulty.py) | 1.0 | **0.9** | slows the rivals' race (smaller runs, less AI-assist, a touch more safety in the controller) → reckless rival reaches ASI later |
+
+**Verified (seeds 0–11, realistic, no-op player):** recklessness→danger gradient still
+monotonic and intact (reckless rival1 mean composite **0.343 / 4-of-12 over the 0.35
+bar**, down the line to cautious rival4 0.185 / 0-of-12 — vs the original *bug* of 0.21 /
+0-of-12). Rivals are slower: no-op-player games now end at **turn ~48** (was ~36–45).
+The reckless rival is still clearly dangerous (mean composite right at the bar) — just
+beatable, and on a later clock. Golden master re-recorded (intentional; see test note).
+
+**Still open (not addressed by this easing):** the jailbroken-rival
+**misuse-catastrophe channel** (a reckless rival's released high-capability model giving
+bio/cyber uplift) and the **late arrival of governance enforcement** — heavy lobbying
+can contain the frontier but the achievable policies (audit thr 38) need the player to
+already be rich, and active enforcement lands after the danger window. If realistic
+still feels unwinnable after this easing, the next lever is giving active audit /
+interp-mandate a way to suppress the rival misuse + ASI-misalignment channels in time.
+
 ---
 
 ## Investigation: market caps plateau (then decline) after releases
@@ -1151,3 +1180,23 @@ master is untouched.
 - It is a tab-switching coached banner, NOT element-anchored coachmarks/tooltips —
   chosen because precise positional tooltips can't be runtime-verified here (§8,
   no JS runtime) and would be fragile against the responsive grid.
+
+---
+
+## Task: Intel frontier number vs feed mismatch
+
+**Symptom.** The Intel tab's "frontier ≈" for a rival disagreed with the
+`[measured general X.X]` printed in the feed when that same rival released a model.
+
+**Cause.** Two surfaces published the SAME rival quantity at different fidelity:
+- Feed (`turn_pipeline._do_release`) printed the rival's PRECISE measured general.
+- Intel tab (`observation_builder._rival_public_entry`) builds a FOGGED estimate
+  (`measured general × (1 + Normal(0, RIVAL_ESTIMATE_NOISE))`, cached per release).
+
+**Resolution.** The design is explicit that rivals' stats are seen only as "much
+worse estimates" (design_doc §805/§977; rivals' measured capability is "fogged",
+§764). So the fogged Intel estimate is correct and the FEED was the over-reveal.
+Fix: `_do_release` now prints the precise `[measured general X.X]` only for the
+player's own lab (`lab.is_player`); a rival's release is announced as a bare
+headline. The player gauges rivals from the fogged Intel estimate + public
+benchmark scores, as intended. No RNG/action-stream change → golden master holds.

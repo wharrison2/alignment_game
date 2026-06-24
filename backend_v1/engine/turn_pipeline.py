@@ -336,9 +336,19 @@ def _do_release(state, lab, model, policy_news, note=""):
                                             model.measured_capability.general)
     lab.current_best_model = model
     suffix = f" ({note})" if note else ""
-    policy_news.append(f"{lab.name} released {model.id} "
-                       f"[measured general {model.measured_capability.general:.1f}]"
-                       f"{suffix}")
+    # Your OWN release publishes its precise measured general — your instruments
+    # produced that number, so you're entitled to it. A RIVAL'S release must NOT:
+    # the information model only ever shows you rivals' stats as "much worse
+    # estimates" (design §805/§977). Printing the precise figure here contradicts
+    # the FOGGED frontier estimate the Intel tab builds for the same model in
+    # observation_builder._rival_public_entry (which adds RIVAL_ESTIMATE_NOISE) —
+    # that mismatch is the bug. Rivals get a bare release headline; the player
+    # gauges them from the fogged Intel estimate and the public benchmark scores.
+    if lab.is_player:
+        measured_general_note = f" [measured general {model.measured_capability.general:.1f}]"
+    else:
+        measured_general_note = ""
+    policy_news.append(f"{lab.name} released {model.id}{measured_general_note}{suffix}")
 
 
 def _complete_process(state, lab, proc, new_findings):
