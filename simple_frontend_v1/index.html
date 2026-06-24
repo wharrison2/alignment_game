@@ -43,8 +43,9 @@
   /* The market-cap graph is kept as a DELIBERATE dark "chart panel" on the light
      page — a finance/terminal convention that reads as credible, and the saturated
      lab line colors (core.js COLORS) sit better on dark than on pale paper. */
-  /* graph fills with the page background (not a dark panel) in a SQUARE box */
-  #capgraph-big{display:block;width:100%;height:54vh;min-height:340px;background:var(--bg);
+  /* graph fills with the page background (not a dark panel) in a SQUARE box;
+     flexes to fill its panel so the column can stretch to the screen bottom */
+  #capgraph-big{display:block;width:100%;flex:1 1 auto;min-height:240px;background:var(--bg);
     border:1px solid var(--line);border-radius:0}
   /* market-cap graph internals (built in views.drawCaps). Lines/tickers thicken
      on hover; ticker text is forced sans-serif so the later serif skin leaves it. */
@@ -68,18 +69,26 @@
   table{border-collapse:collapse;width:100%}
   td,th{padding:2px 6px;text-align:left;border-bottom:1px solid var(--line);
         font-size:12px}
-  /* Market page: newsfeed (scrollable, boxed items) on the left, graph on the right */
+  /* Market page fills the viewport between the nav and the fixed action bar:
+     feed (left) and the graph+info column (right) both stretch to the bottom. */
   .market-grid{display:grid;grid-template-columns:320px minmax(0,1fr);gap:10px;
-               align-items:start}
-  /* fixed height so the feed is the same size no matter how many items it holds */
-  .market-feed{display:flex;flex-direction:column;height:64vh}
-  /* finance snapshot under the chart (market cap / ARR / P/E / YoY) */
-  .capmetrics{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px}
+               height:calc(100vh - 160px);min-height:380px}
+  /* feed extends to the bottom; items scroll inside it regardless of how many */
+  .market-feed{display:flex;flex-direction:column;height:100%}
+  /* right column: graph panel (≈⅔) on top, separate market-info panel (≈⅓)
+     filling down to the screen bottom */
+  .market-right{display:flex;flex-direction:column;gap:10px;height:100%;min-height:0}
+  .market-graph-panel{flex:2 1 0;display:flex;flex-direction:column;min-height:0}
+  .market-info-panel{flex:1 1 0;display:flex;flex-direction:column;min-height:0}
+  /* finance snapshot (market cap / ARR / P/E / YoY); cards stretch to fill */
+  .capmetrics{flex:1;display:grid;grid-template-columns:repeat(4,1fr);
+              grid-auto-rows:1fr;gap:8px;min-height:0}
   .capmetrics .metric{background:var(--panel2);border:1px solid var(--line);
-                      border-radius:5px;padding:8px 10px}
+                      border-radius:5px;padding:8px 10px;display:flex;
+                      flex-direction:column;justify-content:center}
   .capmetrics .metric-label{font-size:10px;text-transform:uppercase;
                             letter-spacing:.05em;color:var(--dim)}
-  .capmetrics .metric-value{font-size:18px;font-weight:700;margin-top:2px}
+  .capmetrics .metric-value{font-size:22px;font-weight:700;margin-top:4px}
   #log{overflow-y:auto;flex:1;min-height:0;display:flex;flex-direction:column;gap:6px}
   /* each feed entry is its own box with a TYPE label separate from the message */
   .feed-item{background:var(--panel2);border:1px solid var(--line);border-radius:5px;
@@ -95,9 +104,12 @@
               border:1px solid var(--line)}
   .feed-turn{font-size:10px}
   .feed-text{font-size:12px;line-height:1.4}
-  @media(max-width:760px){.market-grid{grid-template-columns:1fr}
-    .market-feed{height:40vh}
-    .capmetrics{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:760px){.market-grid{grid-template-columns:1fr;height:auto}
+    .market-feed{height:46vh}
+    .market-right{height:auto}
+    .market-graph-panel{flex:none;height:46vh}
+    .market-info-panel{flex:none}
+    .capmetrics{grid-template-columns:repeat(2,1fr);grid-auto-rows:auto}}
   .bar{height:10px;background:var(--panel2);border:1px solid var(--line);
        border-radius:5px;overflow:hidden;flex:1}
   .bar i{display:block;height:100%}
@@ -205,11 +217,16 @@
         <h3>Feed — findings · tips · events · news</h3>
         <div id="log"></div>
       </div>
-      <div class="panel">
-        <h3>Market cap — you vs rivals (the legible metric; alignment is not)</h3>
-        <svg id="capgraph-big" preserveAspectRatio="none"></svg>
-        <div id="caplegend" style="margin-top:8px"></div>
-        <div id="capmetrics" class="capmetrics"></div>
+      <div class="market-right">
+        <div class="panel market-graph-panel">
+          <h3>Market cap — you vs rivals (the legible metric; alignment is not)</h3>
+          <svg id="capgraph-big" preserveAspectRatio="none"></svg>
+          <div id="caplegend" style="margin-top:8px"></div>
+        </div>
+        <div class="panel market-info-panel">
+          <h3>Market information</h3>
+          <div id="capmetrics" class="capmetrics"></div>
+        </div>
       </div>
     </div>
   </section>
