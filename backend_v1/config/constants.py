@@ -303,6 +303,11 @@ DISPLACEMENT_BACKLASH_STEP = 12.0  # cumulative displacement units per backlash 
 
 # ── Governance (10c) ────────────────────────────────────────────────────
 APPROVAL_START = 65.0
+# Regulatory appetite raised (ISSUES.md "regulatory appetite"): WTR_START 4->6,
+# WTR_FROM_LOW_APPROVAL 0.35->0.5, POLICY_PASS_BASE 1.1->1.4 so governance stirs
+# earlier and enforces sooner. POLICY_THRESHOLDS untouched (the effective regs —
+# interp_mandate 60, compute_cap 97 — stay near-impossible); accelerates only the
+# achievable, reckless-rival-targeting policies (liability/disclosure/audit).
 WTR_START = 6.0
 WTR_LOW_APPROVAL_THRESHOLD = 55.0   # approval below this raises WTR
 WTR_GOOD_TIMES_THRESHOLD = 70.0     # approval above this lets WTR decay

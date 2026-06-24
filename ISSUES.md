@@ -1312,3 +1312,35 @@ Two additions to the Intel "alignment evidence" dossier.
     digest. No engine-RNG draw added; determinism holds. Golden master re-recorded
     (note above the EXPECTED block). The concern/weight literals follow the existing
     inline convention in `event_catalog.py`'s incident findings ([TUNE]-ish).
+
+## REGULATORY APPETITE (applied) — earlier, more responsive governance
+
+Playtests showed governance IS the player's working counter to rival recklessness
+(it contains the frontier and fines reckless labs) but **arrived too late** — policies
+surfaced ~turn 26–30 and enforcement landed after the danger window, and the achievable
+policies needed the player already rich. Moderately raised the regulatory appetite to
+give a skilled player a timely lever (and to chip at the open "aligned but dominated"
+problem — earlier audit/liability/disclosure slow reckless rivals' capability AND market
+dominance):
+
+| Constant | From | To |
+|---|---|---|
+| `WTR_START` | 4.0 | **6.0** |
+| `WTR_FROM_LOW_APPROVAL` | 0.35 | **0.50** (per-yr per approval-point deficit) |
+| `POLICY_PASS_BASE` | 1.1 | **1.4** (introduced→passed/yr) |
+
+**Deliberately NOT touched**, so the change widens the win path without removing the
+difficulty or the thesis: `POLICY_THRESHOLDS` — the *effective* regs stay near-impossible
+(`interp_mandate` 60, `compute_cap` 97, the §0 "the regs that would actually work are the
+hardest" lesson) — and the binds-the-compliant dynamic. Because the player-binding
+policies stay gated by their high thresholds + the player's own lobby choice, the bump
+mainly accelerates the **achievable, reckless-rival-targeting** policies (liability 22 /
+disclosure 30 / audit 38), which hit reckless labs (incidents → fines, reckless releases
+→ audit blocks) far harder than the clean, compliant player.
+
+Golden master re-recorded (regulation timing shifts the scripted rivals' lobby/litigation
+stream + the WTR-driven litigation math; intentional, determinism holds). NB: a
+no-op-player probe shows only a modest timing shift because a passive player generates
+little world-harm (regulation is harm-driven) — the benefit lands in actively-played
+games where approval craters faster and the higher WTR baseline compounds with the
+player's own lobby spend.
