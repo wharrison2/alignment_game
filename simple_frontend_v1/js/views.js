@@ -263,7 +263,7 @@ function quarterLabelForTurn(turnIndex){
   const yearOffset = Math.floor(turnIndex / CAP_QUARTERS_PER_YEAR);
   const quarterOfYear = (turnIndex % CAP_QUARTERS_PER_YEAR) + 1;
   const year = CAP_START_YEAR + yearOffset;
-  return "Q" + quarterOfYear + " " + year;
+  return t("caps.quarterLabel", {quarter: quarterOfYear, year: year});
 }
 
 // Draw one lab's wiggling polyline plus its right-edge tab ticker, wired so
@@ -544,7 +544,8 @@ function capYoYGrowth(labId){
 
 function fmtPctSigned(fraction){
   const pct = fraction * 100;
-  return `${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%`;
+  const sign = pct >= 0 ? "+" : "";
+  return t("caps.yoy.value", {sign: sign, pct: pct.toFixed(0)});
 }
 
 // ── Lab panel renderers ───────────────────────────────────────────────────────
@@ -732,11 +733,11 @@ function fmtBenchScore(kind, value){
   if(kind === "elo")  return Math.round(value).toLocaleString();
   if(kind === "horizon"){            // value is in minutes (unbounded log scale)
     const HOUR = 60, DAY = 1440, MONTH = 1440 * 30, YEAR = 1440 * 365;
-    if(value < HOUR)  return value.toFixed(0) + " min";
-    if(value < DAY)   return (value/HOUR).toFixed(1) + " h";
-    if(value < MONTH) return (value/DAY).toFixed(1) + " d";
-    if(value < YEAR)  return (value/MONTH).toFixed(1) + " mo";
-    return (value/YEAR).toFixed(1) + " yr";
+    if(value < HOUR)  return t("bench.horizon.min",   {value: value.toFixed(0)});
+    if(value < DAY)   return t("bench.horizon.hour",  {value: (value/HOUR).toFixed(1)});
+    if(value < MONTH) return t("bench.horizon.day",   {value: (value/DAY).toFixed(1)});
+    if(value < YEAR)  return t("bench.horizon.month", {value: (value/MONTH).toFixed(1)});
+    return t("bench.horizon.year", {value: (value/YEAR).toFixed(1)});
   }
   return value.toFixed(1);
 }
@@ -1405,20 +1406,41 @@ export function renderQueue(){
   if(pending.commission_run){
     const applied = pending.commission_run.applied_safety || [];
     const safetyNote = applied.length ? ` +${applied.length} safety` : "";
-    items.push(`pretrain ${fmt$(pending.commission_run.compute)}${safetyNote}|run`);
+    const pretrainLabel = t("queue.pretrain", {
+      compute: fmt$(pending.commission_run.compute),
+      safetyNote: safetyNote,
+    });
+    items.push(`${pretrainLabel}|run`);
   }
   if(pending.release) items.push(`${t("queue.release")}|rel`);
 
   Object.entries(pending.lobby)
     .filter(([, lobbyEntry]) => lobbyEntry && lobbyEntry.stance !== "abstain")
-    .forEach(([policyId, lobbyEntry]) =>
-      items.push(`lobby ${lobbyEntry.stance} ${policyId}${lobbyEntry.spend?` $${lobbyEntry.spend}M`:""}|l:${policyId}`));
+    .forEach(([policyId, lobbyEntry]) => {
+      const spendFragment = lobbyEntry.spend ? ` $${lobbyEntry.spend}M` : "";
+      const lobbyLabel = t("queue.lobby", {
+        stance: lobbyEntry.stance,
+        policy: policyId,
+        spend: spendFragment,
+      });
+      items.push(`${lobbyLabel}|l:${policyId}`);
+    });
 
-  Object.entries(pending.litigation).forEach(([policyId, litEntry]) =>
-    items.push(`litigate ${litEntry.side} ${policyId} (${litEntry.tier}${litEntry.spend?` $${litEntry.spend}M`:""})|lit:${policyId}`));
+  Object.entries(pending.litigation).forEach(([policyId, litEntry]) => {
+    const spendFragment = litEntry.spend ? ` $${litEntry.spend}M` : "";
+    const litigateLabel = t("queue.litigate", {
+      side: litEntry.side,
+      policy: policyId,
+      tier: litEntry.tier,
+      spend: spendFragment,
+    });
+    items.push(`${litigateLabel}|lit:${policyId}`);
+  });
 
-  Object.keys(pending.defect).forEach(policyId =>
-    items.push(`DEFECT ${policyId}|def:${policyId}`));
+  Object.keys(pending.defect).forEach(policyId => {
+    const defectLabel = t("queue.defect", {policy: policyId});
+    items.push(`${defectLabel}|def:${policyId}`);
+  });
 
   $("queued").innerHTML = items.length ?
     items.map(item => {

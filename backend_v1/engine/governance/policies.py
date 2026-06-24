@@ -4,6 +4,8 @@ defection rules, and what it teaches.
 """
 from dataclasses import dataclass
 
+from backend_v1.content.copy import t
+
 
 @dataclass(frozen=True)
 class PolicyDef:
@@ -30,31 +32,26 @@ class PolicyDef:
 
 
 POLICY_DEFS = [
-    PolicyDef("incident_liability", "Incident liability", "damaging_event_happened",
+    PolicyDef("incident_liability", t("policy.incident_liability.name"), "damaging_event_happened",
               False,
-              "Hidden stats bite financially before catastrophe; your back catalog "
-              "is a balance-sheet liability.",
+              t("policy.incident_liability.teaches"),
               constitutionality_base=0.85),   # precedented (tort-like): robust
-    PolicyDef("disclosure", "Transparency / disclosure mandate", None, True,
-              "Disclosed numbers are only as honest as the model being measured; "
-              "an eval-aware model makes disclosure worthless.",
+    PolicyDef("disclosure", t("policy.disclosure.name"), None, True,
+              t("policy.disclosure.teaches"),
               constitutionality_base=0.80),   # precedented (disclosure regimes): robust
-    PolicyDef("audit_requirement", "Pre-deployment audit", None, True,
-              "Audits catch surface problems and create theater: a deceptive model "
-              "sails through and its clean bill lowers WTR further.",
+    PolicyDef("audit_requirement", t("policy.audit_requirement.name"), None, True,
+              t("policy.audit_requirement.teaches"),
               constitutionality_base=0.65),
-    PolicyDef("open_weights_restriction", "Open-weights restriction",
+    PolicyDef("open_weights_restriction", t("policy.open_weights_restriction.name"),
               "leak_event_happened", True,
-              "Narrow policy targeting one risk class.",
+              t("policy.open_weights_restriction.teaches"),
               constitutionality_base=0.55),
-    PolicyDef("interp_mandate", "Mechanistic-evidence mandate",
+    PolicyDef("interp_mandate", t("policy.interp_mandate.name"),
               "deception_incident_public", False,
-              "The only regulation that genuinely works is the expensive slow one, "
-              "and it arrives only after a disaster proves cheap evals insufficient.",
+              t("policy.interp_mandate.teaches"),
               constitutionality_base=0.35),   # novel/aggressive: effective but fragile
-    PolicyDef("compute_cap", "Compute / training-run cap", None, True,
-              "The one regulation that would actually slow the race is the one nobody "
-              "can summon the will to pass until it's too late.",
+    PolicyDef("compute_cap", t("policy.compute_cap.name"), None, True,
+              t("policy.compute_cap.teaches"),
               constitutionality_base=0.25),   # novel/aggressive: hardest to defend
 ]
 

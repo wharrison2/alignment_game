@@ -1462,3 +1462,21 @@ the pre-release window (model in training, nothing released yet) — previously 
 active — so budget/duration/contamination and every downstream draw shift. Determinism
 holds (stable across `PYTHONHASHSEED`); intentional behavior change, not an RNG/firewall
 regression (CLAUDE.md §8). Full suite (16 tests) green; firewall test passes.
+
+---
+
+## All player-facing strings centralized into one table per side
+
+Completed the "all strings named, in one file" deliverable across the whole stack.
+
+**Frontend.** Migrated the ~30 stragglers that never reached `simple_frontend_v1/js/strings.js`: nav labels, panel headings, descriptive prose, `<title>`, the action bar, and worry-bar inline labels are now `data-i18n` / `data-i18n-placeholder` / `data-i18n-html` attributes resolved on load by `localizeStaticCopy()` in `main.js`; dynamic `views.js` labels (quarter, YoY %, benchmark horizon units, queue-item verbs) and the new-game dropdown display labels go through `t()`. Dropdown option VALUES stay the backend enum ids.
+
+**Backend.** New single table `backend_v1/content/copy.py` (`COPY` dict + a `t(key, params)` formatter mirroring the frontend). 247 keys. Every player-facing inline f-string across the engine (events, governance, turn_pipeline, post-mortem, findings/interventions, observation labels, server API errors) now reads `t("<key>", {...})`. `content/strings.py` is now a back-compat re-export shim; the identity constants live in `copy.py`.
+
+**Liberties / decisions (per CLAUDE.md §5):**
+- **Folded the already-named catalogs into `copy.py` too** (research `what_it_does`/`risk_blurb`/`name`, the §7c warning catalog, benchmark blurbs, policy name/teaches), at the user's explicit request for single-source editing. This **supersedes** the earlier decision recorded in `content/strings.py`'s old header ("referenced in place, not duplicated"). Tradeoff accepted: a catalog row now shows a `t("…")` key instead of its prose, one hop from the text — the reader opens `copy.py` to see the words. Determinism is unaffected (catalog text isn't in the digest) and there's a single source (no drift risk).
+- **Numeric formatting stays at the call site**: templates hold plain `{tokens}`; callers pre-format (`f"{x:.2f}"`) and pass strings. This keeps `copy.py` designer-friendly AND output byte-identical.
+- **Determinism guardrails honored.** Event `public_text`/`true_text` are in the golden-master digest (`logger.py`), so those templates reproduce the old f-strings byte-for-byte — the golden master did **not** move and was **not** re-recorded. The ordered flavor lists that feed `rng.choice` (`FLAVORS_SURFACE_HARM`, `FLAVORS_BENEFICIAL`, `JAILBREAK_INCIDENT_KINDS`) live as explicit ordered lists in `copy.py` with identical order/text. One incidental code change: the per-build turn-context parameter named `t` in `event_catalog.py` was renamed `turn_ctx` to avoid shadowing the imported `t()`.
+- **Firewall intact.** `*.true` templates are authored hidden-state narration for the post-mortem/TRUE log only; none routed into a player observation. `observation_builder.py` boundary unchanged.
+
+Verification: full suite 16 green; golden master unchanged across `PYTHONHASHSEED` 0/1/2; firewall test passes; all 247 backend keys and all frontend keys resolve (no loud misses); JS modules + index serve 200; folded catalog text renders correctly through `legal_moves`.

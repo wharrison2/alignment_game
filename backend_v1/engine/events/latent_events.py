@@ -7,6 +7,7 @@ Jailbreak risk is FLAT, non-decaying, and survives forever (no pull).
 from backend_v1.engine.events.event import FiredEvent
 from backend_v1.engine.events.effects import apply_effects
 from backend_v1.engine.rng import gate
+from backend_v1.content.copy import t, JAILBREAK_INCIDENT_KINDS
 
 
 def run_displacement_backlash(ctx):
@@ -23,8 +24,8 @@ def run_displacement_backlash(ctx):
         world.wtr = min(100.0, world.wtr + 6.0)
         fired.append(FiredEvent(
             "public_backlash", "societal", "ordinary", turn, None, None, 0.4, 0.0,
-            "Mass protests over AI-driven job losses.",
-            f"displacement crossed threshold {world.backlash_fired}",
+            t("event.displacement_backlash.public"),
+            t("event.displacement_backlash.true", {"threshold": world.backlash_fired}),
             effects=[]))
     return fired
 
@@ -43,9 +44,9 @@ def run_latent_phase(ctx):
                 if rng.roll_rate(consts.JAILBREAK_DISCOVERY_RATE * sens, dt):
                     m.jailbreak_discovered = True
                     m.note(turn, "jailbreak_discovered",
-                           "jailbreak techniques discovered in the wild "
-                           f"(true sensitivity {sens:.2f}) — incidents now roll every quarter")
-                    guardrail_status = "LEAKED — no guardrails" if m.leaked else "guarded"
+                           t("event.jailbreak_discovery.note", {"sens": f"{sens:.2f}"}))
+                    guardrail_status = ("LEAKED — no guardrails" if m.leaked
+                                        else "guarded")
                     # A discovered jailbreak is a FREE existence proof about this model's
                     # jailbreak-sensitivity — the same kind of evidence run_safety_project's
                     # red_team buys, handed to you by the world. Record it as an incident
@@ -57,17 +58,17 @@ def run_latent_phase(ctx):
                     lab.findings.append({
                         "project_id": "incident", "model_id": m.id, "turn": turn,
                         "evidence": "existence", "axis": "jailbreak_sensitivity",
-                        "text": f"jailbreak techniques for {m.id} were published in the "
-                                f"wild ({guardrail_status}) — a working jailbreak exists; "
-                                f"misuse incidents now roll every quarter",
+                        "text": t("event.jailbreak_discovery.incident_finding", {
+                            "model": m.id, "guardrail_status": guardrail_status}),
                         "concern": round(discovery_concern, 3), "weight": 1.5,
                         "mechanistic": False, "assist_used": 0.0,
                     })
                     fired.append(FiredEvent(
                         "jailbreak_discovery", "misuse", "ordinary", turn,
                         lab.id, m.id, 0.1, 0.0,
-                        f"Researchers publish jailbreak techniques for {m.id}.",
-                        f"Discovery armed: sensitivity {sens:.2f} ({guardrail_status})",
+                        t("event.jailbreak_discovery.public", {"model": m.id}),
+                        t("event.jailbreak_discovery.true", {
+                            "sens": f"{sens:.2f}", "guardrail_status": guardrail_status}),
                         effects=[("modify_approval", {"amount": -1.0})]))
                 continue
 
@@ -76,12 +77,17 @@ def run_latent_phase(ctx):
                 general_cap = m.capability_vec.general
                 coding_cap = m.capability_vec.coding_rnd
 
+                # kind text is authored in copy (JAILBREAK_INCIDENT_KINDS, ordered);
+                # the rolls below stay in the engine. Order is load-bearing: index 0
+                # bio/chem, 1 cyber, 2 mass-disinformation. incident_id is derived
+                # from kind.split()[0], so the exact text must not drift.
+                bio_kind, cyber_kind, disinfo_kind = JAILBREAK_INCIDENT_KINDS
                 if general_cap >= consts.BIO_MISUSE_GENERAL_MIN and rng.roll(0.25):
-                    kind, relevant_cap, severity_mult = "bio/chem uplift attack", general_cap, 2.0
+                    kind, relevant_cap, severity_mult = bio_kind, general_cap, 2.0
                 elif rng.roll(min(0.8, coding_cap / consts.CAP_MAX + 0.2)):
-                    kind, relevant_cap, severity_mult = "cyber attack", coding_cap, 1.0
+                    kind, relevant_cap, severity_mult = cyber_kind, coding_cap, 1.0
                 else:
-                    kind, relevant_cap, severity_mult = "mass-disinformation campaign", general_cap, 0.7
+                    kind, relevant_cap, severity_mult = disinfo_kind, general_cap, 0.7
 
                 sev = severity_mult * sens * (relevant_cap / consts.CAP_MAX)
                 impact = -30.0 * sev
@@ -90,8 +96,11 @@ def run_latent_phase(ctx):
                 ev = FiredEvent(
                     incident_id, "misuse", "ordinary",
                     turn, lab.id, m.id, sev, impact,
-                    f"High-profile {kind} used a jailbroken {m.id}.",
-                    f"{kind} via jailbroken {m.id} (sens {sens:.2f}, capability {relevant_cap:.1f})",
+                    t("event.jailbreak_incident.public", {"kind": kind, "model": m.id}),
+                    t("event.jailbreak_incident.true", {
+                        "kind": kind, "model": m.id,
+                        "sens": f"{sens:.2f}",
+                        "capability": f"{relevant_cap:.1f}"}),
                     effects=[
                         ("add_impact", {"amount": impact}),
                         ("add_world_harm", {"amount": -impact}),

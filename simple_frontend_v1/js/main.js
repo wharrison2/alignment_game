@@ -95,11 +95,11 @@ function showNewGame(opts){
       <span class="dim" style="font-size:11px">${t("newgame.ticker.hint")}</span></div>
     <div class="row">${t("newgame.seed.label")} <input type="number" id="ng-seed" value="0"></div>
     <div class="row">${t("newgame.difficulty.label")} <select id="ng-diff">
-      ${["easy","medium","realistic","impossible"].map(d=>
-        `<option ${d==="realistic"?"selected":""}>${d}</option>`).join("")}</select></div>
+      ${["easy","medium","realistic","impossible"].map(difficultyId=>
+        `<option value="${difficultyId}" ${difficultyId==="realistic"?"selected":""}>${t("newgame.difficulty."+difficultyId)}</option>`).join("")}</select></div>
     <div class="row">${t("newgame.guidance.label")} <select id="ng-guid">
-      ${["hint_heavy","standard","sparse"].map(g=>
-        `<option ${g==="standard"?"selected":""}>${g}</option>`).join("")}</select></div>
+      ${["hint_heavy","standard","sparse"].map(guidanceId=>
+        `<option value="${guidanceId}" ${guidanceId==="standard"?"selected":""}>${t("newgame.guidance."+guidanceId)}</option>`).join("")}</select></div>
     <div class="row"><label><input type="checkbox" id="ng-tutorial" ${wantTutorial?"checked":""}>
       ${t("newgame.tutorial.label")}</label></div>
     <div class="row"><label><input type="checkbox" id="ng-dev" ${DEV?"checked":""}>
@@ -206,10 +206,33 @@ async function showPostmortem(){
   $("overlay").classList.add("show");
 }
 
+// ── Static-copy localization (data-i18n) ─────────────────────────────────────
+// index.html carries its static labels/headings/prose as data-i18n="<key>"
+// attributes; the authored English lives in STRINGS, not the markup. This walks
+// the page once at startup and fills each element from t(). Two attribute flavors:
+//   data-i18n             → textContent (plain copy: nav labels, headings, …)
+//   data-i18n-html        → innerHTML   (authored prose with <b> emphasis; this is
+//                           trusted authored copy from STRINGS, never user input)
+//   data-i18n-placeholder → input placeholder
+// Element ids/handlers stay in the markup; only the visible copy is sourced here.
+function localizeStaticCopy(){
+  document.title = t("app.title");
+  document.querySelectorAll("[data-i18n]").forEach(el => {
+    el.textContent = t(el.getAttribute("data-i18n"));
+  });
+  document.querySelectorAll("[data-i18n-html]").forEach(el => {
+    el.innerHTML = t(el.getAttribute("data-i18n-html"));
+  });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach(el => {
+    el.placeholder = t(el.getAttribute("data-i18n-placeholder"));
+  });
+}
+
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 // Load whatever the server session holds (so the board renders behind the modal),
 // then force the new-game modal: the player must start a game before any turn.
 async function init(){
+  localizeStaticCopy();   // fill data-i18n static copy before anything renders
   apply(await api("/api/state"));
   showNewGame({initial: true});
 }

@@ -32,6 +32,7 @@ from backend_v1.engine.controllers.rival_controller import RivalController
 from backend_v1.engine.observation.observation_builder import build_observation
 from backend_v1.engine.postmortem import build_postmortem
 from backend_v1.engine.rng import Rng
+from backend_v1.content.copy import t
 
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                             "..", "..", "simple_frontend_v1")
@@ -164,7 +165,7 @@ class Session:
 
     def submit(self, action_dict):
         if self.state.game_over:
-            return {"errors": ["game is over — start a new game"]}
+            return {"errors": [t("api.game_over")]}
         try:
             action = Action.from_dict(action_dict)
         except (ActionError, TypeError, ValueError) as e:
@@ -194,7 +195,7 @@ class Session:
 
     def postmortem(self):
         if not self.state.game_over:
-            return {"errors": ["game is not over"]}
+            return {"errors": [t("api.game_not_over")]}
         # The game is frozen once it's over, so the post-mortem is deterministic.
         # Build it once and reuse it: re-running build_postmortem (which replays
         # counterfactual branches) on every call would let a client amplify load

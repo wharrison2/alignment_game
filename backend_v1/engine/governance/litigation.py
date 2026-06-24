@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 
 from backend_v1.engine.governance.policies import POLICY_DEFS_BY_ID
 from backend_v1.engine.governance import gov_news
+from backend_v1.content.copy import t
 
 
 @dataclass
@@ -64,40 +65,40 @@ def apply_litigation_action(world, lab, policy_id, spec, consts):
     to contest. spec = {side, tier, spend}."""
     st = world.policies.get(policy_id)
     if st is None or not st.active:
-        return False, f"{policy_id}: not an active policy to litigate"
+        return False, t("litigation.error.not_active", {"policy_id": policy_id})
 
     pdef = POLICY_DEFS_BY_ID[policy_id]
     side = spec.get("side", "challenge")
     if side not in ("challenge", "defense"):
-        return False, f"{policy_id}: side must be challenge/defense"
+        return False, t("litigation.error.bad_side", {"policy_id": policy_id})
 
     tier = spec.get("tier", "amicus")
     case = _ensure_case(world, policy_id)
 
     if tier == "amicus":
         if lab.id in case.used_amicus:
-            return False, f"{policy_id}: already filed an amicus brief"
+            return False, t("litigation.error.amicus_filed", {"policy_id": policy_id})
         cost, points = consts.LIT_AMICUS_COST, consts.LIT_AMICUS_POINTS
         if lab.cash < cost:
-            return False, f"{policy_id}: not enough cash for amicus"
+            return False, t("litigation.error.not_enough_cash_amicus", {"policy_id": policy_id})
         case.used_amicus.add(lab.id)
     elif tier == "join":
         if not pdef.covers(lab):
-            return False, f"{policy_id}: no standing (not subject to this policy)"
+            return False, t("litigation.error.no_standing", {"policy_id": policy_id})
         if lab.id in case.used_join:
-            return False, f"{policy_id}: already joined this case"
+            return False, t("litigation.error.already_joined", {"policy_id": policy_id})
         cost, points = consts.LIT_JOIN_COST, consts.LIT_JOIN_POINTS
         if lab.cash < cost:
-            return False, f"{policy_id}: not enough cash to join"
+            return False, t("litigation.error.not_enough_cash_join", {"policy_id": policy_id})
         case.used_join.add(lab.id)
     elif tier == "fund":
         requested_spend = max(0.0, float(spec.get("spend", 0.0) or 0.0))
         cost = min(requested_spend, lab.cash)
         if cost <= 0:
-            return False, f"{policy_id}: fund tier needs spend"
+            return False, t("litigation.error.fund_needs_spend", {"policy_id": policy_id})
         points = consts.LIT_FUND_K * math.sqrt(cost)   # diminishing returns within tier
     else:
-        return False, f"{policy_id}: tier must be amicus/join/fund"
+        return False, t("litigation.error.bad_tier", {"policy_id": policy_id})
 
     lab.cash -= cost
     if side == "challenge":
@@ -115,7 +116,8 @@ def apply_litigation_action(world, lab, policy_id, spec, consts):
     # does NOT touch the effort/margin math above — that already happened.
     st.record_contribution(lab, stance=side, lit_spend=cost)
 
-    return True, f"{lab.name} {side} {pdef.name} ({tier})"
+    return True, t("litigation.action.confirm",
+                   {"lab": lab.name, "side": side, "policy": pdef.name, "tier": tier})
 
 
 def _doj_effort(world, consts):
@@ -157,8 +159,8 @@ def resolve_litigation(ctx):
         if case.injunction_turns_left > 0:
             case.injunction_turns_left -= 1
             if case.injunction_turns_left == 0:
-                news.append(f"Preliminary injunction on {POLICY_DEFS_BY_ID[pid].name} "
-                            f"expired; enforcement resumes.")
+                news.append(t("gov.injunction.expired",
+                              {"policy": POLICY_DEFS_BY_ID[pid].name}))
             continue
 
         if case.challenge_effort <= 0:    # nobody is actually challenging
@@ -206,7 +208,7 @@ def _apply_outcome(sb, st, case, margin, appeals_mod):
         st.stage = "struck"
         st.enforcement_level = 0.0
         case.note(turn, f"{name} STRUCK at {case.court_level} (margin {margin:+.0f})")
-        news.append(f"COURT: {name} struck down ({case.court_level}).")
+        news.append(t("gov.court.struck", {"policy": name, "court": case.court_level}))
         # a struck POPULAR safety policy enrages the public -> WTR spike
         events.append(gov_news.news_event(sb, "policy_struck", name,
                                           approval=-consts.LIT_NEWS_APPROVAL_SWING,
@@ -216,20 +218,20 @@ def _apply_outcome(sb, st, case, margin, appeals_mod):
         outcome = "weakened"
         st.enforcement_level = max(0.0, st.enforcement_level - consts.LIT_WEAKEN_AMOUNT)
         case.note(turn, f"{name} enforcement weakened (margin {margin:+.0f})")
-        news.append(f"COURT: {name} enforcement permanently narrowed.")
+        news.append(t("gov.court.weakened", {"policy": name}))
 
     elif eff_margin >= consts.LIT_MARGIN_INJUNCTION:
         outcome = "injunction"
         case.injunction_turns_left = consts.LIT_INJUNCTION_TURNS
         case.note(turn, f"{name} preliminarily enjoined {consts.LIT_INJUNCTION_TURNS}q")
-        news.append(f"COURT: {name} preliminarily enjoined for "
-                    f"{consts.LIT_INJUNCTION_TURNS} quarters.")
+        news.append(t("gov.court.enjoined",
+                      {"policy": name, "quarters": consts.LIT_INJUNCTION_TURNS}))
 
     elif eff_margin >= consts.LIT_MARGIN_PENALTY_CAP:
         outcome = "penalty_cap"
         st.penalty_cap = consts.LIT_PENALTY_CAP_FACTOR
         case.note(turn, f"{name} penalty ceiling capped (margin {margin:+.0f})")
-        news.append(f"COURT: {name} stands, but its maximum penalty is capped.")
+        news.append(t("gov.court.penalty_cap", {"policy": name}))
 
     else:
         outcome = "fail"
@@ -237,18 +239,17 @@ def _apply_outcome(sb, st, case, margin, appeals_mod):
         if st.stage == "struck":
             st.stage = "active"
             st.enforcement_level = max(st.enforcement_level, consts.ENFORCEMENT_MIN)
-            news.append(f"COURT: {name} REINSTATED on appeal.")
+            news.append(t("gov.court.reinstated", {"policy": name}))
         # surviving a real challenge ENTRENCHES the policy ∝ court level
         st.constitutionality = min(1.0, st.constitutionality
                                    + consts.LIT_ENTRENCH_GAIN * court_mult)
         case.note(turn, f"{name} survived challenge; entrenched (margin {margin:+.0f})")
-        news.append(f"COURT: challenge to {name} failed; the rule is now better "
-                    f"established.")
+        news.append(t("gov.court.challenge_failed", {"policy": name}))
 
     # ── appeals: the losing side may appeal (P ∝ −margin); precedent by court ──
     appealed = appeals_mod.maybe_appeal(sb, st, case, outcome, margin)
     if appealed:
-        news.append(f"APPEAL filed on {name} → escalated to {case.court_level}.")
+        news.append(t("gov.appeal.filed", {"policy": name, "court": case.court_level}))
     else:
         case.status = "closed"
         # final precedent updates constitutionality by court level

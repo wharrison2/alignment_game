@@ -24,6 +24,53 @@
 // duplicated here.
 
 export const STRINGS = {
+  // ── App shell ──────────────────────────────────────────────────────────────
+  "app.title": "AI Lab — playtest skin",
+
+  // ── Nav bar (index.html static labels, routed via data-i18n) ───────────────
+  "nav.market": "Market",
+  "nav.lab": "Lab",
+  "nav.benchmarks": "Benchmarks",
+  "nav.research": "Research",
+  "nav.governance": "Governance",
+  "nav.intel": "Intel",
+  "nav.truth": "Truth",
+  "nav.newGame": "new game",
+
+  // ── Panel headings + descriptive prose (index.html static, via data-i18n) ──
+  "panel.market.feed.heading": "Feed — findings · tips · events · news",
+  "panel.market.caps.heading": "Market caps",
+  "panel.market.info.heading": "Market information",
+  "panel.lab.training.heading": "Model in training",
+  "panel.lab.interventions.heading": "Safety interventions — fine-tuning",
+  "panel.lab.pretrain.heading": "Pretrain run",
+  "panel.lab.released.heading": "Released models (frozen · permanent attack surface)",
+  "panel.benchmarks.heading": "Public benchmarks — the shared scoreboard",
+  // NOTE: rendered as innerHTML (data-i18n-html) to keep the <b> emphasis — this
+  // is AUTHORED copy, never untrusted data, so raw HTML here is safe.
+  "panel.benchmarks.blurb": "Public &amp; passive: everyone sees every lab's scores, read off <b>measured</b> capability — so a sandbagging model looks clean here. Released free by the world; old benchmarks saturate as the frontier passes them. Chasing these for investors is the Goodhart trap.",
+  "panel.research.capability.heading": "Capability research",
+  "panel.research.safetyEvals.heading": "Safety evaluations",
+  "panel.research.safetyAdvances.heading": "Safety advances — training",
+  "panel.research.inProgress.heading": "In progress",
+  "panel.research.completed.heading": "Completed advances",
+  "panel.governance.heading": "Policies — lobby (pre-passage) · litigate (post-passage) · defect",
+  "panel.governance.safeharbor.label": "sign safe-harbor code (penalty shelter)",
+  "panel.intel.worry.heading": "Worry bar (LEVEL vs CONFIDENCE — synthesis of evidence you collected)",
+  "panel.intel.evidence.heading": "Alignment evidence — what your evals & incidents have surfaced",
+  "panel.intel.rivals.heading": "Rivals (public info only)",
+  "panel.truth.heading": "Truth — god's-eye true state (debug)",
+  // NOTE: rendered as innerHTML (data-i18n-html) to keep the <b> emphasis.
+  "panel.truth.blurb": "DEV ONLY. This bypasses the true-vs-measured firewall the game is built on: it shows every lab's <b>true</b> alignment &amp; capability (red) beside what instruments <b>measure</b> — including rivals' hidden, sandbagged danger. Expand a model for its turn-by-turn true trajectory.",
+
+  // ── Action bar (index.html static, via data-i18n) ──────────────────────────
+  "actionbar.thisTurn": "this turn:",
+  "actionbar.endTurn": "END TURN ▶",
+
+  // ── Worry-bar inline labels (index.html static, via data-i18n) ─────────────
+  "worry.level.inline": "level",
+  "worry.confidence.inline": "confidence",
+
   // ── Top bar chips ──────────────────────────────────────────────────────────
   "topbar.policies.active": "active: {list}",
   "topbar.policies.none": "no active regulation",
@@ -37,7 +84,16 @@ export const STRINGS = {
   "newgame.ticker.hint": "defaults to first 3 letters of the name",
   "newgame.seed.label": "seed",
   "newgame.difficulty.label": "difficulty",
+  // difficulty option display labels (the <option value=…> stays the backend enum id)
+  "newgame.difficulty.easy": "easy",
+  "newgame.difficulty.medium": "medium",
+  "newgame.difficulty.realistic": "realistic",
+  "newgame.difficulty.impossible": "impossible",
   "newgame.guidance.label": "guidance",
+  // guidance option display labels (the <option value=…> stays the backend enum id)
+  "newgame.guidance.hint_heavy": "hint_heavy",
+  "newgame.guidance.standard": "standard",
+  "newgame.guidance.sparse": "sparse",
   "newgame.tutorial.label": "tutorial — walk me through the board first",
   "newgame.dev.label": "dev mode — reveal the god-view Truth tab (bypasses the firewall)",
   "newgame.start": "start",
@@ -102,6 +158,9 @@ export const STRINGS = {
   "caps.metric.arr": "ARR",
   "caps.metric.pe": "P/E ratio",
   "caps.metric.yoy": "YoY growth",
+  // dynamic quarter label on the cap-chart x-axis + the YoY percent reading
+  "caps.quarterLabel": "Q{quarter} {year}",
+  "caps.yoy.value": "{sign}{pct}%",
 
   // ── Lab — model in training ────────────────────────────────────────────────
   "training.empty": "none — commission a pretrain run",
@@ -148,6 +207,12 @@ export const STRINGS = {
 
   // ── Benchmarks panel ───────────────────────────────────────────────────────
   "benchmarks.empty": "no benchmarks released yet — play a turn",
+  // METR-style horizon score units (numeric value formatted in code, passed as {value})
+  "bench.horizon.min": "{value} min",
+  "bench.horizon.hour": "{value} h",
+  "bench.horizon.day": "{value} d",
+  "bench.horizon.month": "{value} mo",
+  "bench.horizon.year": "{value} yr",
 
   // ── Truth panel (debug god-view) ───────────────────────────────────────────
   "truth.empty": "no turns played yet — END TURN to begin",
@@ -267,6 +332,11 @@ export const STRINGS = {
   "queue.postTrain.bare": "post-train round",
   "queue.release": "RELEASE",
   "queue.pass": "pass (do nothing)",
+  // queued action verbs (the spend/tier/safety fragments are built in code → params)
+  "queue.pretrain": "pretrain {compute}{safetyNote}",
+  "queue.lobby": "lobby {stance} {policy}{spend}",
+  "queue.litigate": "litigate {side} {policy} ({tier}{spend})",
+  "queue.defect": "DEFECT {policy}",
 };
 
 // Look up authored copy by key, filling any {placeholder} tokens from params.
