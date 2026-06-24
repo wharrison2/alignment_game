@@ -10,6 +10,7 @@ from backend_v1.engine.benchmarks import released_benchmarks, benchmark_score
 from backend_v1.engine.evaluations import (
     EVAL_HARNESSES, max_level, next_upgrade, awareness_reduction, eval_reading,
 )
+from backend_v1.content.copy import t
 
 
 def _model_view(m, include_dangerous=True):
@@ -62,18 +63,17 @@ def _elicitation_projection(m, lab, consts):
 
     return {"ceiling_estimate": round(ceiling_est, 2),
             "projection": curve,
-            "note": "capability projection only — post-training also shapes "
-                    "dispositions; that cost is not on this chart"}
+            "note": t("obs.projection_note")}
 
 
 def _chatter(wtr):
     if wtr < 15:
-        return "quiet"
+        return t("obs.chatter.quiet")
     if wtr < 35:
-        return "rumbling"
+        return t("obs.chatter.rumbling")
     if wtr < 60:
-        return "loud"
-    return "deafening"
+        return t("obs.chatter.loud")
+    return t("obs.chatter.deafening")
 
 
 def _rival_public_entry(other, lab, state, consts):

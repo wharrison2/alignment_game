@@ -1462,3 +1462,77 @@ the pre-release window (model in training, nothing released yet) — previously 
 active — so budget/duration/contamination and every downstream draw shift. Determinism
 holds (stable across `PYTHONHASHSEED`); intentional behavior change, not an RNG/firewall
 regression (CLAUDE.md §8). Full suite (16 tests) green; firewall test passes.
+
+---
+
+## All player-facing strings centralized into one table per side
+
+Completed the "all strings named, in one file" deliverable across the whole stack.
+
+**Frontend.** Migrated the ~30 stragglers that never reached `simple_frontend_v1/js/strings.js`: nav labels, panel headings, descriptive prose, `<title>`, the action bar, and worry-bar inline labels are now `data-i18n` / `data-i18n-placeholder` / `data-i18n-html` attributes resolved on load by `localizeStaticCopy()` in `main.js`; dynamic `views.js` labels (quarter, YoY %, benchmark horizon units, queue-item verbs) and the new-game dropdown display labels go through `t()`. Dropdown option VALUES stay the backend enum ids.
+
+**Backend.** New single table `backend_v1/content/copy.py` (`COPY` dict + a `t(key, params)` formatter mirroring the frontend). 247 keys. Every player-facing inline f-string across the engine (events, governance, turn_pipeline, post-mortem, findings/interventions, observation labels, server API errors) now reads `t("<key>", {...})`. `content/strings.py` is now a back-compat re-export shim; the identity constants live in `copy.py`.
+
+**Liberties / decisions (per CLAUDE.md §5):**
+- **Folded the already-named catalogs into `copy.py` too** (research `what_it_does`/`risk_blurb`/`name`, the §7c warning catalog, benchmark blurbs, policy name/teaches), at the user's explicit request for single-source editing. This **supersedes** the earlier decision recorded in `content/strings.py`'s old header ("referenced in place, not duplicated"). Tradeoff accepted: a catalog row now shows a `t("…")` key instead of its prose, one hop from the text — the reader opens `copy.py` to see the words. Determinism is unaffected (catalog text isn't in the digest) and there's a single source (no drift risk).
+- **Numeric formatting stays at the call site**: templates hold plain `{tokens}`; callers pre-format (`f"{x:.2f}"`) and pass strings. This keeps `copy.py` designer-friendly AND output byte-identical.
+- **Determinism guardrails honored.** Event `public_text`/`true_text` are in the golden-master digest (`logger.py`), so those templates reproduce the old f-strings byte-for-byte — the golden master did **not** move and was **not** re-recorded. The ordered flavor lists that feed `rng.choice` (`FLAVORS_SURFACE_HARM`, `FLAVORS_BENEFICIAL`, `JAILBREAK_INCIDENT_KINDS`) live as explicit ordered lists in `copy.py` with identical order/text. One incidental code change: the per-build turn-context parameter named `t` in `event_catalog.py` was renamed `turn_ctx` to avoid shadowing the imported `t()`.
+- **Firewall intact.** `*.true` templates are authored hidden-state narration for the post-mortem/TRUE log only; none routed into a player observation. `observation_builder.py` boundary unchanged.
+
+Verification: full suite 16 green; golden master unchanged across `PYTHONHASHSEED` 0/1/2; firewall test passes; all 247 backend keys and all frontend keys resolve (no loud misses); JS modules + index serve 200; folded catalog text renders correctly through `legal_moves`.
+
+### Code-review follow-ups (string centralization)
+
+Two fixes from the high-effort review of the centralization commit:
+
+- **`t()` re-entrancy (real bug).** The backend `t()` had used per-token
+  `str.replace`, which re-expands a value that itself contains a `{token}` — a
+  player lab name like `{model}` (braces survived `sanitize_lab_name`) corrupted
+  news-feed / TRUE-log text, order-dependently. Replaced with a SINGLE-PASS regex
+  substitution (`fill_template`, shared by `t`/`t_true`), exactly mirroring the
+  frontend `t()`; an injected token is now inserted verbatim and never re-scanned.
+  Also strip `{`/`}` in `_strip_control_characters` (game.py) as defence in depth.
+- **Firewall made structural (CLAUDE.md §2).** The hidden-state `true_text`
+  narration (18 `*.true`/note/backlash keys) moved out of `copy.py`'s `COPY` into a
+  separate `backend_v1/content/true_log_copy.py` (`TRUE_LOG_COPY` + `t_true`). The
+  observation chokepoint imports only `t` (player copy) and never `t_true`, so a
+  `*.true` template structurally cannot reach a mid-game observation — the earlier
+  flat table enforced this only by convention. Determinism preserved (event
+  `true_text` is byte-identical; golden master unmoved).
+
+---
+
+## Task: queue-time budget/cash enforcement (frontend)
+
+**Symptom reported.** Queuing ("carry out") an item didn't visibly update the cash
+chip, and overruns were only rejected at END TURN by the backend `validate_action`.
+The player wanted to be stopped at the moment of queuing, on either resource.
+
+**What I did (all frontend — no backend/RNG/observation change; golden master
+unmoved).**
+- `core.js` now owns the affordability model: `cashLeft()` mirrors `budgetLeft()`
+  (the cash half of `actions.validate_action`'s `cash_needed`), and `queueFits()`
+  reports whether the whole `pending` queue still fits BOTH resources. Queue sites
+  follow a mutate→`queueFits()`→revert-on-fail pattern, so the *frontend* now
+  refuses an unaffordable start_project / commission_run / post-train round/advance
+  before it's queued. Backend `validate_action` is unchanged and remains the
+  authority (defense in depth) — this is a UX pull-forward, not a new trust boundary.
+- The cash chip (and budget chip) now show what's LEFT after the queue and flag red
+  when negative; the modal "carry out" stays open and shows the reason inline on a
+  rejection (the queue error line sits behind the overlay).
+
+**Bug found en route.** `budgetLeft()`/`renderQueue()` searched only the capability
+and safety-PROJECT lists, not `safety_advances_available`. A queued safety ADVANCE
+therefore dropped out of the budget preview entirely. Centralized all three lists in
+`core.queueableProjects()`, which fixes it.
+
+**Liberties / gaps flagged for review.**
+- **Litigation amicus/join fixed costs aren't exposed to the frontend.** `cashLeft()`
+  can only preview the *typed* litigation spend (the "fund" tier); the amicus/join
+  flat fees (`LIT_AMICUS_COST`/`LIT_JOIN_COST`) live backend-only, so the cash chip
+  under-counts those tiers. Backend still enforces the full cost at end-turn. Fix
+  would be exposing the two constants in `legal_moves`.
+- **Governance spends (lobby/litigation) are advisory, not hard-blocked.** They're
+  typed `oninput` number fields; clamping mid-keystroke is worse UX than letting the
+  cash chip go red and having the backend reject at end-turn. Only the discrete
+  "carry out / queue" buttons are hard-blocked. Noted as a deliberate scope line.

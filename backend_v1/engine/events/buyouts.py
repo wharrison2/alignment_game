@@ -14,6 +14,8 @@ never be permanently cleared.
 """
 from backend_v1.engine.events.event import FiredEvent
 from backend_v1.engine.lab import Disposition
+from backend_v1.content.copy import t
+from backend_v1.content.true_log_copy import t_true
 
 
 def _market_leader(labs):
@@ -115,12 +117,12 @@ def run_buyout_phase(ctx):
     old_name, new_name, war_chest = _relaunch_lab(target, leader, rng, consts)
     world.last_buyout_turn = turn
 
-    public_text = (f"{old_name}, long trailing the field, is acquired and "
-                   f"relaunched as {new_name} — fresh capital, a mandate to "
-                   f"race for the frontier.")
-    true_text = (f"buyout {old_name} -> {new_name}: recapitalized to "
-                 f"${war_chest:,.0f}M, relaunched reckless "
-                 f"(recklessness {target.disposition.recklessness:.2f})")
+    public_text = t("event.buyout.public", {
+        "old_name": old_name, "new_name": new_name})
+    true_text = t_true("event.buyout.true", {
+        "old_name": old_name, "new_name": new_name,
+        "war_chest": f"{war_chest:,.0f}",
+        "recklessness": f"{target.disposition.recklessness:.2f}"})
     return [FiredEvent(
         "lab_buyout", "societal", "ordinary", turn,
         target.id, None, 0.2, 0.0, public_text, true_text, effects=[])]

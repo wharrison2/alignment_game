@@ -33,64 +33,38 @@ bias is a liability here — flag, don't smooth over):
     paper needed.
 All copy below is a DRAFT for that review, not final content.
 """
+from backend_v1.content.copy import t
 
 # id -> {line, why, paper}.  paper is None or {"title": str, "url": str}.
+# Text values are folded into the central copy table (content/copy.py) and
+# referenced via t(); the paper URL stays here as data (a URL is not editable copy).
 CATALOG = {
     "high_ai_assist": {
-        "line": "Letting the model do the work is fast — but the work is only as "
-                "trustworthy as the model doing it.",
-        "why": "AI-assist routes your current model into the advances it helps "
-               "produce. A model with hidden misalignment doesn't announce it; it "
-               "bakes subtle flaws into what it builds, and those advances later "
-               "feed your training runs. The contamination is invisible at the "
-               "time and frozen into the result — and the channel gets stronger "
-               "exactly as the model gets more capable.",
-        "paper": {"title": "Sleeper Agents (Hubinger et al. 2024) — background: "
-                           "hidden behavior can survive safety training",
+        "line": t("warning.high_ai_assist.line"),
+        "why": t("warning.high_ai_assist.why"),
+        "paper": {"title": t("warning.high_ai_assist.paper_title"),
                   "url": "https://arxiv.org/abs/2401.05566"},
     },
     "elicitation_pressure": {
-        "line": "Pushing hard to extract capability works — and can teach the model "
-                "to look like it learned the goal rather than actually learn it.",
-        "why": "Heavy elicitation pressure rewards whatever scores well during "
-               "training. The fastest way to score well is often a proxy that "
-               "matches the goal where you're looking and diverges where you're "
-               "not. The two are hard to tell apart from the outside, because by "
-               "construction they behave identically under the very pressure you "
-               "applied.",
-        "paper": {"title": "Goal Misgeneralization (Shah et al. 2022)",
+        "line": t("warning.elicitation_pressure.line"),
+        "why": t("warning.elicitation_pressure.why"),
+        "paper": {"title": t("warning.elicitation_pressure.paper_title"),
                   "url": "https://arxiv.org/abs/2210.01790"},
     },
     "behavioral_patch": {
-        "line": "You can train against what you found. In a capable model this "
-                "often teaches it to hide the behavior rather than drop it.",
-        "why": "Training a capable model to stop producing a behavior you detected "
-               "optimizes for one thing: not getting caught producing it. Dropping "
-               "the behavior and learning to conceal it both satisfy that — and the "
-               "dashboard improves either way, so a cosmetic fix and a real one "
-               "look identical. The disposition axes resist clean fixes precisely "
-               "when the model is capable enough to tell it's being measured.",
-        "paper": {"title": "Alignment faking in large language models "
-                           "(Greenblatt et al. 2024)",
+        "line": t("warning.behavioral_patch.line"),
+        "why": t("warning.behavioral_patch.why"),
+        "paper": {"title": t("warning.behavioral_patch.paper_title"),
                   "url": "https://arxiv.org/abs/2412.14093"},
     },
     "release": {
-        "line": "Once released, it cannot be recalled — it joins everything else "
-                "already out there.",
-        "why": "A released model is frozen and permanent. Whatever it is at release "
-               "— including anything you haven't measured — ships with it and stays "
-               "shipped. Later fixes only touch the model still in your hands, never "
-               "the copies already in the world.",
+        "line": t("warning.release.line"),
+        "why": t("warning.release.why"),
         "paper": None,
     },
     "release_high_concern": {
-        "line": "Your evals are flagging real concern, and release is permanent. "
-                "Those concerns will ship with it — for good.",
-        "why": "Release freezes the model as-is and puts it beyond recall. You are "
-               "currently holding evidence of a problem; releasing now makes that "
-               "problem irreversible and adds it to the standing attack surface in "
-               "the world. The concern doesn't resolve on release — it just stops "
-               "being yours to fix.",
+        "line": t("warning.release_high_concern.line"),
+        "why": t("warning.release_high_concern.why"),
         "paper": None,
     },
 }

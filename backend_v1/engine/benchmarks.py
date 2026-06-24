@@ -15,6 +15,7 @@ import math
 from dataclasses import dataclass
 
 from backend_v1.config.constants import FRONTIER_EARLY_RELEASE_MARGIN
+from backend_v1.content.copy import t
 
 
 @dataclass(frozen=True)
@@ -31,24 +32,24 @@ class Benchmark:
 # Release schedule + difficulty (midpoint) authored so each benchmark saturates as
 # the frontier passes it and the next, harder one takes over (MMLU → GPQA → … ).
 BENCHMARK_SUITE = [
-    Benchmark("mmlu", "MMLU", "general", 2021.0, 2.0, "ring",
-              "Broad undergraduate knowledge across 57 subjects. Saturates early."),
-    Benchmark("humaneval", "HumanEval", "coding", 2021.0, 2.5, "ring",
-              "Function-level code synthesis from docstrings."),
-    Benchmark("gpqa", "GPQA", "general", 2023.0, 4.5, "ring",
-              "Google-proof graduate-level science questions."),
-    Benchmark("swebench", "SWE-bench", "coding", 2023.5, 5.0, "ring",
-              "Resolving real GitHub issues in large codebases."),
-    Benchmark("arcagi", "ARC-AGI", "general", 2024.5, 6.0, "ring",
-              "Novel abstraction puzzles built to resist memorization."),
-    Benchmark("hle", "Humanity's Last Exam", "general", 2025.5, 7.0, "ring",
-              "Frontier expert questions at the edge of human knowledge."),
-    Benchmark("frontier_x", "Frontier-Eval (sealed)", "general", 2028.0, 8.5, "ring",
-              "A next-generation benchmark, released as the field saturates HLE."),
-    Benchmark("arena_elo", "Arena ELO", "overall", 2023.0, 0.0, "elo",
-              "Head-to-head human-preference rating. Unbounded — the legible headline."),
-    Benchmark("metr_horizon", "METR task time-horizon", "overall", 2024.0, 0.0, "horizon",
-              "Length of task completed at 50% reliability. Doubles as capability climbs."),
+    Benchmark("mmlu", t("benchmark.mmlu.name"), "general", 2021.0, 2.0, "ring",
+              t("benchmark.mmlu.blurb")),
+    Benchmark("humaneval", t("benchmark.humaneval.name"), "coding", 2021.0, 2.5, "ring",
+              t("benchmark.humaneval.blurb")),
+    Benchmark("gpqa", t("benchmark.gpqa.name"), "general", 2023.0, 4.5, "ring",
+              t("benchmark.gpqa.blurb")),
+    Benchmark("swebench", t("benchmark.swebench.name"), "coding", 2023.5, 5.0, "ring",
+              t("benchmark.swebench.blurb")),
+    Benchmark("arcagi", t("benchmark.arcagi.name"), "general", 2024.5, 6.0, "ring",
+              t("benchmark.arcagi.blurb")),
+    Benchmark("hle", t("benchmark.hle.name"), "general", 2025.5, 7.0, "ring",
+              t("benchmark.hle.blurb")),
+    Benchmark("frontier_x", t("benchmark.frontier_x.name"), "general", 2028.0, 8.5, "ring",
+              t("benchmark.frontier_x.blurb")),
+    Benchmark("arena_elo", t("benchmark.arena_elo.name"), "overall", 2023.0, 0.0, "elo",
+              t("benchmark.arena_elo.blurb")),
+    Benchmark("metr_horizon", t("benchmark.metr_horizon.name"), "overall", 2024.0, 0.0, "horizon",
+              t("benchmark.metr_horizon.blurb")),
 ]
 BENCHMARK_BY_ID = {b.id: b for b in BENCHMARK_SUITE}
 

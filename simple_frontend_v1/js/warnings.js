@@ -101,15 +101,20 @@ export function openProjectModal(pid){
     <div class="row" style="margin-top:14px">
       <button class="primary" onclick="carryOutProject('${esc(pid)}')">${t("modal.carryOut")}</button>
       <button onclick="closeItemModal()">${t("modal.cancel")}</button>
-    </div>`;
+    </div>
+    <div id="modal-error" class="bad" style="margin-top:8px"></div>`;
   $("itemmodal").classList.add("show");
 }
 
-// "Carry it out" — performs the same queue action as before (reads the row's
-// assist value), then closes the modal.
+// "Carry it out" — queues the item (reading the row's assist value) and closes the
+// modal. If it would overrun the work-budget or cash, queueProject queues nothing
+// and returns the reason; we keep the modal OPEN and show that reason inline (the
+// queue error line sits behind the overlay), so the player learns why right here.
 export function carryOutProject(pid){
-  queueProject(pid);
-  closeItemModal();
+  const result = queueProject(pid);
+  if(result.ok){ closeItemModal(); return; }
+  const errorSlot = $("modal-error");
+  if(errorSlot) errorSlot.textContent = result.reason;
 }
 
 export function closeItemModal(){ $("itemmodal").classList.remove("show"); }

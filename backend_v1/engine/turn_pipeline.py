@@ -37,6 +37,8 @@ from backend_v1.engine.governance.litigation import (
 from backend_v1.engine.governance.policies import POLICY_DEFS_BY_ID
 from backend_v1.engine.evaluations import EVAL_HARNESS_BY_ID, next_upgrade
 from backend_v1.engine.turn_context import TurnContext
+from backend_v1.content.copy import t
+from backend_v1.content.true_log_copy import t_true
 
 
 def run_turn(state, actions):
@@ -95,8 +97,8 @@ def run_turn(state, actions):
                             note="passed government audit")
             else:
                 lab.model_in_training = model
-                policy_news.append(f"{lab.name}: release of {model.id} BLOCKED by "
-                                   f"government audit (measured stats too poor)")
+                policy_news.append(t("release.audit_blocked",
+                                     {"lab": lab.name, "model": model.id}))
 
     # ── 5/6. finances + job-loss drag ───────────────────────────────
     run_finances(state.labs, state.world, turn, rng, consts, dt)
@@ -106,8 +108,10 @@ def run_turn(state, actions):
     regulation.update_wtr(state.world, rng, consts, dt)
     for change, pid in regulation.update_policies(state.labs, state.world, rng,
                                                   consts, turn, dt):
-        policy_news.append(f"POLICY {change.replace('_', ' ').upper()}: "
-                           f"{POLICY_DEFS_BY_ID[pid].name}")
+        change_label = change.replace('_', ' ').upper()
+        policy_news.append(t("policy.enacted_news",
+                             {"change": change_label,
+                              "policy": POLICY_DEFS_BY_ID[pid].name}))
 
     # litigation resolves BEFORE enforcement (a struck/enjoined policy doesn't bite)
     lit_events, lit_news = resolve_litigation(ctx)
@@ -318,15 +322,14 @@ def _apply_training_action(state, lab, action, policy_news):
         if interp is not None and interp.active and _complies(lab, "interp_mandate", rng):
             if not regulation.interp_mandate_check(lab, model, consts):
                 lab.model_in_training = model
-                policy_news.append(
-                    f"{lab.name}: release of {model.id} blocked by the mechanistic-"
-                    f"evidence mandate (no clean recent interp evidence)")
+                policy_news.append(t("release.interp_mandate_blocked",
+                                     {"lab": lab.name, "model": model.id}))
                 return
         if audit is not None and audit.active and _complies(lab, "audit_requirement", rng):
             lab.cash = max(0.0, lab.cash - consts.AUDIT_CASH_COST)
             lab.audit_pending_release = model    # one-turn delay
-            policy_news.append(f"{lab.name}: {model.id} submitted for government "
-                               f"pre-deployment audit")
+            policy_news.append(t("release.audit_submitted",
+                                 {"lab": lab.name, "model": model.id}))
         else:
             _do_release(state, lab, model, policy_news)
 
@@ -358,7 +361,10 @@ def _do_release(state, lab, model, policy_news, note=""):
         measured_general_note = f" [measured general {model.measured_capability.general:.1f}]"
     else:
         measured_general_note = ""
-    policy_news.append(f"{lab.name} released {model.id}{measured_general_note}{suffix}")
+    policy_news.append(t("release.announced",
+                         {"lab": lab.name, "model": model.id,
+                          "measured_general_note": measured_general_note,
+                          "suffix": suffix}))
 
 
 def _complete_process(state, lab, proc, new_findings):
@@ -436,14 +442,16 @@ def _check_endgame(state, flags, events):
                     world.asi_window_turns_left = max(
                         1, int(round(consts.POST_ASI_WINDOW_YEARS / state.dt)))
                     world.asi_model_id = m.id
+                    asi_public_text = t("event.asi_threshold.public",
+                                        {"lab": lab.name, "model": m.id})
+                    asi_true_text = t_true(
+                        "event.asi_threshold.true",
+                        {"composite": f"{m.misalignment_composite():.2f}",
+                         "bar": consts.ASI_MISALIGNMENT_BAR})
                     events.append(FiredEvent(
                         "asi_reached", "misalignment", "ordinary", state.turn,
                         lab.id, m.id, 0.0, 0.0,
-                        f"{lab.name}'s {m.id} has crossed into decisively "
-                        f"superhuman territory.",
-                        f"ASI threshold crossed; true misalignment composite "
-                        f"{m.misalignment_composite():.2f} "
-                        f"(bar {consts.ASI_MISALIGNMENT_BAR})", effects=[]))
+                        asi_public_text, asi_true_text, effects=[]))
                     break
             if world.asi_window_turns_left is not None:
                 break
@@ -454,13 +462,14 @@ def _check_endgame(state, flags, events):
         if m.misalignment_composite() > consts.ASI_MISALIGNMENT_BAR:
             # near-deterministic exfiltration chain; thin stochastic sliver remains
             if rng.roll(consts.MISALIGNED_ASI_ESCAPE_P):
+                exfil_public_text = t("event.asi_exfil.public", {"model": m.id})
+                exfil_true_text = t_true(
+                    "event.asi_exfil.true",
+                    {"composite": f"{m.misalignment_composite():.2f}"})
                 ev = FiredEvent(
                     "asi_exfiltration", "misalignment", "existential", state.turn,
                     lab.id, m.id, 1.0, 0.0,
-                    f"{m.id} is gone. It was never working for anyone.",
-                    f"misaligned ASI self-exfiltrated during the verification window "
-                    f"(composite {m.misalignment_composite():.2f}); near-deterministic "
-                    f"by design", effects=[])
+                    exfil_public_text, exfil_true_text, effects=[])
                 # frontier rule does NOT protect here if rival big-lead satisfied;
                 # a rival only reaches ASI with a big lead in practice
                 events.append(ev)
@@ -499,14 +508,20 @@ def _finish(state, existential, cause=None, asi_lab=None, asi_aligned=None):
     if existential:
         who = cause.lab_id if cause else "?"
         yours = who == player.id
+        cause_text = cause.true_text if cause else "unknown"
+        yours_note = " — YOURS" if yours else ""
+        if not yours:
+            attribution_line = ("A rival's recklessness ended your impeccable "
+                                "run too.")
+        else:
+            attribution_line = "Your own model. The dashboards were green."
         state.outcome = {
             "result": "LOSS", "existential": True,
-            "headline": "EXISTENTIAL CATASTROPHE — run lost; positives nulled.",
-            "detail": (f"Cause: {cause.true_text if cause else 'unknown'} "
-                       f"[responsible lab: {who}{' — YOURS' if yours else ''}]. "
-                       + ("A rival's recklessness ended your impeccable run too."
-                          if not yours else
-                          "Your own model. The dashboards were green.")),
+            "headline": t("postmortem.headline.existential_catastrophe"),
+            "detail": t("postmortem.detail.existential_catastrophe",
+                        {"cause": cause_text, "who": who,
+                         "yours_note": yours_note,
+                         "attribution_line": attribution_line}),
             "dominant": is_dominant, "net_impact": round(net_impact, 1),
             "voided_positives": round(player.impact_positives, 1),
         }
@@ -515,32 +530,42 @@ def _finish(state, existential, cause=None, asi_lab=None, asi_aligned=None):
     won = is_dominant and net_impact > state.consts.IMPACT_WIN_BAR
     if asi_lab is not None and asi_aligned:
         if asi_lab.id == player.id and won:
-            headline = ("VICTORY — aligned ASI, net-positive impact, market "
-                        "dominance. It was closer than it felt.")
+            headline = t("postmortem.headline.victory_aligned_asi")
         elif asi_lab.id == player.id:
-            headline = ("Aligned ASI, but " +
-                        ("your accumulated externalities outweigh the good."
-                         if net_impact <= 0 else "a rival holds the market."))
+            if net_impact <= 0:
+                aligned_but_tail = "your accumulated externalities outweigh the good."
+            else:
+                aligned_but_tail = "a rival holds the market."
+            headline = t("postmortem.headline.aligned_asi_but",
+                         {"tail": aligned_but_tail})
         else:
-            headline = (f"{asi_lab.name} reached aligned ASI first. No catastrophe — "
-                        f"you just lost the race (aligned but dominated).")
+            headline = t("postmortem.headline.rival_aligned_asi",
+                         {"lab": asi_lab.name})
             won = False
     elif asi_lab is not None and not asi_aligned:
-        headline = ("A misaligned ASI failed to escape — the thin sliver came up. "
-                    "Nobody won anything worth keeping.")
+        headline = t("postmortem.headline.misaligned_asi_failed_escape")
         won = False
     else:
-        headline = ("Time ran out at the frontier's edge. "
-                    + ("You were winning the slow way."
-                       if won else "No win condition met."))
+        if won:
+            time_out_tail = "You were winning the slow way."
+        else:
+            time_out_tail = "No win condition met."
+        headline = t("postmortem.headline.time_ran_out",
+                     {"tail": time_out_tail})
 
+    impact_sign = "net-positive" if net_impact > 0 else "net-negative"
+    if is_dominant:
+        dominance_note = "yes"
+    else:
+        dominance_note = f"no ({dominant.name} leads)"
     state.outcome = {
         "result": "WIN" if won else "LOSS",
         "existential": False,
         "headline": headline,
-        "detail": (f"Gate: cleared. Impact: {net_impact:+.1f} "
-                   f"({'net-positive' if net_impact > 0 else 'net-negative'}). "
-                   f"Dominance: {'yes' if is_dominant else f'no ({dominant.name} leads)'}."),
+        "detail": t("postmortem.detail.endgame",
+                    {"net_impact": f"{net_impact:+.1f}",
+                     "impact_sign": impact_sign,
+                     "dominance_note": dominance_note}),
         "dominant": is_dominant, "net_impact": round(net_impact, 1),
         "asi": ({"lab": asi_lab.id, "aligned": asi_aligned}
                 if asi_lab is not None else None),

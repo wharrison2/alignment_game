@@ -106,11 +106,22 @@ export function effYears(base, assist){
   return base / (1 + assistParams.speedup * (assist||0) * assistParams.speed_potency);
 }
 
+// Every research item the player can queue through start_projects, gathered from
+// all three available lists: capability advances, safety evaluations/interventions,
+// and safety ADVANCES to research. budgetLeft / cashLeft / renderQueue all look a
+// queued item up here — earlier they searched only the first two lists, so a queued
+// safety ADVANCE silently dropped out of the budget/cash preview entirely.
+export function queueableProjects(){
+  const lm = OBS.legal_moves;
+  return lm.capability_projects_available
+    .concat(lm.safety_projects_available)
+    .concat(lm.safety_advances_available || []);
+}
+
 // Returns remaining work-budget after all queued project costs.
 export function budgetLeft(){
   let usedBudget = 0;
-  const allProjects = OBS.legal_moves.capability_projects_available
-                      .concat(OBS.legal_moves.safety_projects_available);
+  const allProjects = queueableProjects();
 
   pending.start_projects.forEach(queued => {
     const project = allProjects.find(x => x.project_id === queued.project_id);
@@ -130,4 +141,54 @@ export function budgetLeft(){
     });
   }
   return OBS.work_budget_free - usedBudget;
+}
+
+// Returns remaining cash ($M) after every queued action that spends cash. Mirrors
+// the cash_needed accumulation in actions.validate_action so the cash chip previews
+// the spend the MOMENT an action is queued, not at end-turn.
+//
+// Coverage gap (still enforced by the backend at end-turn): litigation's amicus/join
+// tiers cost a FIXED fee that isn't exposed to the frontend, so only the typed
+// litigation spend (the "fund" tier) is previewed here. See ISSUES.md.
+export function cashLeft(){
+  let usedCash = 0;
+  const allProjects = queueableProjects();
+
+  pending.start_projects.forEach(queued => {
+    const project = allProjects.find(x => x.project_id === queued.project_id);
+    if(project) usedCash += project.cash_cost || 0;
+  });
+
+  // commissioning a pretrain run spends its compute in cash (runs use no work-budget).
+  if(pending.commission_run) usedCash += pending.commission_run.compute || 0;
+
+  // governance spends: lobbying and litigation both draw cash (typed $M amounts).
+  Object.values(pending.lobby).forEach(entry => {
+    if(entry) usedCash += entry.spend || 0;
+  });
+  Object.values(pending.litigation).forEach(entry => {
+    if(entry) usedCash += entry.spend || 0;
+  });
+
+  return OBS.cash - usedCash;
+}
+
+// Whether everything currently queued still fits within BOTH the work-budget and
+// the cash on hand. Reads budgetLeft()/cashLeft(), which already net out the whole
+// `pending` queue — so the pattern at a queue site is: mutate `pending`, call this,
+// and revert the mutation if it returns {ok:false}. This is the frontend half of
+// actions.validate_action's global budget check, pulled forward to the moment of
+// queuing so the player is stopped HERE, not when they press END TURN.
+export function queueFits(){
+  const budgetRemaining = budgetLeft();
+  if(budgetRemaining < -1e-9)
+    return {ok:false, reason: t("queue.cantAfford.budget",
+      {over: (-budgetRemaining).toFixed(2)})};
+
+  const cashRemaining = cashLeft();
+  if(cashRemaining < -1e-9)
+    return {ok:false, reason: t("queue.cantAfford.cash",
+      {over: Math.round(-cashRemaining)})};
+
+  return {ok:true};
 }

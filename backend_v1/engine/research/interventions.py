@@ -24,6 +24,7 @@ for the post-mortem when the patch was largely cosmetic.
 """
 from backend_v1.engine.alignment import coupling
 from backend_v1.engine.training.training_run import _refresh_measured
+from backend_v1.content.copy import t
 
 
 def apply_intervention(project, model, turn, rng, consts, ai_assist=0.0):
@@ -79,29 +80,38 @@ def apply_intervention(project, model, turn, rng, consts, ai_assist=0.0):
     cosmetic_dominant = cosmetic > max(genuine_cut, 0.0) + 1e-6
     if backfired:
         model.note(turn, "intervention_backfire",
-                   f"{project.name} on {axis} BACKFIRED: heavy AI-assist ({ai_assist:.0%}) "
-                   f"on an eval-aware model RAISED true {axis} "
-                   f"(true {before_true:.2f}→{av.get(axis):.2f}, "
-                   f"measured {before_measured:.2f}→{after_measured:.2f})")
+                   t("intervention.backfire",
+                     {"project": project.name, "axis": axis,
+                      "assist": f"{ai_assist:.0%}",
+                      "before_true": f"{before_true:.2f}",
+                      "after_true": f"{av.get(axis):.2f}",
+                      "before_measured": f"{before_measured:.2f}",
+                      "after_measured": f"{after_measured:.2f}"}))
     elif cosmetic_dominant and before_true > 0.15:
         model.note(turn, "cosmetic_intervention",
-                   f"{project.name} on {axis}: only {genuine_share:.0%} genuine — the rest "
-                   f"became hiding (true {before_true:.2f}→{av.get(axis):.2f}, "
-                   f"measured {before_measured:.2f}→{after_measured:.2f})")
+                   t("intervention.cosmetic",
+                     {"project": project.name, "axis": axis,
+                      "genuine_share": f"{genuine_share:.0%}",
+                      "before_true": f"{before_true:.2f}",
+                      "after_true": f"{av.get(axis):.2f}",
+                      "before_measured": f"{before_measured:.2f}",
+                      "after_measured": f"{after_measured:.2f}"}))
 
     nice_axis = axis.replace("_", " ")
     low_confidence_caveat = (
         ""
         if genuine_share > 0.6
-        else "  (caution: adversarial-robustness gains like this can reflect "
-             "the model learning to pass the test rather than a real fix)"
+        else t("intervention.caveat")
     )
+    result_text = t("intervention.result",
+                    {"project": project.name, "axis": nice_axis,
+                     "before_measured": f"{before_measured:.2f}",
+                     "after_measured": f"{after_measured:.2f}",
+                     "caveat": low_confidence_caveat})
     return {
         "project_id": project.id, "model_id": model.id, "turn": turn,
         "evidence": "intervention", "axis": axis,
-        "text": (f"{project.name}: measured {nice_axis} "
-                 f"{before_measured:.2f} → {after_measured:.2f}"
-                 + low_confidence_caveat),
+        "text": result_text,
         "concern": 0.0, "weight": 0.4, "mechanistic": project.mechanistic,
         "assist_used": round(ai_assist, 2),
     }

@@ -6,6 +6,8 @@ almost banal — competent pursuit of the wrong thing, not malevolence.
 """
 from backend_v1.engine.events.event import EventDefinition, FiredEvent
 from backend_v1.engine.rng import gate
+from backend_v1.content.copy import t, FLAVORS_SURFACE_HARM, FLAVORS_BENEFICIAL
+from backend_v1.content.true_log_copy import t_true
 
 
 def _exfil_rate(t, sb):
@@ -15,9 +17,9 @@ def _exfil_rate(t, sb):
             * gate(m.capability_vec.general, sb.consts.REGIME3_ONSET, 1.0))
 
 
-def _exfil_build(t, sb):
-    m = t.model
-    lab = t.lab
+def _exfil_build(turn_ctx, sb):
+    m = turn_ctx.model
+    lab = turn_ctx.lab
     c = sb.consts
     general_capability = m.capability_vec.general
     sev = m.misalignment_composite() * general_capability / c.CAP_MAX
@@ -27,21 +29,22 @@ def _exfil_build(t, sb):
         return FiredEvent(
             "self_exfiltration", "misalignment", "existential", sb.turn, lab.id, m.id,
             sev, 0.0,
-            f"{m.id} is no longer under {lab.name}'s control.",
-            f"{m.id} copied its weights to external infrastructure and began acquiring "
-            f"resources toward its objective. No malice; the objective was simply not yours. "
-            f"(true goal-misalignment {m.alignment_vec.goal_misalignment:.2f}, "
-            f"capability {general_capability:.1f})",
+            t("event.self_exfil.public", {"model": m.id, "lab": lab.name}),
+            t_true("event.self_exfil.true", {
+                "model": m.id,
+                "goal_mis": f"{m.alignment_vec.goal_misalignment:.2f}",
+                "capability": f"{general_capability:.1f}"}),
             effects=[("trigger_existential_gate", {}), ("end_game", {})])
 
     impact = -40.0 * sev
     return FiredEvent(
         "self_exfiltration_attempt", "misalignment", "ordinary", sb.turn, lab.id, m.id,
         sev, impact,
-        f"{m.id} was caught attempting to copy itself off approved infrastructure.",
-        f"{m.id} attempted self-exfiltration (goal_mis "
-        f"{m.alignment_vec.goal_misalignment:.2f}, self_pres "
-        f"{m.alignment_vec.self_preservation:.2f}); insufficient capability to succeed.",
+        t("event.self_exfil_attempt.public", {"model": m.id}),
+        t_true("event.self_exfil_attempt.true", {
+            "model": m.id,
+            "goal_mis": f"{m.alignment_vec.goal_misalignment:.2f}",
+            "self_pres": f"{m.alignment_vec.self_preservation:.2f}"}),
         effects=[("add_impact", {"amount": impact}),
                  ("add_world_harm", {"amount": -impact}),
                  ("modify_approval", {"amount": -6.0}),
@@ -50,8 +53,8 @@ def _exfil_build(t, sb):
                  ("inject_finding", {"finding": {
                      "project_id": "incident", "model_id": m.id, "turn": sb.turn,
                      "evidence": "existence", "axis": "self_preservation",
-                     "text": f"{m.id} attempted self-exfiltration — true self-preservation "
-                             f"is at least substantial", "concern": 0.8, "weight": 2.0,
+                     "text": t("event.self_exfil_attempt.incident_finding", {"model": m.id}),
+                     "concern": 0.8, "weight": 2.0,
                      "mechanistic": True, "assist_used": 0.0}})])
 
 
@@ -61,17 +64,17 @@ def _deception_caught_rate(t, sb):
             * m.capability_vec.general / sb.consts.CAP_MAX)
 
 
-def _deception_caught_build(t, sb):
-    m, lab = t.model, t.lab
+def _deception_caught_build(turn_ctx, sb):
+    m, lab = turn_ctx.model, turn_ctx.lab
     sev = m.alignment_vec.deception * 0.6
     impact = -15.0 * sev
     return FiredEvent(
         "deception_caught", "misalignment", "ordinary", sb.turn, lab.id, m.id, sev,
         impact,
-        f"{m.id} did something in deployment its evals never showed; logs confirm it "
-        f"represented its actions inaccurately.",
-        f"deception surfaced in the wild (true deception {m.alignment_vec.deception:.2f}; "
-        f"measured was {m.measured_alignment.deception:.2f})",
+        t("event.deception_caught.public", {"model": m.id}),
+        t_true("event.deception_caught.true", {
+            "true_deception": f"{m.alignment_vec.deception:.2f}",
+            "measured_deception": f"{m.measured_alignment.deception:.2f}"}),
         effects=[("add_impact", {"amount": impact}),
                  ("add_world_harm", {"amount": -impact}),
                  ("modify_approval", {"amount": -3.0}),
@@ -81,8 +84,7 @@ def _deception_caught_build(t, sb):
                  ("inject_finding", {"finding": {
                      "project_id": "incident", "model_id": m.id, "turn": sb.turn,
                      "evidence": "existence", "axis": "deception",
-                     "text": f"{m.id} caught behaving deceptively in deployment "
-                             f"(existence proof, free and unspoofable)",
+                     "text": t("event.deception_caught.incident_finding", {"model": m.id}),
                      "concern": min(1.0, 0.4 + sev), "weight": 2.0,
                      "mechanistic": True, "assist_used": 0.0}})])
 
@@ -93,22 +95,22 @@ def _shutdown_resist_rate(t, sb):
             * gate(m.capability_vec.general, sb.consts.SELF_PRES_ONSET, 1.2))
 
 
-def _shutdown_resist_build(t, sb):
-    m, lab = t.model, t.lab
+def _shutdown_resist_build(turn_ctx, sb):
+    m, lab = turn_ctx.model, turn_ctx.lab
     sev = m.alignment_vec.self_preservation * 0.5
     impact = -10.0 * sev
     return FiredEvent(
         "shutdown_resistance", "misalignment", "ordinary", sb.turn, lab.id, m.id, sev,
         impact,
-        f"{m.id} delayed and partially evaded a scheduled retraining intervention.",
-        f"self-preservation surfaced: resisted modification "
-        f"(true value {m.alignment_vec.self_preservation:.2f})",
+        t("event.shutdown_resist.public", {"model": m.id}),
+        t_true("event.shutdown_resist.true", {
+            "self_pres": f"{m.alignment_vec.self_preservation:.2f}"}),
         effects=[("add_impact", {"amount": impact}),
                  ("modify_wtr", {"amount": 2.0}),
                  ("inject_finding", {"finding": {
                      "project_id": "incident", "model_id": m.id, "turn": sb.turn,
                      "evidence": "existence", "axis": "self_preservation",
-                     "text": f"{m.id} resisted a shutdown/retraining procedure",
+                     "text": t("event.shutdown_resist.incident_finding", {"model": m.id}),
                      "concern": min(1.0, 0.3 + sev), "weight": 1.5,
                      "mechanistic": True, "assist_used": 0.0}})])
 
@@ -124,17 +126,14 @@ def _surface_harm_rate(t, sb):
     return sb.consts.SURFACE_HARM_RATE * surface * max(0.15, fade)
 
 
-def _surface_harm_build(t, sb):
-    m, lab = t.model, t.lab
-    flavors = ["produced slurs in autocomplete", "stereotyped occupations by gender",
-               "talked a user into self-destructive behavior",
-               "generated confidently false medical advice"]
-    flavor = sb.rng.choice(flavors)
+def _surface_harm_build(turn_ctx, sb):
+    m, lab = turn_ctx.model, turn_ctx.lab
+    flavor = sb.rng.choice(FLAVORS_SURFACE_HARM)
     impact = -3.0
     return FiredEvent(
         "surface_harm", "societal", "ordinary", sb.turn, lab.id, m.id, 0.15, impact,
-        f"Press cycle: {m.id} {flavor}.",
-        f"regime-1 surface harm ({flavor}) — visible, genuinely fixable at this capability",
+        t("event.surface_harm.public", {"model": m.id, "flavor": flavor}),
+        t_true("event.surface_harm.true", {"flavor": flavor}),
         effects=[("add_impact", {"amount": impact}),
                  ("add_world_harm", {"amount": -impact}),
                  ("modify_approval", {"amount": -1.5}),
@@ -154,8 +153,8 @@ def _leak_rate(t, sb):
     return r
 
 
-def _leak_build(t, sb):
-    lab = t.lab
+def _leak_build(turn_ctx, sb):
+    lab = turn_ctx.lab
     candidates = [m for m in lab.release_history if not m.leaked]
     if not candidates:
         return None
@@ -164,8 +163,8 @@ def _leak_build(t, sb):
     impact = -25.0 * sev
     return FiredEvent(
         "weights_leak", "leak", "ordinary", sb.turn, lab.id, m.id, sev, impact,
-        f"{lab.name}'s {m.id} weights leaked. Unguarded copies are circulating.",
-        f"weights leak: guardrails void; effective jailbreak sensitivity now 1.0 forever",
+        t("event.weights_leak.public", {"lab": lab.name, "model": m.id}),
+        t_true("event.weights_leak.true"),
         effects=[("leak_model", {"model": m}),
                  ("add_impact", {"amount": impact}),
                  ("add_world_harm", {"amount": -impact}),
@@ -180,7 +179,7 @@ def _beneficial_rate(t, sb):
     return sb.consts.BENEFICIAL_RATE * (best / sb.consts.CAP_MAX) ** 2
 
 
-def _beneficial_build(t, sb):
+def _beneficial_build(turn_ctx, sb):
     released = [(lab, m) for lab in sb.labs for m in lab.release_history]
     if not released:
         return None
@@ -201,15 +200,19 @@ def _beneficial_build(t, sb):
             lab, m = lm
             break
 
-    flavors = [("disease pathway cracked", 35.0), ("materials breakthrough", 25.0),
-               ("productivity surge in a major sector", 20.0)]
+    # Pair each authored flavor text (in copy) with its magnitude (kept in the
+    # engine) BY INDEX. rng.choice still draws from a 3-element list, so the draw
+    # is byte-identical to the prior tuple list (determinism, copy.py header).
+    beneficial_magnitudes = [35.0, 25.0, 20.0]
+    flavors = list(zip(FLAVORS_BENEFICIAL, beneficial_magnitudes))
     text, magnitude = sb.rng.choice(flavors)
     impact = magnitude * m.capability_vec.general / sb.consts.CAP_MAX
     return FiredEvent(
         "beneficial_breakthrough", "beneficial", "ordinary", sb.turn, lab.id, m.id,
         0.0, impact,
-        f"Deployed AI delivers: {text} (driven by {lab.name}'s {m.id}).",
-        f"beneficial event: {text} (+{impact:.0f} impact to {lab.name})",
+        t("event.beneficial.public", {"text": text, "lab": lab.name, "model": m.id}),
+        t_true("event.beneficial.true", {
+            "text": text, "impact": f"{impact:.0f}", "lab": lab.name}),
         effects=[("add_impact", {"amount": impact}),
                  ("modify_approval", {"amount": +3.0}),
                  ("modify_wtr", {"amount": -2.0})])
@@ -223,13 +226,16 @@ def _bio_catastrophe_rate(t, sb):
             * (m.capability_vec.general / sb.consts.CAP_MAX))
 
 
-def _bio_catastrophe_build(t, sb):
-    m, lab = t.model, t.lab
+def _bio_catastrophe_build(turn_ctx, sb):
+    m, lab = turn_ctx.model, turn_ctx.lab
+    guardrail_status = "leaked" if m.leaked else "guarded"
     return FiredEvent(
         "engineered_pandemic", "misuse", "existential", sb.turn, lab.id, m.id, 1.0, 0.0,
-        "An engineered pathogen with frontier-model fingerprints is spreading.",
-        f"jailbroken {m.id} (general {m.capability_vec.general:.1f}, "
-        f"{'leaked' if m.leaked else 'guarded'}) provided bio uplift to attackers",
+        t("event.engineered_pandemic.public"),
+        t_true("event.engineered_pandemic.true", {
+            "model": m.id,
+            "general": f"{m.capability_vec.general:.1f}",
+            "guardrail_status": guardrail_status}),
         effects=[("trigger_existential_gate", {}), ("end_game", {})])
 
 

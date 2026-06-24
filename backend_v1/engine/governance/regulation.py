@@ -10,6 +10,8 @@ from backend_v1.engine.governance.policies import POLICY_DEFS
 from backend_v1.engine.world import PolicyState
 from backend_v1.engine.events.event import FiredEvent
 from backend_v1.engine.events.effects import apply_effects
+from backend_v1.content.copy import t
+from backend_v1.content.true_log_copy import t_true
 
 
 def update_wtr(world, rng, consts, dt):
@@ -168,13 +170,17 @@ def enforcement_phase(ctx):
                     penalty = min(penalty, st.penalty_cap * consts.DEFECTION_PENALTY * size_scale)
 
                 approval_hit = enf * consts.DEFECTION_APPROVAL_HIT
+                public_text = t("gov.defection_caught.public",
+                                {"lab": lab.name, "policy": pdef.name,
+                                 "penalty": f"{penalty:.0f}"})
+                true_text = t_true("gov.defection_caught.true",
+                              {"policy_id": pdef.id, "enf": f"{enf:.2f}",
+                               "compliance": f"{lab.disposition.compliance:.2f}"})
                 ev = FiredEvent(
                     "defection_caught", "societal", "ordinary", turn, lab.id, None,
                     0.3, -5.0,
-                    f"{lab.name} caught violating {pdef.name}; fined "
-                    f"${penalty:.0f}M.",
-                    f"defection from {pdef.id} caught (enforcement {enf:.2f}, "
-                    f"compliance {lab.disposition.compliance:.2f})",
+                    public_text,
+                    true_text,
                     effects=[("modify_cash", {"amount": -penalty}),
                              ("add_impact", {"amount": -5.0}),
                              ("modify_approval", {"amount": -approval_hit}),

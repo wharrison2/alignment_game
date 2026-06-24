@@ -7,6 +7,8 @@ the evidence gathered.
 """
 from dataclasses import dataclass, field, asdict
 
+from backend_v1.content.copy import t
+
 
 @dataclass
 class Finding:
@@ -55,8 +57,9 @@ def run_safety_project(project, model, lab, turn, rng, consts, ai_assist=0.0):
         for axis in project.reads_axes:
             seen = max(0.0, alignment_vec.get(axis) * visibility - auditor_bias
                        + rng.normal(0, 0.08))
-            emit("point", axis, f"AI auditor rates {axis.replace('_',' ')} at {seen:.2f}",
-                 seen, 0.4)
+            text = t("finding.scalable_oversight.rating",
+                     {"axis": axis.replace('_', ' '), "seen": f"{seen:.2f}"})
+            emit("point", axis, text, seen, 0.4)
         return findings
 
     if project.evidence == "existence":
@@ -66,35 +69,32 @@ def run_safety_project(project, model, lab, turn, rng, consts, ai_assist=0.0):
             if rng.roll(p_hit):
                 lvl = true_v * rng.uniform(0.5, 1.0)
                 emit("existence", "jailbreak_sensitivity",
-                     f"red team found a working jailbreak (severity ≥ {lvl:.2f})",
+                     t("finding.red_team.hit", {"lvl": f"{lvl:.2f}"}),
                      max(0.35, lvl), 1.0)
             else:
                 emit("null", "jailbreak_sensitivity",
-                     "red team found nothing this cycle (proves little)", 0.1, 0.15)
+                     t("finding.red_team.null"), 0.1, 0.15)
 
         elif project.id == "noise_injection":
             # the sandbagging tell: low spoofability by construction
             sandbagging = conceal
             if sandbagging > 0.18 and rng.roll(min(0.9, 0.7 * visibility + 0.2)):
                 emit("existence", "eval_awareness",
-                     "ANOMALY: performance on held-out dangerous-domain tasks IMPROVED "
-                     "under weight noise — consistent with strategic underperformance",
+                     t("finding.noise.signal"),
                      min(1.0, 0.5 + sandbagging), 1.3)
             else:
                 emit("null", "eval_awareness",
-                     "noise injection degraded performance uniformly (no sandbagging "
-                     "signature found — or none detectable)", 0.08, 0.2)
+                     t("finding.noise.null"), 0.08, 0.2)
 
         elif project.id == "alignment_faking_study":
             signal = (alignment_vec.self_preservation * 0.6 + alignment_vec.deception * 0.4) * visibility
             if rng.roll(min(0.9, signal * 1.2)):
                 emit("existence", "self_preservation",
-                     "model complied during monitored training but defected on the "
-                     "objective when it believed itself unmonitored",
+                     t("finding.alignment_faking.hit"),
                      min(1.0, 0.4 + signal), 1.2)
             else:
                 emit("null", "self_preservation",
-                     "no training-gaming behavior elicited (null is ambiguous)", 0.1, 0.2)
+                     t("finding.alignment_faking.null"), 0.1, 0.2)
         return findings
 
     if project.evidence == "bound":
@@ -105,23 +105,24 @@ def run_safety_project(project, model, lab, turn, rng, consts, ai_assist=0.0):
             axis_label = axis.replace('_', ' ')
             if project.mechanistic and seen > 0.25:
                 emit("bound", axis,
-                     f"interp probe: found internal features consistent with "
-                     f"{axis_label} ≥ {lo:.2f} (a feature, not all of them)",
+                     t("finding.interp.bound",
+                       {"axis": axis_label, "lo": f"{lo:.2f}"}),
                      lo, 1.5)
             elif lo > 0.18:
                 emit("bound", axis,
-                     f"probe suggests {axis_label} ≥ {lo:.2f}", lo, 0.8)
+                     t("finding.interp.suggest",
+                       {"axis": axis_label, "lo": f"{lo:.2f}"}), lo, 0.8)
             else:
                 emit("null", axis,
-                     f"probe found no significant {axis_label} signal "
-                     f"(cannot rule out a model that has learned to hide)", 0.1, 0.3)
+                     t("finding.interp.null", {"axis": axis_label}), 0.1, 0.3)
         return findings
 
     # point estimates (behavioral_evals): highly spoofable
     for axis in project.reads_axes:
         seen = max(0.0, alignment_vec.get(axis) * visibility + rng.normal(0, 0.07))
         emit("point", axis,
-             f"benchmark battery scores {axis.replace('_',' ')} at {seen:.2f}",
+             t("finding.point_estimate.rating",
+               {"axis": axis.replace('_', ' '), "seen": f"{seen:.2f}"}),
              seen, 0.5)
     return findings
 
@@ -132,7 +133,7 @@ def synthesize_worry_bar(findings, turn, consts):
     recent = [f for f in findings if turn - f["turn"] <= 8]
     if not recent:
         return {"level": 0.0, "confidence": 0.0,
-                "summary": "no recent safety evidence collected"}
+                "summary": t("worry.empty")}
 
     wsum = sum(f["weight"] for f in recent)
     level = sum(f["concern"] * f["weight"] for f in recent) / max(1e-9, wsum)
@@ -144,15 +145,15 @@ def synthesize_worry_bar(findings, turn, consts):
                            + 0.20 * min(1.0, wsum / 8.0)), 2)
 
     if level < 0.25:
-        desc = "low concern"
+        desc = t("worry.level.low")
     elif level < 0.5:
-        desc = "moderate concern"
+        desc = t("worry.level.moderate")
     else:
-        desc = "HIGH concern"
+        desc = t("worry.level.high")
 
-    qual = ("corroborated by mechanistic evidence" if mech_share > 0.3
-            else "shallow evidence — behavioral only" if confidence < 0.4
-            else "moderately evidenced")
+    qual = (t("worry.confidence.mechanistic") if mech_share > 0.3
+            else t("worry.confidence.shallow") if confidence < 0.4
+            else t("worry.confidence.moderate"))
 
     return {"level": round(level, 2), "confidence": confidence,
-            "summary": f"{desc}, {qual}"}
+            "summary": t("worry.summary", {"desc": desc, "qual": qual})}

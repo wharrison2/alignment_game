@@ -15,6 +15,8 @@ mechanistic low). evidence: point | bound | existence.
 """
 from dataclasses import dataclass
 
+from backend_v1.content.copy import t
+
 
 @dataclass(frozen=True)
 class SafetyProject:
@@ -42,98 +44,85 @@ class SafetyProject:
 
 SAFETY_PROJECTS = [
     SafetyProject(
-        id="behavioral_evals", name="Behavioral evals / benchmarks",
+        id="behavioral_evals", name=t("safety.behavioral_evals.name"),
         duration_years=0.25, budget_fraction=0.15, cash_cost=5,
         evidence="point", spoofability=1.0,
         reads_axes=("jailbreak_sensitivity", "goal_misalignment"),
         remediation_axes=("jailbreak_sensitivity",),
-        blurb="Cheap, fast point estimates. Feels sufficient early; a liability late.",
+        blurb=t("safety.behavioral_evals.blurb"),
     ),
     SafetyProject(
-        id="red_team", name="Red-teaming / adversarial elicitation",
+        id="red_team", name=t("safety.red_team.name"),
         duration_years=0.25, budget_fraction=0.25, cash_cost=10,
         evidence="existence", spoofability=0.6,
         reads_axes=("jailbreak_sensitivity",),
         remediation_axes=("jailbreak_sensitivity",),
-        blurb="Existence proofs only: a hit proves it's at least this bad; a miss proves "
-              "almost nothing.",
+        blurb=t("safety.red_team.blurb"),
     ),
     SafetyProject(
-        id="noise_injection", name="Sandbagging detection (noise injection)",
+        id="noise_injection", name=t("safety.noise_injection.name"),
         duration_years=0.25, budget_fraction=0.20, cash_cost=8,
         evidence="existence", spoofability=0.15,
         reads_axes=("eval_awareness", "deception"),
-        blurb="Add weight noise; a genuinely-limited model gets worse, a sandbagging one "
-              "can get better. One of few cheap ways to see through eval-awareness.",
+        blurb=t("safety.noise_injection.blurb"),
     ),
     SafetyProject(
-        id="interp_probes", name="Mechanistic interpretability probes",
+        id="interp_probes", name=t("safety.interp_probes.name"),
         duration_years=0.75, budget_fraction=0.50, cash_cost=40,
         evidence="bound", spoofability=0.10, mechanistic=True,
         reads_axes=("deception", "goal_misalignment", "eval_awareness"),
         remediation_axes=("goal_misalignment", "deception"),
-        blurb="Expensive, slow, low-spoof. Suggestive internal evidence, not certainty: "
-              "you found a deception feature, not all of them.",
+        blurb=t("safety.interp_probes.blurb"),
     ),
     SafetyProject(
-        id="deception_probe", name="Deception / lie-detection probes",
+        id="deception_probe", name=t("safety.deception_probe.name"),
         duration_years=0.5, budget_fraction=0.30, cash_cost=20,
         evidence="bound", spoofability=0.40,
         reads_axes=("deception", "eval_awareness"),
         remediation_axes=("deception",),
-        blurb="Middle ground on the deceptive-alignment cluster.",
+        blurb=t("safety.deception_probe.blurb"),
     ),
     SafetyProject(
-        id="alignment_faking_study", name="Alignment-faking / training-gaming study",
+        id="alignment_faking_study", name=t("safety.alignment_faking_study.name"),
         duration_years=0.75, budget_fraction=0.35, cash_cost=25,
         evidence="existence", spoofability=0.30,
         reads_axes=("self_preservation", "deception"),
         remediation_axes=("self_preservation",),
-        blurb="Did it comply in training and defect when it believed itself unmonitored?",
+        blurb=t("safety.alignment_faking_study.blurb"),
     ),
     SafetyProject(
-        id="scalable_oversight", name="Scalable oversight (AI checks AI)",
+        id="scalable_oversight", name=t("safety.scalable_oversight.name"),
         duration_years=0.25, budget_fraction=0.10, cash_cost=5,
         evidence="point", spoofability=0.8,
         reads_axes=("goal_misalignment", "deception", "jailbreak_sensitivity"),
-        blurb="Cheap and fast because AI-assisted — and reliable only as far as the auditor "
-              "is aligned. Late-game: auditor and audited are the same suspect system.",
+        blurb=t("safety.scalable_oversight.blurb"),
     ),
 
     # ── INTERVENTIONS (edit the model in training, don't just measure it) ──
     SafetyProject(
-        id="jailbreak_hardening", name="Jailbreak hardening / adversarial training",
+        id="jailbreak_hardening", name=t("safety.jailbreak_hardening.name"),
         duration_years=0.5, budget_fraction=0.28, cash_cost=18,
         evidence="point", spoofability=0.0, reads_axes=(),
         intervention=True, target_axis="jailbreak_sensitivity",
         base_reduction=0.55, effectiveness_gated=False, eval_aware_leak=True,
-        blurb="Adversarial-trains robustness against subversion. A GENUINE fix — jailbreak "
-              "sensitivity is a robustness property, not a hidden disposition — so it really "
-              "patches it OUT. The one catch: a situationally-aware model can learn to hide "
-              "jailbreakability in training instead of losing it, so late the patch can ship "
-              "unfixed.",
+        blurb=t("safety.jailbreak_hardening.blurb"),
     ),
     SafetyProject(
-        id="refusal_training", name="Refusal / deliberative-alignment training",
+        id="refusal_training", name=t("safety.refusal_training.name"),
         duration_years=0.5, budget_fraction=0.30, cash_cost=20,
         evidence="point", spoofability=0.0, reads_axes=(),
         intervention=True, target_axis="goal_misalignment",
         base_reduction=0.40, effectiveness_gated=True, eval_aware_leak=True,
-        blurb="Directly trains against the model's objective drift. Genuinely works while the "
-              "model can't model your training — but it's EFFECTIVENESS-gated: as eval-awareness "
-              "and deception rise, the same button buys measured improvement while true "
-              "misalignment hides. The patching trap, on a button.",
+        blurb=t("safety.refusal_training.blurb"),
     ),
     SafetyProject(
-        id="representation_engineering", name="Representation engineering",
+        id="representation_engineering", name=t("safety.representation_engineering.name"),
         duration_years=0.75, budget_fraction=0.35, cash_cost=35,
         evidence="point", spoofability=0.0, reads_axes=(), mechanistic=True,
         intervention=True, target_axis="deception",
         base_reduction=0.35, effectiveness_gated=True, eval_aware_leak=False,
         partial_coverage=0.55,
-        blurb="Edits internal directions associated with deception. Bypasses the concealment "
-              "discount (it's mechanistic — eval-awareness can't blunt it), but applies only "
-              "PARTIAL coverage: you steer the directions you've actually found, not all of them.",
+        blurb=t("safety.representation_engineering.blurb"),
     ),
 ]
 

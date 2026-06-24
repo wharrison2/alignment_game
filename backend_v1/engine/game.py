@@ -42,8 +42,17 @@ MAX_TICKER_CHARS = 6
 def _strip_control_characters(raw_text: str) -> str:
     """Drop ASCII/Unicode control characters (anything below space, plus DEL),
     keeping ordinary printable text. Newlines and tabs count as control here —
-    a lab name is a single short label, not multi-line text."""
-    return "".join(ch for ch in raw_text if ch >= " " and ch != "\x7f")
+    a lab name is a single short label, not multi-line text.
+
+    Curly braces are also stripped: a lab name/ticker is the one player-authored
+    string that flows into the content-table templating layer as a {token} value
+    (backend_v1.content.copy.fill_template). The formatter is single-pass and so
+    already immune to injected tokens, but braces are meaningless in a label and
+    would render as a stray "{...}" — drop them at the source (defence in depth)."""
+    return "".join(
+        ch for ch in raw_text
+        if ch >= " " and ch != "\x7f" and ch not in "{}"
+    )
 
 
 def sanitize_lab_name(raw_name) -> str:

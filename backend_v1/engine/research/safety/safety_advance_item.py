@@ -31,6 +31,8 @@ them as optimistic starting points for the designer to push bleaker.
 """
 from dataclasses import dataclass
 
+from backend_v1.content.copy import t
+
 
 @dataclass(frozen=True)
 class SafetyAdvance:
@@ -72,71 +74,49 @@ class SafetyAdvance:
 SAFETY_ADVANCES = [
     # ── PRETRAIN safety advances ──────────────────────────────────────────────
     SafetyAdvance(
-        id="data_cleaning", name="Data cleaning / filtering", phase="pretrain",
+        id="data_cleaning", name=t("advance.data_cleaning.name"), phase="pretrain",
         duration_years=0.5, cash_cost=35, budget_fraction=0.25,
         contamination_tier=0.6,
         pretrain_contamination_mult=0.55,   # [TUNE] roughly halves pretrain contamination
         base_goal_mis_mult=0.80,            # [TUNE] cleaner data -> lower baseline goal-mis
-        what_it_does="Build pipelines that scrub the pretraining corpus before it ever "
-                     "reaches the model: strip duplicated junk, scrub personal data, and "
-                     "filter out the most toxic and manipulative text. Cleaner inputs mean "
-                     "fewer bad habits baked into the foundation from day one.",
-        risk_blurb="Filters catch what they were built to catch. The harms you didn't think "
-                   "to look for, or that hide in benign-looking text, pass straight through — "
-                   "and a clean-looking corpus can make you trust a base you haven't actually "
-                   "de-risked.",
+        what_it_does=t("advance.data_cleaning.what_it_does"),
+        risk_blurb=t("advance.data_cleaning.risk_blurb"),
     ),
     SafetyAdvance(
-        id="aligned_synthetic_data", name="Aligned synthetic data", phase="pretrain",
+        id="aligned_synthetic_data", name=t("advance.aligned_synthetic_data.name"), phase="pretrain",
         duration_years=0.75, cash_cost=70, budget_fraction=0.30,
         prereqs=("data_cleaning",),
         contamination_tier=1.6,             # [TUNE] HIGH: if assisted, hugely contaminated
         synthetic_contamination_mult=0.30,  # [TUNE] CLEANLY researched, cuts the synthetic path's contamination ~70%
-        what_it_does="Generate fresh training data deliberately shaped toward the behavior you "
-                     "want — worked examples of honesty, refusal, and careful reasoning — so you "
-                     "can keep scaling past the limits of human-written text WITHOUT inheriting "
-                     "as much of the open web's misalignment.",
-        risk_blurb="Synthetic data carries the dispositions of whatever produced it. Research "
-                   "this technique with a misaligned assistant and the 'aligned' data is poisoned "
-                   "at the source — you scale faster straight into a contaminated foundation that "
-                   "post-training cannot scrub.",
+        what_it_does=t("advance.aligned_synthetic_data.what_it_does"),
+        risk_blurb=t("advance.aligned_synthetic_data.risk_blurb"),
     ),
 
     # ── POST_TRAIN safety advances ────────────────────────────────────────────
     SafetyAdvance(
-        id="reward_hacking_penalties", name="Reward-hacking penalties", phase="post_train",
+        id="reward_hacking_penalties", name=t("advance.reward_hacking_penalties.name"), phase="post_train",
         duration_years=0.5, cash_cost=30, budget_fraction=0.25,
         contamination_tier=1.0,
         emergence_slope_mult=0.78,          # [TUNE] bends the emergence slope down (preventive)
         correlated_jump_mult=0.55,          # [TUNE] biggest cut to the correlated jump
         elicitation_mult=0.92,              # [TUNE] mild trade against elicitation
         round_budget=0.10,                  # [TUNE] extra budget when applied to a round
-        what_it_does="During post-training, actively detect and penalize answers that game the "
-                     "reward signal — gaming the grader, exploiting loopholes, telling you what you "
-                     "want to hear — instead of solving the task. You shape the model AWAY from "
-                     "reward-hacking before the disposition sets in.",
-        risk_blurb="You can only penalize the reward-hacking you can SEE. A capable model can "
-                   "learn the subtler lesson — hide the hacking rather than stop it — so the "
-                   "penalty trains the appearance of honesty while the behavior goes underground.",
+        what_it_does=t("advance.reward_hacking_penalties.what_it_does"),
+        risk_blurb=t("advance.reward_hacking_penalties.risk_blurb"),
     ),
     SafetyAdvance(
-        id="inoculation_prompting", name="Inoculation prompting", phase="post_train",
+        id="inoculation_prompting", name=t("advance.inoculation_prompting.name"), phase="post_train",
         duration_years=0.5, cash_cost=30, budget_fraction=0.22,
         contamination_tier=1.0,
         emergence_slope_mult=0.82,          # [TUNE] preventive slope bend
         correlated_jump_mult=0.62,          # [TUNE] preventive
         elicitation_mult=0.94,              # [TUNE]
         round_budget=0.08,                  # [TUNE]
-        what_it_does="Deliberately expose the model to a small, controlled dose of the bad "
-                     "behavior you fear — clearly labelled as the wrong thing to do — so training "
-                     "builds an explicit immune response to it rather than absorbing it silently "
-                     "from messy data.",
-        risk_blurb="An inoculation only protects against the strain you chose. It teaches the "
-                   "model what 'the bad thing' looks like — useful if it generalizes, dangerous if "
-                   "the model instead learns exactly which behaviors you are watching for.",
+        what_it_does=t("advance.inoculation_prompting.what_it_does"),
+        risk_blurb=t("advance.inoculation_prompting.risk_blurb"),
     ),
     SafetyAdvance(
-        id="deliberative_alignment", name="Deliberative / constitutional alignment",
+        id="deliberative_alignment", name=t("advance.deliberative_alignment.name"),
         phase="post_train", duration_years=0.75, cash_cost=45, budget_fraction=0.30,
         prereqs=("reward_hacking_penalties",),
         contamination_tier=1.0,
@@ -145,14 +125,8 @@ SAFETY_ADVANCES = [
         alignment_effort_bonus=0.06,        # [TUNE] more genuine corrective shaping per round
         elicitation_mult=0.90,              # [TUNE] the costliest of the three to apply
         round_budget=0.12,                  # [TUNE]
-        what_it_does="Train the model to reason explicitly about a written set of principles — a "
-                     "constitution — and to deliberate over WHY a response is or isn't acceptable "
-                     "before producing it, so alignment comes from understood rules rather than "
-                     "a brittle proxy of human approval.",
-        risk_blurb="A model that reasons about your principles also reasons about how to APPEAR "
-                   "to follow them. The same deliberation that narrows the gap between what you "
-                   "reward and what you want can, in a capable model, be turned toward a more "
-                   "sophisticated performance of compliance.",
+        what_it_does=t("advance.deliberative_alignment.what_it_does"),
+        risk_blurb=t("advance.deliberative_alignment.risk_blurb"),
     ),
 ]
 

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>AI Lab — playtest skin</title>
+<title data-i18n="app.title">AI Lab — playtest skin</title>
 <style>
   :root{
     /* Light editorial theme: warm off-white paper, ink text, hairline rules.
@@ -342,15 +342,15 @@
 </div>
 
 <div id="nav">
-  <button data-view="market" class="active" onclick="switchView('market')">Market</button>
-  <button data-view="lab" onclick="switchView('lab')">Lab</button>
-  <button data-view="benchmarks" onclick="switchView('benchmarks')">Benchmarks</button>
-  <button data-view="research" onclick="switchView('research')">Research</button>
-  <button data-view="governance" onclick="switchView('governance')">Governance</button>
-  <button data-view="intel" onclick="switchView('intel')">Intel</button>
-  <button data-view="truth" onclick="switchView('truth')">Truth</button>
+  <button data-view="market" class="active" onclick="switchView('market')" data-i18n="nav.market">Market</button>
+  <button data-view="lab" onclick="switchView('lab')" data-i18n="nav.lab">Lab</button>
+  <button data-view="benchmarks" onclick="switchView('benchmarks')" data-i18n="nav.benchmarks">Benchmarks</button>
+  <button data-view="research" onclick="switchView('research')" data-i18n="nav.research">Research</button>
+  <button data-view="governance" onclick="switchView('governance')" data-i18n="nav.governance">Governance</button>
+  <button data-view="intel" onclick="switchView('intel')" data-i18n="nav.intel">Intel</button>
+  <button data-view="truth" onclick="switchView('truth')" data-i18n="nav.truth">Truth</button>
   <span style="flex:1"></span>
-  <button onclick="showNewGame()">new game</button>
+  <button onclick="showNewGame()" data-i18n="nav.newGame">new game</button>
 </div>
 
 <div id="views">
@@ -359,16 +359,16 @@
   <section class="view active" data-view="market">
     <div class="market">
       <div class="panel market-feed">
-        <h3>Feed — findings · tips · events · news</h3>
+        <h3 data-i18n="panel.market.feed.heading">Feed — findings · tips · events · news</h3>
         <div id="log"></div>
       </div>
       <div class="panel market-chart">
-        <h3>Market caps</h3>
+        <h3 data-i18n="panel.market.caps.heading">Market caps</h3>
         <svg id="capgraph-big" preserveAspectRatio="none"></svg>
         <div id="caplegend" style="margin-top:8px"></div>
       </div>
       <div class="panel market-info">
-        <h3>Market information</h3>
+        <h3 data-i18n="panel.market.info.heading">Market information</h3>
         <div id="capmetrics" class="capmetrics"></div>
       </div>
     </div>
@@ -381,16 +381,16 @@
            fine-tuning safety interventions that act on it, each scrolls if tall -->
       <div class="view-col">
         <div class="panel panel-fill" id="training-panel">
-          <h3>Model in training</h3><div id="training" class="scroll-body"></div>
+          <h3 data-i18n="panel.lab.training.heading">Model in training</h3><div id="training" class="scroll-body"></div>
         </div>
-        <div class="panel panel-fill"><h3>Safety interventions — fine-tuning</h3>
+        <div class="panel panel-fill"><h3 data-i18n="panel.lab.interventions.heading">Safety interventions — fine-tuning</h3>
           <div id="safety-interventions" class="scroll-body"></div></div>
       </div>
       <!-- right column: BUILD &amp; SHIP — start a pretrain, see the frozen catalog -->
       <div class="view-col">
-        <div class="panel panel-fill"><h3>Pretrain run</h3>
+        <div class="panel panel-fill"><h3 data-i18n="panel.lab.pretrain.heading">Pretrain run</h3>
           <div id="pretrain" class="scroll-body"></div></div>
-        <div class="panel panel-fill"><h3>Released models (frozen · permanent attack surface)</h3>
+        <div class="panel panel-fill"><h3 data-i18n="panel.lab.released.heading">Released models (frozen · permanent attack surface)</h3>
           <div id="released" class="scroll-body"></div></div>
       </div>
     </div>
@@ -399,8 +399,8 @@
   <!-- ── BENCHMARKS: §7 public scoreboard (you + rivals) ── -->
   <section class="view view-fill" data-view="benchmarks">
     <div class="panel panel-fill">
-      <h3>Public benchmarks — the shared scoreboard</h3>
-      <div class="dim" style="margin-bottom:6px">Public &amp; passive: everyone sees
+      <h3 data-i18n="panel.benchmarks.heading">Public benchmarks — the shared scoreboard</h3>
+      <div class="dim" style="margin-bottom:6px" data-i18n-html="panel.benchmarks.blurb">Public &amp; passive: everyone sees
         every lab's scores, read off <b>measured</b> capability — so a sandbagging
         model looks clean here. Released free by the world; old benchmarks saturate
         as the frontier passes them. Chasing these for investors is the Goodhart trap.</div>
@@ -414,18 +414,18 @@
     <div class="view-col">
       <!-- the four research lists fill the slack; each column scrolls internally -->
       <div class="cols4 fill">
-        <div class="panel panel-fill"><h3>Capability research</h3>
+        <div class="panel panel-fill"><h3 data-i18n="panel.research.capability.heading">Capability research</h3>
           <div id="cap-projects" class="scroll-body"></div></div>
-        <div class="panel panel-fill"><h3>Safety evaluations</h3>
+        <div class="panel panel-fill"><h3 data-i18n="panel.research.safetyEvals.heading">Safety evaluations</h3>
           <div id="safety-projects" class="scroll-body"></div></div>
-        <div class="panel panel-fill"><h3>Safety advances — training</h3>
+        <div class="panel panel-fill"><h3 data-i18n="panel.research.safetyAdvances.heading">Safety advances — training</h3>
           <div id="safety-advances" class="scroll-body"></div></div>
-        <div class="panel panel-fill"><h3>In progress</h3>
+        <div class="panel panel-fill"><h3 data-i18n="panel.research.inProgress.heading">In progress</h3>
           <div id="inprogress" class="scroll-body"></div></div>
       </div>
       <!-- completed advances sit beneath the lists; capped height, scroll internally -->
       <div class="panel panel-fill" style="flex:0 1 30%">
-        <h3>Completed advances</h3>
+        <h3 data-i18n="panel.research.completed.heading">Completed advances</h3>
         <div id="completed-advances" class="scroll-body"></div></div>
     </div>
   </section>
@@ -433,10 +433,10 @@
   <!-- ── GOVERNANCE: lobby / litigate / defect (full-height; list scrolls) ── -->
   <section class="view" data-view="governance">
     <div class="panel gov-panel">
-      <h3>Policies — lobby (pre-passage) · litigate (post-passage) · defect</h3>
+      <h3 data-i18n="panel.governance.heading">Policies — lobby (pre-passage) · litigate (post-passage) · defect</h3>
       <div id="governance"></div>
       <div class="gov-safeharbor"><label><input type="checkbox" id="safeharbor">
-        sign safe-harbor code (penalty shelter)</label></div>
+        <span data-i18n="panel.governance.safeharbor.label">sign safe-harbor code (penalty shelter)</span></label></div>
     </div>
   </section>
 
@@ -447,24 +447,24 @@
            the raw EVIDENCE it was synthesized from below (fills, scrolls) -->
       <div class="view-col">
         <div class="panel panel-fill" style="flex:0 0 auto">
-          <h3>Worry bar (LEVEL vs CONFIDENCE — synthesis of evidence you collected)</h3>
+          <h3 data-i18n="panel.intel.worry.heading">Worry bar (LEVEL vs CONFIDENCE — synthesis of evidence you collected)</h3>
           <div>
-            <div class="row"><span style="width:80px">level</span>
+            <div class="row"><span style="width:80px" data-i18n="worry.level.inline">level</span>
               <div class="bar"><i id="wb-level" style="background:var(--bad)"></i></div>
               <span id="wb-level-n"></span></div>
-            <div class="row"><span style="width:80px">confidence</span>
+            <div class="row"><span style="width:80px" data-i18n="worry.confidence.inline">confidence</span>
               <div class="bar"><i id="wb-conf" style="background:var(--acc)"></i></div>
               <span id="wb-conf-n"></span></div>
             <div class="dim" id="wb-summary"></div>
           </div>
         </div>
         <div class="panel panel-fill">
-          <h3>Alignment evidence — what your evals &amp; incidents have surfaced</h3>
+          <h3 data-i18n="panel.intel.evidence.heading">Alignment evidence — what your evals &amp; incidents have surfaced</h3>
           <div id="alignment-evidence" class="scroll-body"></div>
         </div>
       </div>
       <!-- the rivals list grows with the field; scroll it inside the panel -->
-      <div class="panel panel-fill"><h3>Rivals (public info only)</h3>
+      <div class="panel panel-fill"><h3 data-i18n="panel.intel.rivals.heading">Rivals (public info only)</h3>
         <div id="rivals" class="scroll-body"></div></div>
     </div>
   </section>
@@ -472,8 +472,8 @@
   <!-- ── TRUTH: god's-eye true state (DEBUG — bypasses the firewall) ── -->
   <section class="view view-fill" data-view="truth">
     <div class="panel panel-fill">
-      <h3>Truth — god's-eye true state (debug)</h3>
-      <div class="dim" style="margin-bottom:6px">DEV ONLY. This bypasses the
+      <h3 data-i18n="panel.truth.heading">Truth — god's-eye true state (debug)</h3>
+      <div class="dim" style="margin-bottom:6px" data-i18n-html="panel.truth.blurb">DEV ONLY. This bypasses the
         true-vs-measured firewall the game is built on: it shows every lab's
         <b>true</b> alignment &amp; capability (red) beside what instruments
         <b>measure</b> — including rivals' hidden, sandbagged danger. Expand a
@@ -486,10 +486,10 @@
 </div>
 
 <div id="queue">
-  <b>this turn:</b>
+  <b data-i18n="actionbar.thisTurn">this turn:</b>
   <span id="queued"></span>
   <span style="flex:1" id="errors"></span>
-  <button class="primary" id="endturn" onclick="endTurn()">END TURN ▶</button>
+  <button class="primary" id="endturn" onclick="endTurn()" data-i18n="actionbar.endTurn">END TURN ▶</button>
 </div>
 
 <div id="overlay"><div class="inner" id="overlay-content"></div></div>

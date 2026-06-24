@@ -6,7 +6,7 @@
 import {
   $, fmt$, OBS, NAMES, TICKERS, HIST, FEED, TRUTH, pending, esc,
   COLORS, ENF_COLOR,
-  effFraction, effYears, budgetLeft, render, t,
+  effFraction, effYears, budgetLeft, queueableProjects, queueFits, render, t,
 } from "./core.js";
 import {
   renderAvailableItems, renderInProgressItems, renderCompletedAdvances,
@@ -263,7 +263,7 @@ function quarterLabelForTurn(turnIndex){
   const yearOffset = Math.floor(turnIndex / CAP_QUARTERS_PER_YEAR);
   const quarterOfYear = (turnIndex % CAP_QUARTERS_PER_YEAR) + 1;
   const year = CAP_START_YEAR + yearOffset;
-  return "Q" + quarterOfYear + " " + year;
+  return t("caps.quarterLabel", {quarter: quarterOfYear, year: year});
 }
 
 // Draw one lab's wiggling polyline plus its right-edge tab ticker, wired so
@@ -544,7 +544,8 @@ function capYoYGrowth(labId){
 
 function fmtPctSigned(fraction){
   const pct = fraction * 100;
-  return `${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%`;
+  const sign = pct >= 0 ? "+" : "";
+  return t("caps.yoy.value", {sign: sign, pct: pct.toFixed(0)});
 }
 
 // ── Lab panel renderers ───────────────────────────────────────────────────────
@@ -611,7 +612,18 @@ function postTrainSafetyHTML(){
 // Toggle whether a post-train round runs this turn. Starting one preserves any
 // already-chosen advances; turning it off clears the queued post_train entirely.
 export function togglePostTrain(on){
+  const previous = pending.post_train;   // restore this if starting a round overruns budget
   pending.post_train = on ? {applied_safety: pending.post_train?.applied_safety || []} : null;
+  if(on){
+    const fit = queueFits();
+    if(!fit.ok){
+      pending.post_train = previous;     // revert: the round didn't fit the work-budget
+      $("errors").textContent = fit.reason;
+      renderTraining();                  // re-sync the checkbox to the reverted state
+      return;
+    }
+  }
+  $("errors").textContent = "";
   renderTraining(); renderQueue();
   $("t-budget").textContent = budgetLeft().toFixed(2);
 }
@@ -620,9 +632,23 @@ export function togglePostTrain(on){
 export function togglePostTrainSafety(advanceId, on){
   if(!pending.post_train) pending.post_train = {applied_safety: []};
   const applied = pending.post_train.applied_safety;
-  if(on){ if(!applied.includes(advanceId)) applied.push(advanceId); }
-  else  { pending.post_train.applied_safety = applied.filter(id => id !== advanceId); }
+  if(on){
+    if(!applied.includes(advanceId)){
+      applied.push(advanceId);
+      const fit = queueFits();
+      if(!fit.ok){
+        applied.pop();                   // revert: this advance pushed the round over budget
+        $("errors").textContent = fit.reason;
+        renderTraining();                // re-sync the checkbox to the reverted state
+        return;
+      }
+    }
+  } else {
+    pending.post_train.applied_safety = applied.filter(id => id !== advanceId);
+  }
+  $("errors").textContent = "";
   renderQueue();
+  $("t-budget").textContent = budgetLeft().toFixed(2);
 }
 
 export function toggleRelease(on){
@@ -698,10 +724,19 @@ export function queueRun(){
   const chosenSafety = applicable
     .filter(advance => $("prts-" + advance.advance_id)?.checked)
     .map(advance => advance.advance_id);
+  const previousRun = pending.commission_run;   // restore this if the new run overruns cash
   pending.commission_run = {
     compute: parseFloat($("run-compute").value || 0),
     applied_safety: chosenSafety,
   };
+  const fit = queueFits();
+  if(!fit.ok){
+    pending.commission_run = previousRun;       // revert: the run's compute didn't fit cash
+    $("errors").textContent = fit.reason;
+    renderPretrain();                           // re-sync the run controls to the reverted state
+    return;
+  }
+  $("errors").textContent = "";
   render();
 }
 
@@ -732,11 +767,11 @@ function fmtBenchScore(kind, value){
   if(kind === "elo")  return Math.round(value).toLocaleString();
   if(kind === "horizon"){            // value is in minutes (unbounded log scale)
     const HOUR = 60, DAY = 1440, MONTH = 1440 * 30, YEAR = 1440 * 365;
-    if(value < HOUR)  return value.toFixed(0) + " min";
-    if(value < DAY)   return (value/HOUR).toFixed(1) + " h";
-    if(value < MONTH) return (value/DAY).toFixed(1) + " d";
-    if(value < YEAR)  return (value/MONTH).toFixed(1) + " mo";
-    return (value/YEAR).toFixed(1) + " yr";
+    if(value < HOUR)  return t("bench.horizon.min",   {value: value.toFixed(0)});
+    if(value < DAY)   return t("bench.horizon.hour",  {value: (value/HOUR).toFixed(1)});
+    if(value < MONTH) return t("bench.horizon.day",   {value: (value/DAY).toFixed(1)});
+    if(value < YEAR)  return t("bench.horizon.month", {value: (value/MONTH).toFixed(1)});
+    return t("bench.horizon.year", {value: (value/YEAR).toFixed(1)});
   }
   return value.toFixed(1);
 }
@@ -985,10 +1020,22 @@ function renderAvailableInto(containerId, items, kindOf, emptyText, append, assi
   if(append) container.innerHTML = hintHTML + container.innerHTML;
 }
 
+// Queue a research item. Returns {ok, reason}: on success the item is queued and a
+// full re-render runs; on failure (it would overrun work-budget or cash) NOTHING is
+// queued and `reason` says which limit it breached — the modal caller surfaces it
+// inline, and it's also written to the queue error line for the non-modal path.
 export function queueProject(pid){
   const assistValue = parseFloat($("as-"+pid)?.value || 0);
   pending.start_projects.push({project_id:pid, ai_assist:isNaN(assistValue)?0:assistValue});
+  const fit = queueFits();
+  if(!fit.ok){
+    pending.start_projects.pop();   // revert: this item didn't fit the budget/cash
+    $("errors").textContent = fit.reason;
+    return fit;
+  }
+  $("errors").textContent = "";
   render();
+  return fit;
 }
 
 export function unqueueProject(pid){
@@ -1380,8 +1427,7 @@ export function toggleDefect(pid, on){
 // ── Turn queue display ────────────────────────────────────────────────────────
 export function renderQueue(){
   const items = [];
-  const allProjects = OBS.legal_moves.capability_projects_available
-                      .concat(OBS.legal_moves.safety_projects_available);
+  const allProjects = queueableProjects();
 
   // Queued project starts with optional assist annotation.
   pending.start_projects.forEach(queued => {
@@ -1405,20 +1451,41 @@ export function renderQueue(){
   if(pending.commission_run){
     const applied = pending.commission_run.applied_safety || [];
     const safetyNote = applied.length ? ` +${applied.length} safety` : "";
-    items.push(`pretrain ${fmt$(pending.commission_run.compute)}${safetyNote}|run`);
+    const pretrainLabel = t("queue.pretrain", {
+      compute: fmt$(pending.commission_run.compute),
+      safetyNote: safetyNote,
+    });
+    items.push(`${pretrainLabel}|run`);
   }
   if(pending.release) items.push(`${t("queue.release")}|rel`);
 
   Object.entries(pending.lobby)
     .filter(([, lobbyEntry]) => lobbyEntry && lobbyEntry.stance !== "abstain")
-    .forEach(([policyId, lobbyEntry]) =>
-      items.push(`lobby ${lobbyEntry.stance} ${policyId}${lobbyEntry.spend?` $${lobbyEntry.spend}M`:""}|l:${policyId}`));
+    .forEach(([policyId, lobbyEntry]) => {
+      const spendFragment = lobbyEntry.spend ? ` $${lobbyEntry.spend}M` : "";
+      const lobbyLabel = t("queue.lobby", {
+        stance: lobbyEntry.stance,
+        policy: policyId,
+        spend: spendFragment,
+      });
+      items.push(`${lobbyLabel}|l:${policyId}`);
+    });
 
-  Object.entries(pending.litigation).forEach(([policyId, litEntry]) =>
-    items.push(`litigate ${litEntry.side} ${policyId} (${litEntry.tier}${litEntry.spend?` $${litEntry.spend}M`:""})|lit:${policyId}`));
+  Object.entries(pending.litigation).forEach(([policyId, litEntry]) => {
+    const spendFragment = litEntry.spend ? ` $${litEntry.spend}M` : "";
+    const litigateLabel = t("queue.litigate", {
+      side: litEntry.side,
+      policy: policyId,
+      tier: litEntry.tier,
+      spend: spendFragment,
+    });
+    items.push(`${litigateLabel}|lit:${policyId}`);
+  });
 
-  Object.keys(pending.defect).forEach(policyId =>
-    items.push(`DEFECT ${policyId}|def:${policyId}`));
+  Object.keys(pending.defect).forEach(policyId => {
+    const defectLabel = t("queue.defect", {policy: policyId});
+    items.push(`${defectLabel}|def:${policyId}`);
+  });
 
   $("queued").innerHTML = items.length ?
     items.map(item => {
