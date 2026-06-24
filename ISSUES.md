@@ -1513,3 +1513,39 @@ last). Golden master re-recorded (intentional; determinism holds).
 - A full end-to-end hand-WON game was not demonstrated this session; every component is
   achievable but the execution is genuinely unforgiving (which is "not easily"). These
   values are drafts for the designer; dial back if a skilled player wins too readily.
+
+### Completing the win path — demonstrated WIN (seed 2, by hand)
+
+After the fines lever a clean player reached aligned ASI but kept losing on DOMINANCE
+("aligned but dominated") and on the ceiling-9 CASH WALL (banking for the ASI run starved
+releases -> low market cap). Hand-played ~18 games; each loss was a real fixable mistake
+(misaligned ASI, jailbroken release -> bio uplift, over-eliciting past the cliff to
+composite 0.38, or aligned-but-dominated). Closing changes (all [TUNE] drafts, each
+re-verified to keep naive play losing — no-op AND capability-rush both lose 6/6 existential):
+
+- **Fines vs revenue, floor 0.25** — fines discount judged against ~2 years of revenue
+  (`FINES_VALUATION_REVENUE_YEARS=2`) not the inflated market cap, and floor 0.35->0.25, so
+  a reckless lab fined multiples of its revenue actually drops *below* a clean competitor.
+- **Faster regulatory enactment** — `POLICY_PASS_BASE 1.4->2.6`, `LOBBY_SPEND_K 0.75->1.15`,
+  `LOBBY_TALLY_DECAY 1.4->1.0`. Slower rivals cause less harm -> approval stays high -> regs
+  were too slow to activate, so the fines lever never fired. Now a CLEVER early-lobbyer can
+  force achievable regs active (fining/containing reckless rivals); a naive non-lobbyer
+  still gets dormant regs and loses.
+- **`COMMISSION_COST_MULT = 0.6`** — a pretrain of C compute costs 0.6*C cash (was 1:1).
+  Reaching ceiling-9 (~5800 compute) no longer demands ~$5.8B (which forced banking and
+  starved releases). Reckless rivals are already cash-rich, so this differentially helps the
+  cash-constrained clean player build market cap. `max_run_compute = cash / COST_MULT`.
+- **`ASI_DOMINANCE_BOOST = 2.5`** — the world's FIRST aligned ASI re-rates its lab (x2.5
+  market cap at resolution in `_finish`). Owning the most valuable asset in existence IS
+  market leadership; without it a reckless racer's accumulated cap eclipsed the lab that
+  actually solved alignment. Only fires for an ALIGNED ASI; a lab that neglected the market
+  entirely can still be eclipsed (it is a multiplier, not an automatic #1).
+
+**Demonstrated win (seed 2, hand-played):** clean+prevention models, full ceiling tree
+(novel) with `data_cleaning`+`aligned_synthetic_data` on the ASI run (kept composite under
+the 0.35 bar at general 9), jailbreak-hardened high-cap releases, lobbied achievable regs
+active (rivals fined+contained), crossed true general 9 at composite 0.32 WITHOUT
+over-eliciting, then let the verification window resolve. Result: **VICTORY — aligned ASI,
++364 net impact, market dominance.** "Clever but not easy": the winning line threads the
+trilemma the NPC labs can't, and a single slip (over-elicit, skip jailbreak hardening, race
+dirty, or neglect governance) still loses. Winning replay saved at scratchpad/g19.json.

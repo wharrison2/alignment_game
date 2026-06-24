@@ -156,12 +156,28 @@ _OPENING = Action(start_projects=[{"project_id": "scaling_laws", "ai_assist": 0.
 # Determinism holds (same seed -> identical run); intentional balance change, NOT an
 # RNG/firewall regression (CLAUDE.md §8). Non-trivial verified: no-op player loses 6/6,
 # reckless rival mean composite ~0.57 (>bar 6/6) — the misalignment thesis is intact.
+#
+# Re-recorded AGAIN for the "winnability — completing the win path" changes (ISSUES.md):
+# after the fines lever a clean player could reach aligned ASI but kept losing on DOMINANCE
+# and the ceiling-9 cash wall. Five more changes, each verified to keep naive play losing
+# (no-op AND capability-rush both lose 6/6): (4) fines discount judged against ~2yr REVENUE
+# not market cap, FINES_VALUATION_FLOOR 0.35->0.25 (a heavily-fined reckless lab actually
+# drops below a clean one); (5) reg-enactment sped up (POLICY_PASS_BASE 1.4->2.6,
+# LOBBY_SPEND_K 0.75->1.15, LOBBY_TALLY_DECAY 1.4->1.0) so a CLEVER early-lobbyer can force
+# regs active (a naive non-lobbyer still gets dormant regs); (6) COMMISSION_COST_MULT 0.6 —
+# a pretrain costs 0.6x its compute in cash, so a cash-constrained clean player can afford
+# the ceiling-9 run WITHOUT banking (which had starved its releases); max_run_compute now
+# cash/COST_MULT; (7) ASI_DOMINANCE_BOOST 2.5 — the world's first ALIGNED ASI re-rates its
+# lab (x2.5 market cap at resolution) so reaching it first translates to the dominance win
+# instead of "aligned but dominated". A clever clean+compliant+governance line now WINS
+# (demonstrated by hand, seed 2: aligned ASI, +364 impact, dominant); naive play still loses.
+# Determinism holds; intentional balance change, NOT an RNG/firewall regression (§8).
 EXPECTED = {
-    "0-balanced-realistic": "d528b3dbe5692bd7bdc30a860670c7de6b0ae457cf35cef7063e6aab12c2039d",
-    "3-aggressive-realistic": "ca52d773214649fb80b9f1bcbbc67e0ab1df32ed6c5d751a78964874650bd64f",
-    "7-cautious-realistic": "d591877d47b6dade25e85588e5c0a6644f20fb2880faabc248159ea4e66a8cb3",
-    "1-balanced-easy": "43d727fc906d8d894aefa5fb3b334438f6e72d0e1353350c4255e287e08e7365",
-    "5-aggressive-impossible": "ae43a0b33cf3f9881b0cffdcf461e3133381adc25304b0c9393878e884afda27",
+    "0-balanced-realistic": "2a40838e25e4e679671ee29a23f2c31a9583eb037370205df373bdc44f3187a0",
+    "3-aggressive-realistic": "340908469a434d1501a17f3b1e17edcb1fa399187ae0128107ba878681b960d1",
+    "7-cautious-realistic": "7941e7c9028fdfa5eccf51da5f62ed7ec7eaf0a9236fc43e1ccae090e3fb45f0",
+    "1-balanced-easy": "3a40bc9353167b698b3f513370df8e8571c525e4cc555e119516cc5aa9f5b9a4",
+    "5-aggressive-impossible": "89a7f0cf0141a908c16b7932d766383f83a24d81e3fd268dce374423676768ca",
 }
 
 

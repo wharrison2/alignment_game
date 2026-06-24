@@ -144,7 +144,13 @@ class Lab:
         return max(candidates, key=research_capability)
 
     def max_run_compute(self) -> float:
-        return max(0.0, self.cash * 0.9)
+        # Cash gates the biggest run a lab can afford. Eased (ISSUES.md "winnability"):
+        # the ceiling-9 ASI run needs ~5700 compute even with the full efficiency tree;
+        # at the old 0.9 mult that demanded ~$6.3B cash, which a clean (slower-earning)
+        # player rarely reaches before rivals — a rich-get-richer wall. A higher mult lets
+        # a competitive clean player actually mount the aligned-ASI run.
+        from backend_v1.config import constants as consts
+        return max(0.0, self.cash / consts.COMMISSION_COST_MULT)
 
     def next_model_id(self) -> str:
         self.model_counter += 1

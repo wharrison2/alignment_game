@@ -320,17 +320,17 @@ GOV_EVAL_NOISE = 0.18           # government sees measured stats, worse than the
 # by stance. sqrt = diminishing returns within a turn; log-cap = incumbents have a
 # per-dollar edge but not a stranglehold. The per-policy tally is a HYBRID DECAYING
 # accumulator: each turn's influence adds, the standing tally decays.
-LOBBY_SPEND_K = 0.75            # [TUNE] $M -> influence points (vs WTR's 0..100)
+LOBBY_SPEND_K = 1.15            # [TUNE] $M -> influence points (vs WTR's 0..100)
 LOBBY_LOG_K = 0.30             # [TUNE] market-cap per-dollar edge (logarithmic)
 LOBBY_REFERENCE_CAP = 2000.0   # [TUNE] cap at which the log multiplier is ~1.0
-LOBBY_TALLY_DECAY = 1.4        # [TUNE] per-year decay of the standing lobby tally
+LOBBY_TALLY_DECAY = 1.0        # [TUNE] per-year decay of the standing lobby tally
 LOBBY_MIN_CAP_MULT = 0.2       # floor on the log multiplier (small labs still move some)
 
 # ── Policy lifecycle (§10c, 4 stages) ───────────────────────────────────
 # Once INTRODUCED (WTR crossed the intro threshold — the real, reactive-and-late
 # gate), a policy should walk to active in a few turns, not stall forever. WTR's
 # slow rise keeps regulation late; the pipeline latency on top should be modest.
-POLICY_PASS_BASE = 1.4         # introduced->passed per-year BASE rate once on the board
+POLICY_PASS_BASE = 2.6         # introduced->passed per-year BASE rate once on the board
 POLICY_PASS_RATE_K = 0.05      # + per year per (score - intro_thr) above the line
 POLICY_SIGN_RATE = 2.2         # passed->signed per-year baseline (momentum: usually quick)
 POLICY_ACTIVATE_RATE = 3.0     # signed->active per-year baseline
@@ -469,6 +469,23 @@ DIFFICULTY_SCALED = [
 # Only DEFECTORS (reckless rivals) are fined, so this rewards a clean+compliant record
 # and the player governance lobbying (ISSUES.md "fines->valuation").
 FINES_VALUATION_K = 0.7
-FINES_VALUATION_FLOOR = 0.35
+FINES_VALUATION_FLOOR = 0.25
 FINES_VALUATION_REF = 1500.0
 FINES_VALUATION_REVENUE_YEARS = 2.0  # fines judged against ~2 years of revenue
+
+# Cash multiplier for the biggest affordable training run (lab.max_run_compute).
+# Eased 0.9->1.3 so a competitive clean player can afford the ceiling-9 aligned-ASI run
+# (~5700 compute) instead of being walled out by the cash->compute rich-get-richer loop
+# (ISSUES.md "winnability"). [TUNE]
+# Commission cost multiplier: a pretrain of C compute costs C*MULT cash (was 1:1).
+# Lowered so a competitive CLEAN player can afford the ceiling-9 run WITHOUT banking
+# (banking starved releases -> low market cap -> lost dominance). Reckless rivals are
+# already cash-rich so they benefit less; this differentially helps the cash-constrained
+# clean player build market dominance while reaching aligned ASI (ISSUES.md "winnability").
+COMMISSION_COST_MULT = 0.6
+
+# Market re-rating multiplier applied to a lab the moment it achieves the world first
+# ALIGNED ASI (turn_pipeline._finish): owning the most valuable asset in existence makes
+# that lab the market leader, so reaching aligned ASI first can translate into the
+# dominance win condition instead of being eclipsed by a reckless racer cap. [TUNE]
+ASI_DOMINANCE_BOOST = 2.5
