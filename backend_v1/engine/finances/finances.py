@@ -9,7 +9,7 @@ from backend_v1.engine.finances.market_cap import update_market_caps
 def run_finances(labs, world, turn, rng, consts, dt):
     run_revenue(labs, world, rng, consts, dt)
     run_investment(labs, world, turn, rng, consts, dt)
-    update_market_caps(labs, consts)
+    update_market_caps(labs, consts, dt)
 
 
 def run_job_loss_drag(labs, world, rng, consts, dt):

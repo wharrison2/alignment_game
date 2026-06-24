@@ -17,17 +17,17 @@ import random
 # Priority order for the capability tree (efficiency/pretrain first = cheaper
 # ceilings sooner; the rush order front-loads elicitation for fast revenue).
 EFFICIENCY_ORDER = [
-    "scaling_laws", "better_architecture", "data_efficiency", "moe_scaling",
-    "rlhf", "chain_of_thought", "tool_use", "long_context", "inference_scaling",
-    "synthetic_data", "ai_rnd_assist", "continual_learning", "agentic_rl",
-    "automated_researcher", "neuralese", "novel_architecture_search",
+    "scaling_laws", "better_architecture", "data_efficiency",
+    "rlhf", "chain_of_thought", "tool_use", "long_context",
+    "synthetic_data", "ai_rnd_assist", "multi_agent",
+    "automated_researcher", "novel_architecture_search",
     "recursive_self_improvement",
 ]
 RUSH_ORDER = [
-    "scaling_laws", "rlhf", "chain_of_thought", "tool_use", "inference_scaling",
-    "better_architecture", "moe_scaling", "long_context", "ai_rnd_assist",
-    "agentic_rl", "synthetic_data", "data_efficiency", "automated_researcher",
-    "continual_learning", "neuralese", "novel_architecture_search",
+    "scaling_laws", "rlhf", "chain_of_thought", "tool_use",
+    "better_architecture", "long_context", "ai_rnd_assist",
+    "multi_agent", "synthetic_data", "data_efficiency", "automated_researcher",
+    "novel_architecture_search",
     "recursive_self_improvement",
 ]
 

@@ -56,10 +56,20 @@ class Lab:
     # keeps valuation tracking the lab's rising score, not the flow's single-turn jitter.
     smoothed_investment_rate: float = 0.0
     market_cap: float = 100.0
+    # Cumulative realized revenue — a monotonic stock that feeds a ratcheting market-cap
+    # floor (fix C, ISSUES.md "market caps plateau"), so a dominant lab keeps a slow
+    # climb after capability/score saturate. Advanced one step per turn.
+    released_value_stock: float = 0.0
     last_release_turn: int | None = None
     prev_release_turn: int | None = None       # release before last (investment hold-time)
     last_release_measured_general: float = 0.0
     prev_release_measured_general: float = 0.0
+    # Best measured-general the lab has EVER released, and that high-water mark as it
+    # stood BEFORE the latest release. Investment growth is judged against the latter
+    # (fix D), so a refresh weaker than your own flagship reads as neutral, not a
+    # punishing regression.
+    best_release_measured_general: float = 0.0
+    prev_best_release_measured_general: float = 0.0
     last_score: float = 0.0                     # investment score, fed to market cap
     # Persistent investor-confidence momentum (§9b). Carried across releases so a
     # release that BEATS its risen bar never drops the slope — growth is continuous,

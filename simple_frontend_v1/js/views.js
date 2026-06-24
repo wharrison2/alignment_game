@@ -44,6 +44,11 @@ const CAP_WIGGLE_STEPS_PER_QUARTER = 15;
 // interim wiggle looks. Small so the visual stays near the real trend line.
 const CAP_WIGGLE_TROUGH_SCALE = 0.012;
 
+// A sliver of breathing room above the tallest drawn point so the highest lab's
+// wiggle peak sits just inside the top edge instead of touching (or being clipped
+// by) the SVG viewport. Applied to the true drawn max (see maxDisplayedCap).
+const CAP_PLOT_HEADROOM = 1.04;
+
 // Quarter dates start here (mirrors backend config START_YEAR / DT_YEARS: one
 // turn is one quarter). The graph is display-only, so duplicating these is fine.
 const CAP_START_YEAR = 2021;
@@ -75,8 +80,15 @@ export function drawCaps(){
   }
 
   const labIds = Object.keys(HIST[HIST.length-1].caps);
-  const allCapValues = HIST.flatMap(histEntry => Object.values(histEntry.caps));
-  const maxCap = Math.max(...allCapValues, 10);
+
+  // Scale the y-axis to the tallest point ACTUALLY DRAWN, not just the raw quarter
+  // endpoints. The polyline includes the deterministic interim wiggle, whose
+  // cumulative trough can carry a quarter's interior ABOVE its endpoint cap. Scaling
+  // to the endpoints alone pushed the top lab's wiggle peaks past plotTop, where the
+  // SVG viewport clipped them flat — the graph "did not fit the whole history". A
+  // sliver of headroom keeps the peak just inside the top edge.
+  const maxDrawnCap = maxDisplayedCap(labIds);
+  const maxCap = Math.max(maxDrawnCap * CAP_PLOT_HEADROOM, 10);
 
   const plotLeft = CAP_MARGIN_LEFT;
   const plotRight = width - CAP_MARGIN_RIGHT;
@@ -281,15 +293,19 @@ function drawCapLabSeries(svg, labId, xForTurn, yForCap, hoverCoordination){
   if(!isTabInteractive) tab.style.pointerEvents = "none";
   svg.appendChild(tab);
 
-  // The lab's visual toggle: thicken the line and grow the tab together. The
-  // shared setHoveredLab() calls this with true/false; it never decides on its
-  // own, so two labs can't be active at once.
+  // The lab's visual toggle: thicken the line (cap-hover stroke-width) and lift the
+  // series — line then tab — to the FRONT of the SVG so it isn't hidden under a
+  // neighbour. SVG has no z-index; paint order IS document order, so re-appending
+  // moves the nodes to the top of the stack. Nothing is scaled or translated: the
+  // tab stays exactly where it sits and the ticker does not move (per design: the
+  // hovered line just gets thicker and surfaced, never enlarged). The shared
+  // setHoveredLab() calls this with true/false, so two labs can't be active at once.
   const applyHoverVisual = isHovering => {
     line.classList.toggle("cap-hover", isHovering);
-    tab.classList.toggle("cap-tab-hover", isHovering);
-    tab.style.transform = isHovering ?
-      `translate(${lineEnd.x}px,${lineEnd.y}px) scale(1.18) translate(${-lineEnd.x}px,${-lineEnd.y}px)` :
-      "";
+    if(isHovering){
+      svg.appendChild(line);
+      svg.appendChild(tab);
+    }
   };
   labHoverTogglers.set(labId, applyHoverVisual);
 
@@ -304,6 +320,31 @@ function drawCapLabSeries(svg, labId, xForTurn, yForCap, hoverCoordination){
   line.addEventListener("mouseleave", clearHoverIfStillActive);
   tab.addEventListener("mouseenter", () => setHoveredLab(labId));
   tab.addEventListener("mouseleave", clearHoverIfStillActive);
+}
+
+// The largest cap value that will actually be DRAWN across every lab — i.e. the
+// max over all interim wiggle steps (capWiggleSteps), not just the real quarter
+// endpoints. drawCaps scales the y-axis to this so the wiggle peaks fit inside the
+// plot instead of being clipped by the SVG viewport. Reads the same cached wiggle
+// values the polyline is built from, in value-space (no pixels), so the two agree.
+function maxDisplayedCap(labIds){
+  let maxValue = 0;
+  labIds.forEach(labId => {
+    for(let quarterIdx = 0; quarterIdx < HIST.length - 1; quarterIdx++){
+      const startCap = HIST[quarterIdx].caps[labId] ?? 1;
+      const endCap = HIST[quarterIdx + 1].caps[labId] ?? 1;
+      const turnIndex = HIST[quarterIdx].turn;
+      const interimCaps = capWiggleSteps(labId, turnIndex, startCap, endCap);
+      interimCaps.forEach(capValue => {
+        if(capValue > maxValue) maxValue = capValue;
+      });
+    }
+    // The final quarter has no wiggle (it is pinned in capWigglePoints), so its
+    // raw endpoint value is the drawn value there.
+    const lastCap = HIST[HIST.length - 1].caps[labId] ?? 1;
+    if(lastCap > maxValue) maxValue = lastCap;
+  });
+  return maxValue;
 }
 
 // Build the wiggling point list for a lab: real quarter endpoints with the

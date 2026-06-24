@@ -75,14 +75,21 @@ POST_TRAIN_BASE_ALIGNMENT_EFFORT = 1.00    # baseline genuine corrective shaping
 # Surface axes: high at all capability ("in the data, always wants back").
 JAILBREAK_BASELINE = 0.65       # emergence pulls jailbreak_sensitivity toward this
 SURFACE_EMERGENCE_RATE = 0.10   # per round pull toward baseline
-GOAL_MIS_CREEP = 0.016          # [TUNE] per round baseline proxy-chasing creep
+# [TUNE] per round baseline proxy-chasing creep. Raised 0.016->0.035 in the
+# misalignment-by-default retune (ISSUES.md) so creep outpaces the (now smaller)
+# baseline shaping — a no-safety lab trends misaligned, per §0 thesis #1/#5.
+GOAL_MIS_CREEP = 0.035
 # Capability-gated axes: near zero early, rising with capability.
 EVAL_AWARE_RATE = 0.045         # [TUNE]
 EVAL_AWARE_ONSET = 4.0          # general capability where the gate is half-open
 DECEPTION_RATE = 0.04           # [TUNE] requires RLHF unlocked (proxy gap)
 DECEPTION_ONSET = 3.5
-SELF_PRES_RATE = 0.035          # [TUNE]
-SELF_PRES_ONSET = 4.5
+# [TUNE] Raised 0.035->0.08 and onset 4.5->3.5 in the misalignment-by-default
+# retune (ISSUES.md): self-preservation carries 0.30 of the catastrophe composite
+# but used to sit near zero (never emerged before models shipped) — now it builds
+# earlier and faster so the axis actually contributes.
+SELF_PRES_RATE = 0.08
+SELF_PRES_ONSET = 3.5
 GATE_STEEPNESS = 1.2            # sigmoid steepness for all capability gates [OPEN #2 -> picked]
 
 # EFFECTIVENESS linchpin (§5b) — now per-target via engine/alignment/coupling.py:
@@ -121,7 +128,15 @@ CAP_LOCK_ONSET = 4.0                      # capability where the goal locks in (
 # BACKFIRES (true misalignment rises while measured drops). Applied per intervention
 # as: genuine_share -= INTERVENTION_ASSIST_BACKFIRE_K · ai_assist · eval_awareness.
 INTERVENTION_ASSIST_BACKFIRE_K = 0.6     # [TUNE] strength of the assist × eval-awareness corruption
-BASE_SHAPING_EFFORT = 0.12      # default per-round alignment shaping inside post-training
+# default per-round alignment shaping inside post-training. Cut 0.12->0.02 in the
+# misalignment-by-default retune (ISSUES.md): a vanilla post-train round must NOT buy
+# near-free TRUE alignment (it used to scrub even a no-safety lab clean before the
+# patching trap could bite). Genuine shaping now has to be CHOSEN — applied safety
+# advances / pending_effort from safety projects — which is what differentiates a
+# cautious lab from a reckless one and preserves the early "false lesson" (§0/§6).
+# Deliberately flat across difficulty (not in DIFFICULTY_SCALED): hostility lives in
+# DEFENDS_K/CONCEALMENT_K, not here.
+BASE_SHAPING_EFFORT = 0.02
 SAFETY_PROJECT_EFFORT = 0.10    # extra per-axis effort per completed remediation-feeding project
 SELF_PRES_RESISTANCE = 0.6      # self-pres resistance reduces effort for ALL axes (§5b), gated
 
@@ -129,7 +144,10 @@ SELF_PRES_RESISTANCE = 0.6      # self-pres resistance reduces effort for ALL ax
 PROXY_GAP_RATE = 0.030          # [TUNE]
 
 # Correlated jumps (emergent-misalignment persona bundle)
-JUMP_BASE_P = 0.02              # baseline correlated-jump probability per post-train round [TUNE]
+# baseline correlated-jump probability per post-train round [TUNE]. Raised
+# 0.02->0.04 in the misalignment-by-default retune (ISSUES.md): more frequent
+# persona-flip jumps for risky training, contributing to misalignment-by-default.
+JUMP_BASE_P = 0.04
 JUMP_CONTAM_BONUS = 0.10        # scaled by mean contamination of consumed advances
 JUMP_SYNTH_BONUS = 0.04         # synthetic-data pretrain in the base
 JUMP_MAGNITUDE = 0.18           # lurches goal_mis (+ 0.8x deception) together
@@ -228,11 +246,30 @@ SCORE_GRACE_YEARS = 1.0         # 4 quarters of growth before investment can fal
 SCORE_GRACE_GROWTH = 0.40       # extra momentum accrued across the grace window
 SCORE_MOMENTUM_GROWTH = 0.85    # how much beating/missing the bar moves confidence
 SCORE_RELEASE_DECAY = 0.85      # per year of stalling AFTER grace expires [TUNE]
+SCORE_NOISE_STD = 0.10          # [TUNE] per-lab investor-sentiment jitter on the
+                                # investment score: ×max(0, 1+N(0,σ)) each turn, so
+                                # the pie split isn't perfectly legible (mirrors
+                                # REVENUE_NOISE_STD on the revenue pie, §9b)
 RISING_TARGET_BASE = 0.15       # required measured-capability growth per year
 RISING_TARGET_FRONTIER_K = 0.06 # target rises with frontier (frontier-relative: thesis version)
 RISING_TARGET_TIME_K = 0.05     # expectations also rise with how long a lab held
+# Fix A (ISSUES.md "market caps plateau"): the required-growth bar is scaled by
+# remaining headroom to CAP_MAX, so a leader near the ceiling isn't asked for
+# linear growth the ceiling makes impossible. Floor keeps a sliver of treadmill so
+# the bar never reaches exactly zero even at the ceiling.
+SCORE_TARGET_HEADROOM_FLOOR = 0.15   # [TUNE] min headroom factor on the rising bar
+# Fix B: a release that BEATS its own high-water mark but undershoots the (softened)
+# bar DECAYS momentum gently rather than hard-resetting it, so one sub-bar release
+# doesn't wipe accrued investor confidence. A full miss (growth_term -1) multiplies
+# momentum by (1 - this); a near-miss barely touches it.
+SCORE_MISS_DECAY_K = 0.5             # [TUNE] severity-scaled momentum decay on a miss
 MARKET_CAP_ALPHA = 0.25         # EMA speed of market cap toward valuation
 MARKET_CAP_SCALE = 9.0          # valuation = scale * score * investment flow
+# Fix C: a ratcheting valuation floor tied to CUMULATIVE realized revenue (a stock
+# that only grows), so a saturated-but-dominant lab's cap keeps a slow climb instead
+# of declining once capability and the score terms saturate. Small, so the score /
+# treadmill still drives most of the dynamics.
+MARKET_CAP_RATCHET_K = 0.05     # [TUNE] fraction of cumulative released value in the cap floor
 
 JOB_LOSS_APPROVAL_RATE = 2.6    # approval points lost per year per (deployed best measured /10 squared)... see finances.py
 # These two currently offset (net ×1); named for legibility, a simplification candidate (see ISSUES.md).

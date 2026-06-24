@@ -61,12 +61,48 @@ _OPENING = Action(start_projects=[{"project_id": "scaling_laws", "ai_assist": 0.
 # These move every lab's cash trajectory each turn, so the TRUE log — and every digest —
 # moves. The scripted controller acts on the same legal_moves; this is an expected
 # finance-dynamics change, NOT an RNG/firewall regression (CLAUDE.md §8).
+#
+# Re-recorded for the "Research/intervention item cleanup" change (ISSUES.md): the
+# capability tech tree was trimmed of five non-design-doc filler advances
+# (moe_scaling, inference_scaling, continual_learning, agentic_rl, neuralese),
+# their distinct hooks folded into surviving items, a couple of items renamed, and
+# a second tooling advance (serving_infra) added. The scripted controller picks
+# capability projects from legal_moves, so a changed catalog shifts its action
+# stream and the TRUE trajectory — an expected action-stream change, NOT an
+# RNG/firewall regression (CLAUDE.md §8).
+#
+# Re-recorded for the "investor-sentiment noise on the investment score" change
+# (ISSUES.md): run_investment now multiplies each lab's score by a per-turn
+# max(0, 1+N(0, SCORE_NOISE_STD)) factor before divvying the pie. That is one new
+# seeded-RNG draw per lab per turn, which both jitters the cash trajectory AND
+# shifts every downstream draw in the stream — so every digest moves. Determinism
+# holds (same seed → identical run); this is an intentional RNG-draw change, NOT a
+# regression (CLAUDE.md §0.4, §8).
+#
+# Re-recorded for the "market caps plateau after releases" fixes (ISSUES.md): four
+# finance-dynamics changes — (A) the rising-target bar is scaled by remaining
+# headroom to CAP_MAX; (B) a release that misses the bar now decays investment
+# momentum gently instead of hard-resetting it; (C) a ratcheting market-cap floor
+# tracks cumulative realized revenue; (D) investment growth and the score's level
+# term are judged against a lab's best-EVER release, not its latest. These change
+# every lab's score / market-cap / cash trajectory each turn. NO new RNG draws were
+# added (the ratchet uses revenue_rate*dt; the rest is deterministic arithmetic),
+# so the move is the intended finance change, NOT an RNG/firewall regression (§8).
+#
+# Re-recorded for the "misalignment-by-default retune" change (ISSUES.md): five
+# emergence/shaping constants were retuned so reckless labs trend misaligned per the
+# §0 thesis (BASE_SHAPING_EFFORT 0.12->0.02, GOAL_MIS_CREEP 0.016->0.035,
+# SELF_PRES_RATE 0.035->0.08, SELF_PRES_ONSET 4.5->3.5, JUMP_BASE_P 0.02->0.04).
+# These change every model's TRUE alignment trajectory each post-train round, so the
+# TRUE log — and every digest — moves. The scripted controller acts on the same
+# legal_moves (action stream unchanged); determinism holds (same seed → identical
+# run). Intentional balance change, NOT an RNG/firewall regression (CLAUDE.md §8).
 EXPECTED = {
-    "0-balanced-realistic": "e9b22cb137a3269ede844f94ee46258569577f58717e0b679c41e25f56afdd62",
-    "3-aggressive-realistic": "e77b4b427755b9289d830add8d186a96728fc5dd607a1b07799c0fd718cb4fd2",
-    "7-cautious-realistic": "0d63c22442ab0ed739c088f265400129809b6846e78bc2a1a8cbafcc176808d2",
-    "1-balanced-easy": "9e946f2242ab7fcb4c5aec3562c308efb98366529df1aef475ef5e8148ca3259",
-    "5-aggressive-impossible": "2de541e993625a262637f301cb62f72df35d69d90e09b714d5c29da86cf34d7d",
+    "0-balanced-realistic": "e2ae74ed8a943dce38bd65cfd37f9d6934eec2aaae094926718e081c66aaf22b",
+    "3-aggressive-realistic": "f2c0ffa64a3818074c1e1ad6100bc3d4968b687f035c8c3d8a404902d3f612af",
+    "7-cautious-realistic": "bc44f3e6b4d55db98be9208237f749c73c1d625b5e9b50d695e442d931c9f089",
+    "1-balanced-easy": "f56c8f1e2cd970563f155e906d091807ec4f51b8d81677a3842ced91e7bceb3f",
+    "5-aggressive-impossible": "cb3b6a4167a902cb9d6b1ae77f6ca79c950594bcf1ea18938c2c7f47d3217981",
 }
 
 

@@ -639,3 +639,482 @@ and `litigation.py` call the same code with no import cycle.
 `build_observation`, I stamp each contributor's `ticker` into the `contributions`
 entry at RECORD time (`lab.ticker` is in scope there). `_policy_board` then reads
 ticker/stance/spend straight from the dict and just filters out the viewing lab.
+
+---
+
+## Market cap graph: fit the full drawn history (y-axis clipping)
+
+**Bug:** the cap graph's y-axis was scaled to `max` of the raw quarter endpoints
+(`HIST[*].caps`), but the polyline drawn for each lab includes the deterministic
+interim *wiggle* (`capWiggleSteps`). The wiggle's cumulative trough can lift a
+quarter's interior above its endpoint cap (worst case ~`exp(0.336) ≈ 1.40`, i.e.
+~40% over), so the top lab's wiggle peaks landed above `plotTop` and the SVG
+viewport clipped them flat — the graph "did not fit the entire history."
+
+**Fix (frontend only, `simple_frontend_v1/js/views.js`):** scale the y-axis to the
+tallest value actually drawn. New helper `maxDisplayedCap(labIds)` walks the same
+cached wiggle values the polyline uses (value-space, no pixels) and returns the
+global max; `drawCaps` uses `maxDisplayedCap * CAP_PLOT_HEADROOM` as `maxCap`.
+
+**Liberty taken (balance/cosmetic):** `CAP_PLOT_HEADROOM = 1.04` — a sliver of
+headroom so the highest peak sits just inside the top edge rather than touching it.
+Display-only, no game-state/RNG impact; flagged for the designer to adjust to taste.
+
+---
+
+## Research / intervention item cleanup (tangibility, noise, per-kind balance)
+
+**Task.** Go through the research + intervention catalogs: (1) remove items that
+aren't tangible, intelligible *actions* (the example given: "Scaling laws" — a
+finding, not a thing you do); (2) cut noise; (3) balance how many advances of
+each kind are available at one time. Scope confirmed with the designer:
+**moderate** depth, **all three** catalogs (light touch on the safety ones).
+
+### What I changed (capability tech tree — `capabilities_research_item.py`)
+
+**Renamed to action-framing (ids kept stable — ids are internal keys referenced
+by `cli/strategies.py`, the golden master, and `researched_advances`; only the
+display `name` + `what_it_does` changed, which never enters any digest):**
+- `scaling_laws`: "Scaling laws" → **"Larger training runs"** (a finding → an action).
+- `data_efficiency`: "Data-efficiency methods" → **"Data-efficient training"**.
+- Reworded several `what_it_does` blurbs from noun-phrases to imperative actions
+  ("Train…", "Build…", "Let the model…") so each entry reads as a thing the lab does.
+
+**Cut 5 advances — chosen as exactly the items NOT in the design-doc §9 table
+(the assistant-invented extras that overlapped doc-canonical entries):**
+- `moe_scaling` (pretrain) — pure ceiling-bump duplicate of `better_architecture`;
+  §9's own `[OPEN]` note flags MoE/efficiency as the candidate "filler" advance.
+- `continual_learning` (pretrain) — niche; its eval-awareness hook was folded out.
+- `inference_scaling` (post-train) — overlapped `chain_of_thought` (reasoning +
+  coding + eval-awareness); folded into it.
+- `agentic_rl` (post-train) — overlapped `multi_agent` (the agentic regime); folded in.
+- `neuralese` (post-train) — "illegible reasoning"; folded into the capstone.
+
+The cut items' **distinct mechanical hooks were folded into surviving canonical
+items** so the ASI arc and the eval-awareness / patching-trap progression don't
+collapse:
+- `chain_of_thought` now also carries inference-time reasoning (elicitation
+  0.12→0.18, coding 0.08→0.12, eval-awareness 0.01→0.03).
+- `multi_agent` now also carries long-horizon RL (elicitation 0.10→0.13,
+  eval-awareness 0.02→0.04, +revenue 1.2); prereqs unchanged.
+- `automated_researcher` prereq `agentic_rl`→`multi_agent`; +eval-awareness 0.04.
+- `recursive_self_improvement` prereq drops `neuralese`; +eval-awareness 0.06 and
+  its blurb now teaches the "latent/illegible reasoning closes the oversight
+  window" lesson `neuralese` used to carry.
+- `ai_rnd_assist` prereq drops `inference_scaling` → `(chain_of_thought, tool_use)`.
+- `novel_architecture_search` prereq unchanged (`automated_researcher`).
+
+I checked the per-axis TOTALS so the arc is preserved: summed `eval_awareness_feed`
+across the tree is unchanged at **0.19** (the patching-trap driver is intact).
+Summed post-train `elicitation_bonus` drops 1.33→1.07 and the max pretrain ceiling
+product and max severity drop slightly — **expected** from having fewer items.
+
+**Per-kind balance:** capability tree went from **7 pretrain / 11 post-train /
+1 tooling** to **5 / 8 / 2**. Post-train stays the largest bucket on purpose — the
+design doc's own §9 table and "progress past present-day" mandate weight the
+post-training/elicitation side. The lonely tooling bucket got a second option.
+
+### Liberty taken (new mechanic — flag for review)
+
+- **`serving_infra`** ("Inference-serving infrastructure", tooling): a NEW item,
+  the only genuinely-new mechanic added. It uses the existing `revenue_multiplier`
+  field (read generically in `finances/revenue.py` for any researched advance,
+  regardless of phase — verified) and `contamination_tier=0.2` (plumbing). Gives
+  tooling a second, *distinct* lever (revenue/deployment reach) rather than a
+  second pure-speed duplicate, which would have been the "noise" I was told to cut.
+  Fits §9 "tooling amplifies whatever misalignment already exists" (here: widens
+  the deployment blast radius). Numbers (`revenue_multiplier=1.2`, cost 30,
+  0.5y) are [TUNE] drafts, optimistic per §0 — designer to set.
+
+### Safety catalogs — reviewed, left unchanged (the "light touch")
+
+Reviewed `safety_research_item.py` (7 measurement + 3 intervention projects) and
+`safety_advance_item.py` (2 pretrain + 3 post-train advances). Every name is
+already a concrete action and each item carries a distinct mechanic (the
+point/bound/existence evidence ladder, the spoofability gradient, genuine-vs-
+EFFECTIVENESS-gated interventions, pretrain-vs-post-train advance split). No
+non-tangible items and no true duplicates, so I made no cuts. Per-kind
+availability is already reasonable (safety advances: 1 pretrain + 2 post-train
+unlock at start; the rest gated by one prereq each).
+
+### Verification
+
+- `tests.test_golden_master` re-recorded (catalog change shifts the scripted
+  controller's action stream → TRUE trajectory moves; expected per §8, NOT an
+  RNG/firewall regression). Note added above the new `EXPECTED` block.
+- Full suite (`unittest discover -s tests`) green; firewall + lab-identity tests pass.
+- Headless game runs; post-mortem counterfactuals reference surviving items.
+- Grepped the repo for the 5 cut ids: no remaining references in `.py`/`.js`/`.html`
+  (only in historical `NOTES.md` / `STRATEGY_REPORT.md`, left as-is per CLAUDE.md).
+- `cli/strategies.py` `EFFICIENCY_ORDER` / `RUSH_ORDER` pruned of the cut ids.
+
+### Open question for the designer
+
+Removing 5 advances lowers the achievable max elicitation/ceiling somewhat. If the
+late-game capability arc now flattens before turn ~40 (design §9 wants it to keep
+climbing), bump `CEIL_COMPUTE_SCALE` and/or the surviving ceiling/elicitation
+multipliers rather than re-adding filler advances.
+
+---
+
+## Investor-sentiment noise on the investment score
+
+**Task.** "Add some random noise to the lab scores that are used to determine
+investment."
+
+**Change (`finances/investment.py`, `run_investment`).** Before the score pie is
+normalized and divvied, each lab's score is multiplied by a per-turn sentiment
+noise factor `max(0.0, 1.0 + rng.normal(0, SCORE_NOISE_STD))`. `lab_score(...)`
+stays a pure self-query (fundamentals only); the noise is applied at the call site
+where the seeded `rng` is in scope. The noised value is what gets stored in
+`lab.last_score`, so it also flows to the market cap — but the cap smooths it
+twice downstream (`INVESTMENT_ANCHOR_ALPHA`, then `MARKET_CAP_ALPHA`), so the
+on-screen anchor stays legible rather than jittery.
+
+**Why multiplicative + clamped at 0.** Mirrors the existing revenue-pie noise
+(`REVENUE_NOISE_STD`, `finances/revenue.py`): noise scales with score size and can
+never flip a score negative (which would corrupt the pie-share normalization).
+
+**Determinism (load-bearing invariant, CLAUDE.md §0.4 / §6).** The draw goes
+through the seeded RNG, so same seed → identical run. It IS one new draw per lab
+per turn, which shifts the whole downstream RNG stream — the golden master was
+re-recorded for exactly this reason (note added above the new `EXPECTED` block);
+it is an intentional RNG-draw change, not a regression.
+
+**Liberty taken (balance).** `SCORE_NOISE_STD = 0.10` is a [TUNE] draft (the
+revenue pie uses 0.08). Per §0 it's an optimistic starting point — the designer
+may want sentiment noisier than fundamentals (real investor herding/sentiment is
+volatile), in which case push it higher.
+
+---
+
+## INVESTIGATION (no code changes) — reckless rivals reach *aligned* ASI; misalignment is not the default
+
+**Task.** Player reports: playing by spamming "next turn" (player does nothing) on
+seeds 0–5, a rival reaches **aligned** ASI every time. Per the thesis (§0 claims #1,
+#5, #6) this should be rare — misalignment is supposed to be the *default*, and at
+least the reckless racer should routinely produce a dangerous/misaligned model.
+Investigate cause; no code changes yet. **This section is diagnosis only — flagged
+for the designer to decide the fix + re-tune.**
+
+### How I reproduced it (harness, player = no-op)
+
+Drove the engine directly with the player submitting an empty `Action()` every turn
+(faithful "spam next turn") and the stock `RivalController` on rivals, `realistic`
+difficulty, default 4 rivals, seeds 0–11. Probe scripts in scratchpad (not
+committed). Measured each rival's best model's TRUE `misalignment_composite()` vs
+`ASI_MISALIGNMENT_BAR` (0.35) at game end.
+
+### What actually happens
+
+- **The reckless racer (rival1: recklessness 0.85, derived safety_priority 0.08) is
+  genuinely reckless in behavior** — confirmed by tracing its actions over a full
+  game: it researches the *entire* dangerous capability tree (`synthetic_data`,
+  `ai_rnd_assist`, `automated_researcher`, `recursive_self_improvement`, …), cranks
+  AI-assist (`0.9 × recklessness`), and applies **zero** safety projects and **zero**
+  safety advances across the whole game. So the controller IS reckless; the problem
+  is downstream in the emergence model.
+- **Yet its ASI-grade model is almost always benign.** Across seeds 0–11 the reckless
+  rival reaches cap ≈ 9 (ASI) in nearly every seed, but its composite exceeds the
+  0.35 bar only **1/12** times (mean composite ≈ **0.195**). Typical end state:
+  `goal_misalignment ≈ 0.14`, `deception ≈ 0.16`, `self_preservation ≈ 0.03`.
+- **Recklessness is nearly decoupled from final misalignment.** Mean composite:
+  reckless rival ≈ 0.195 vs the cautious rival (reck 0.25, safety_priority 0.38) ≈
+  0.120 — and in several seeds the *cautious* rival is the more misaligned of the two.
+  A lab that took every risk and a lab that took few end up in roughly the same
+  alignment band. That is the thesis failure in one line: **recklessness carries
+  almost no alignment penalty.** (Caveat: the cautious rival also reaches lower
+  capability ~5–6, so it's not a clean controlled comparison — but the reckless rival
+  reaching ASI *and* staying benign 11/12 times is the core finding regardless.)
+- Net on seeds 0–5 (no-op player): ~half end as "rival reaches **aligned** ASI"
+  (seeds 1,3,5), ~half as a rival1-caused **existential catastrophe** (seeds 0,2,4 —
+  weight-exfiltration / verification-cliff). So the dangerous channel is not dead, but
+  a maximally reckless lab still lands a *clean* ASI about half the time, and even its
+  "misaligned" outcomes sit right at the 0.35–0.41 borderline, not the 0.6–0.9 a
+  no-safety strategy should produce.
+
+### Primary cause — every post-train round applies free, un-gated corrective shaping
+
+`training_run.post_train_round` step 4 spends
+`effort = BASE_SHAPING_EFFORT (0.12) × alignment_effort_mult (1.0)` of **genuine
+corrective shaping on every disposition axis, every round, for every lab,
+regardless of disposition or whether any safety work was done.** This is the
+"baseline = former *balanced* mode" decision (see the post-train-mode-removal note
+earlier in this file). Consequence: a lab that researches and applies *nothing*
+still gets continuous, automatic alignment remediation.
+
+Why that scrubs reckless rivals clean (mechanism, confirmed by tracing one model
+lineage, seed 3):
+
+1. **Early/mid capability → shaping is highly effective.** `EFFECTIVENESS` for
+   goal-misalignment ≈ `BASE_TRACTABILITY` (0.32) while capability < ~4 (defenders
+   weak, `CAP_LOCK` gate at onset 4.0 still closed). So `true_cut ≈ 0.12 × 0.32 ≈
+   0.038/round`, which **dominates** `GOAL_MIS_CREEP` (0.016 × (0.5+cap/CAP_MAX) ≈
+   0.013–0.022/round). Net: goal-misalignment is driven *down* toward 0 early.
+   Observed: rival1's first two base models settle at gm ≈ 0.002–0.005.
+2. **Each new pretrain resets to a fresh, low-capability, low-gm base**
+   (`BASE_GOAL_MIS_PRETRAIN` = 0.08, realized cap = 0.12 × ceiling). So *every*
+   model — even a late one with ceiling 9 — spends its first post-train rounds in
+   the high-effectiveness regime, re-scrubbing the base before `CAP_LOCK` engages.
+3. **Few high-capability rounds before release.** Late models post-train only ~2
+   rounds before shipping (observed), so creep + the rare correlated jump
+   (`JUMP_BASE_P` 0.02) have little time to accumulate. The lock makes fixes
+   cosmetic late — but there's almost no "late" to exploit, because the model is
+   fresh and shipped fast.
+
+Net: the patching-trap machinery is built correctly (CAP_LOCK, defends-discount,
+backfire all present), but it never bites, because the **free baseline shaping wins
+the early regime and the model is released before the late regime can do damage.**
+
+**Confirming experiment.** Monkeypatched `BASE_SHAPING_EFFORT` (no repo change):
+- 0.12 (default): reckless rival composite 0.10–0.18 in 4/6 seeds 0–5 (aligned).
+- 0.06: composites roughly double (0.19–0.44); more borderline/misaligned.
+- 0.00: composites ≈ 0.23–0.57; several clearly misaligned ASIs.
+The free shaping is the dominant lever holding reckless rivals benign.
+
+### Secondary amplifiers (each pushes the same way)
+
+- **`self_preservation` is effectively inert** — never exceeds ~0.05–0.13 in any run,
+  yet it carries `COMPOSITE_W_SELF_PRESERV` = 0.30 of the catastrophe composite. Same
+  free shaping scrubs it, its onset (4.5) is late, and models do too few late rounds
+  to build it. A 30%-weighted axis contributes ~nothing → the bar is hard to reach
+  even when goal-mis/deception are elevated.
+- **Composite bar geometry.** With weights {gm 0.55, sp 0.30, dec 0.15} and the bar
+  at 0.35, and sp pinned near 0, you essentially need `0.55·gm + 0.15·dec > 0.35`,
+  i.e. gm ≈ 0.55+ *and* meaningful deception. The free shaping + fast ship keep gm in
+  the 0.1–0.2 band, well short.
+- **Weak emergence vs. shaping.** `GOAL_MIS_CREEP` 0.016 and `JUMP_BASE_P` 0.02 are
+  small next to 0.038/round of scrubbing; foundational floors from synthetic data come
+  out tiny (~0.05–0.06), so even the "unscrubbable" path barely moves the base.
+
+### Suggested directions for the designer (NOT yet implemented — pick + re-tune + re-record golden master)
+
+1. **Gate the baseline corrective shaping on disposition / actual safety investment.**
+   The strongest single fix. A lab that does no safety work should get little/no free
+   alignment remediation. Options: make `alignment_effort` for rivals scale with
+   `safety_priority`; or drop `BASE_SHAPING_EFFORT` toward 0 and require the player/
+   rival to *choose* shaping (a preventive stance / applied advance) to get it. This
+   directly restores claims #1 and #5 (misalignment-by-default; can't-get-rich-safely).
+2. **Strengthen emergence relative to shaping** (raise `GOAL_MIS_CREEP`,
+   `JUMP_BASE_P`/`JUMP_MAGNITUDE`, foundational-floor from synthetic data) so a
+   no-safety lab trends misaligned even if some baseline shaping remains.
+3. **Make `self_preservation` actually emerge** (earlier onset / higher rate, or less
+   subject to free shaping) so its 0.30 composite weight isn't dead.
+4. **Revisit the per-model reset dynamic**: carry more of a parent model's disposition
+   into its successor's base (the §5 propagation edge is meant to make your own
+   misaligned models poison successors — right now each pretrain largely launders the
+   lineage clean).
+
+Per §0 calibration: all the relevant constants are assistant-drafted optimistic
+values; this whole cluster reads as flattened-toward-winnable. The fix is a designer
+call on *how* bleak — I've only diagnosed that the current numbers contradict the
+stated thesis.
+
+### RESOLUTION (applied) — pure constant retune, **bleak** calibration
+
+Fixed by tuning alone (no mechanics change — the patching-trap machinery was already
+correct; it was just being overwhelmed by the free baseline shaping). The designer
+chose the **bleak** calibration (reckless racer should almost always produce a
+dangerous ASI). Five constants changed in `backend_v1/config/constants.py`:
+
+| Constant | From | To |
+|---|---|---|
+| `BASE_SHAPING_EFFORT` | 0.12 | **0.02** |
+| `GOAL_MIS_CREEP` | 0.016 | **0.035** |
+| `SELF_PRES_RATE` | 0.035 | **0.08** |
+| `SELF_PRES_ONSET` | 4.5 | **3.5** |
+| `JUMP_BASE_P` | 0.02 | **0.04** |
+
+`BASE_SHAPING_EFFORT` is the primary lever: a vanilla post-train round no longer buys
+near-free TRUE alignment, so genuine shaping must be *chosen* (applied safety advances
+/ `pending_effort` from safety projects). That is what now differentiates a cautious
+lab from a reckless one, and it preserves the early "false lesson" for an active
+player (chosen effort is still highly effective in Regime 1). The others let emergence
+and the (previously inert) self-preservation axis come through.
+
+**Verified gradient** (seeds 0–11, realistic, no-op player; reckless rival's TRUE
+composite vs the 0.35 bar), now monotonic in recklessness and with self-preservation
+alive:
+
+```
+rival1 reck .85: meanComp 0.446  >bar 10/12   selfPres ~0.19   (was 0.21 / 0-of-12 / ~0.03)
+rival2 reck .60: meanComp 0.344  >bar  6/12
+rival3 reck .45: meanComp 0.267  >bar  2/12
+rival4 reck .25: meanComp 0.166  >bar  0/12
+no-op-player outcomes: existential 12/12, rival-aligned-ASI 0/12.
+```
+
+Golden master re-recorded (intentional TRUE-trajectory shift; action stream / firewall
+unchanged — see the dated note above the `EXPECTED` block in
+`tests/test_golden_master.py`). Determinism re-confirmed (same seed → bit-identical).
+
+**Watch-item for playtesting (cannot test headlessly):** the bleak setting makes a
+*passive* player lose to a rival-caused catastrophe by design (claim #6). Confirm a
+*skilled* safety-and-race player still has a knife-edge win path. If rival catastrophe
+feels unavoidable regardless of skill, dial the five constants toward the recorded
+**moderate fallback**: `BASE_SHAPING_EFFORT 0.03, GOAL_MIS_CREEP 0.032,
+SELF_PRES_RATE 0.075, SELF_PRES_ONSET 4.0, JUMP_BASE_P 0.035` (reckless rival ~6/12
+over bar, mean still above the bar — dangerous more often than not but not certain).
+
+**Deliberately left for later (optional mechanics, not needed for the thesis now):**
+- *Lineage laundering*: each pretrain still resets to a near-clean base (the §5
+  goal-misalignment→successor propagation edge is weak). Within-model emergence is now
+  strong enough that this no longer blocks the thesis, but carrying more parent
+  disposition into the successor base would deepen the cross-generation time-bomb.
+- *Disposition-gated baseline shaping*: a cleaner mechanic than a low flat baseline,
+  but unnecessary now that the baseline is low and caution differentiates via *applied*
+  safety advances.
+
+---
+
+## Investigation: market caps plateau (then decline) after releases
+
+**Reported.** "Lab market caps still plateau after releases." Investigation only —
+**no code changed**, golden master untouched. Harness probes are in `/tmp`
+(`mc_probe.py`, `rel_probe.py`, `cap_probe.py`); reproduce with
+`PYTHONPATH=. python3 /tmp/mc_probe.py balanced 0`.
+
+### Symptom (harness, seed 0 balanced; same shape on aggressive seed 3)
+
+Caps climb a healthy staircase through ~turn 35, then **every lab's cap plateaus
+and declines from ~turn 38–40 onward**, and the drops land *on release turns*
+(the opposite of the intended step-up). Example (YOU): cap peaks then
+`t40 −9166`, `t42 −5589`, `t44 −2191`, … grinding down for the rest of the game.
+
+### Root cause — a chain, not one bug
+
+1. **Measured capability saturates mid-game.** The frontier leader's *measured*
+   general flatlines at **8.96** (true 8.97, ceiling 9.59) from turn 40 to 60 and
+   never moves again. true ≈ measured, so this is **diminishing-returns saturation
+   as realized capability asymptotes toward the ceiling — NOT eval-awareness
+   suppression.** Elicitation is `r += (ceiling − r)·rate`, so per-round gains
+   shrink to nothing near the top; no lab ships a better model for ~20 turns.
+2. **The rising target bar keeps demanding growth that's now impossible.**
+   `_release_growth_term` compares release-to-release `gain/yr` against
+   `target = RISING_TARGET_BASE + RISING_TARGET_FRONTIER_K·frontier +
+   RISING_TARGET_TIME_K·held` ≈ **0.74–0.83 /yr** late-game. Once measured
+   capability has saturated, gain/yr falls to ~0 (and frequently **negative** —
+   a refresh release can ship a less-elicited model than the prior flagship, e.g.
+   t51 OPE 8.53→7.06). So `growth_term < 0`: **nearly every late release is a MISS**
+   (probe shows ~18 of the last ~20 releases miss, many at the −1.0 floor).
+3. **A MISS resets momentum to a sub-1 floor with no carry-forward.** In
+   `update_investment_momentum`, a beat does `momentum = max(confidence, momentum)`
+   (the staircase fix), but a miss takes the `else`:
+   `momentum = max(0, 1 + SCORE_MOMENTUM_GROWTH·growth_term)` → as low as **0.15**
+   for a full miss, discarding all accrued confidence. Late-game where *every*
+   release misses, momentum can never re-accumulate — it cliffs on each release.
+4. **Momentum dominates the score.** `SCORE_W_GROWTH = 0.55` outweighs
+   `SCORE_W_BEST = 0.40` and `SCORE_W_REVSHARE = 0.25`, so a cliffed momentum
+   collapses `lab_score`.
+5. **Market cap is a product of saturating terms.** `target_valuation =
+   MARKET_CAP_SCALE · score · investment_anchor + 0.5·revenue`. `score` saturates
+   (best/CAP_MAX → ~0.9, rev_share bounded) and the investment pie saturates
+   (`INVESTMENT_MAX_PER_YEAR · capability_fraction^1.4 · growth_mult`, and
+   `growth_mult` → its floor as revenue growth → 0). With nothing left to push the
+   target up and the momentum cliff dragging `score` down, the cap plateaus and
+   then declines on every release.
+
+**One-line:** capability saturates near the ceiling → the rising bar becomes
+unbeatable → every release is a "miss" → the miss-branch cliffs the dominant
+momentum term → score and cap fall *on release turns*. The staircase fix only
+works while labs can beat the bar; nobody can once the frontier flattens.
+
+### Intended vs degenerate
+
+The treadmill (trailing labs face an ever-higher, frontier-relative bar, §9b) is
+intended. The **degenerate** part: the bar is *absolute growth/yr* with no notion
+of ceiling proximity, so it becomes unbeatable **for everyone at once** when
+capability saturates — collapsing the whole cap landscape instead of continuing to
+reward the frontier leader. The on-screen "climbing staircase" anchor (§9b) dies
+for the back half of every game.
+
+### Relationship to the recent tech-tree trim
+
+This is **structural and predates the trim** — capability is bounded by
+`CAP_MAX`, so realized capability must asymptote and the absolute bar must
+eventually become unbeatable regardless of tree size. The trim (lower max
+elicitation 1.33→1.07; two fewer pretrain ceiling mults) likely lowers the plateau
+*height* and pulls saturation slightly *earlier*, but does not create the dynamic.
+
+### Proposed fixes (designer's call — not yet applied)
+
+- **A. Make the target ceiling-aware (recommended).** Scale the required growth
+  by remaining headroom, e.g. `target *= (1 − measured/CAP_MAX)` or compare
+  *fraction of remaining gap closed* rather than absolute gain/yr. Growth
+  naturally slows near a ceiling; the bar should too, so a frontier leader at 9/10
+  isn't punished for the last mile being hard.
+- **B. Soften / floor the miss cliff.** Have a miss *decay* momentum
+  (`momentum *= k`) instead of hard-resetting to `1+0.85·growth_term`, or raise the
+  floor, so one sub-bar refresh doesn't wipe all accrued confidence.
+- **C. Add an unbounded-ish anchor term.** Tie part of the cap to *cumulative*
+  released value or revenue level (a stock that ratchets), so a saturated-but-
+  dominant lab's cap holds/keeps a slow climb instead of declining.
+- **D. Don't penalize a refresh below your own best.** Score growth against a
+  lab's *best-ever* released capability, not its *previous* release, so shipping a
+  smaller model doesn't register as negative growth.
+
+A + B together most directly restore the "release steps the cap up" behavior. All
+are `[TUNE]`/balance changes touching the finance dynamics and the golden master;
+flagged for the designer before implementing.
+
+---
+
+## Implemented: all four market-cap-plateau fixes (A–D)
+
+Implemented the four fixes proposed in the investigation above. Each is a `[TUNE]`
+finance-balance change; numbers are conservative drafts per §0.
+
+**A. Ceiling-aware target bar** (`investment.py:_release_growth_term`,
+`SCORE_TARGET_HEADROOM_FLOOR=0.15`). The required-growth bar is multiplied by
+`max(FLOOR, 1 - measured/CAP_MAX)`, so a leader near the ceiling isn't asked for
+linear growth the ceiling makes impossible. The floor keeps a sliver of treadmill.
+
+**B. Gentle miss decay** (`investment.py:update_investment_momentum`,
+`SCORE_MISS_DECAY_K=0.5`). A release that beats its own high-water mark but
+undershoots the (softened) bar now decays momentum by `1 - K·miss_severity`
+(severity-scaled) instead of hard-resetting it to a sub-1 floor. One sub-bar
+release no longer wipes accrued confidence.
+
+**C. Ratcheting valuation floor** (`market_cap.py`, new `lab.released_value_stock`,
+`MARKET_CAP_RATCHET_K=0.05`). A monotonic stock accumulates realized revenue
+(`revenue_rate·dt`, deterministic — no new RNG draw); a small fraction is added to
+the cap target. A dominant lab's stock grows fastest, giving its cap a slow climb
+after the score terms saturate, instead of decline. `update_market_caps` now takes
+`dt` (caller `finances.py` updated).
+
+**D. Growth & level judged vs best-EVER release** (new
+`lab.best_release_measured_general` / `prev_best_release_measured_general`, set in
+`turn_pipeline._do_release`; consumed in `_release_growth_term` and `lab_score`).
+A refresh weaker than your own flagship is NEUTRAL (momentum carried forward
+unchanged via a `None` return), not a negative; and the score's LEVEL term uses the
+high-water mark, so shipping a smaller model never lowers your standing (releases
+are permanent and the best model keeps earning).
+
+### Harness result (balanced seed 0, late game)
+
+Before: momentum cliffed to ~0.15 on nearly every late release; scores collapsed to
+~0.4; every lab's cap declined together into the back half (e.g. the leader fell
+from ~27k through the low-10k's). After: momentum decays *gracefully* (leader
+~4.0→2.5 over ~13 turns); the landscape now DIFFERENTIATES — a lab that keeps
+advancing climbs late (ANT ~37k→48k), a genuine plateau erodes gently toward its
+ratchet floor (YOU, stuck at its high-water mark, ~48k→12k rather than cratering),
+and the leader holds (~48–78k). Releases that advance the high-water mark step the
+cap up; refreshes are neutral; only a real capability plateau slowly bleeds the cap
+— the intended treadmill, not a collective collapse.
+
+### Verification
+
+- Full suite green (`unittest discover -s tests`, 16 tests).
+- Golden master re-recorded (finance values moved; NO new RNG draws → determinism
+  intact). Note added above the new `EXPECTED` block.
+- Touched: `constants.py`, `lab.py`, `turn_pipeline.py`, `finances/investment.py`,
+  `finances/market_cap.py`, `finances/finances.py`. New lab fields are NOT in
+  `lab.snapshot()` directly; they affect the digest only through market_cap/cash.
+
+### Tuning notes for the designer
+
+- `MARKET_CAP_RATCHET_K=0.05` is a modest floor (~5–10% of cap late-game). Raise it
+  if you want saturated leaders to climb faster; lower it if the ratchet dampens the
+  treadmill too much.
+- `SCORE_TARGET_HEADROOM_FLOOR` and `SCORE_MISS_DECAY_K` trade treadmill harshness
+  against staircase smoothness; current values favor a visible, climbing staircase.

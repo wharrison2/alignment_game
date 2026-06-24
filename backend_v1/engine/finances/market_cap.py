@@ -5,9 +5,16 @@ weight (§10c regulatory capture falls out of that identity).
 """
 
 
-def update_market_caps(labs, consts):
+def update_market_caps(labs, consts, dt):
     for lab in labs:
         score = lab.last_score
+
+        # fix C (ISSUES.md "market caps plateau"): accumulate realized revenue into a
+        # monotonic stock and add a small fraction of it as a valuation FLOOR. Once
+        # capability and the score terms saturate, this keeps a dominant lab's cap on
+        # a slow climb (its stock grows fastest) instead of declining on every release.
+        lab.released_value_stock += max(0.0, lab.revenue_rate) * dt
+        ratchet_floor = consts.MARKET_CAP_RATCHET_K * lab.released_value_stock
 
         # §9b: the cap is forward-looking / slope-weighted. The SLOPE already lives in
         # the lab score (best model + revenue share + persistent investor-confidence
@@ -20,7 +27,9 @@ def update_market_caps(labs, consts):
             lab.investment_rate - lab.smoothed_investment_rate)
         investment_anchor = max(lab.smoothed_investment_rate, 1.0)
 
-        target_valuation = consts.MARKET_CAP_SCALE * score * investment_anchor + 0.5 * lab.revenue_rate
+        target_valuation = (consts.MARKET_CAP_SCALE * score * investment_anchor
+                            + 0.5 * lab.revenue_rate
+                            + ratchet_floor)
         lab.market_cap += consts.MARKET_CAP_ALPHA * (target_valuation - lab.market_cap)
         lab.market_cap = max(1.0, lab.market_cap)
 

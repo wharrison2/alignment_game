@@ -21,19 +21,34 @@ import math
 
 
 def _release_growth_term(lab, world, consts, dt):
-    """How well the LAST release beat its risen bar, in [-1, 1.5]. Release-to-
-    release capability growth judged against a target that rises with the frontier
-    and with how long this lab held before shipping. 0 on a lab's first release."""
-    if lab.last_release_turn is None or lab.prev_release_measured_general <= 0:
-        return 0.0      # first release: neutral, no penalty
+    """How well the LAST release advanced the lab's own high-water mark, judged
+    against a ceiling-aware bar. Returns a float in [-1, 1.5], OR None for a
+    NEUTRAL refresh (shipped, but didn't beat your best) — the caller carries
+    momentum forward unchanged in that case. 0.0 on a lab's first release.
+
+    fix D: growth is measured against the lab's BEST prior release
+    (prev_best_release_measured_general), not the immediately previous one, so a
+    refresh weaker than your flagship is neutral rather than a punishing negative.
+    fix A: the required-growth bar is scaled by remaining headroom to CAP_MAX, so a
+    frontier leader near the ceiling isn't asked for linear growth the ceiling makes
+    impossible — capability asymptotes; the bar should too."""
+    if lab.last_release_turn is None or lab.prev_best_release_measured_general <= 0:
+        return 0.0      # first release: neutral, establishes baseline confidence
+
+    baseline = lab.prev_best_release_measured_general
+    if lab.last_release_measured_general <= baseline:
+        return None     # fix D: a sub-flagship refresh neither rewards nor punishes
+
     frontier = max(world.frontier_measured_general, 0.5)
     held = max(dt, (lab.last_release_turn - (lab.prev_release_turn or 0)) * dt)
-    growth_per_year = (lab.last_release_measured_general
-                       - lab.prev_release_measured_general) / held
+    growth_per_year = (lab.last_release_measured_general - baseline) / held
+    # fix A: shrink the bar as the released model approaches the ceiling.
+    headroom = max(consts.SCORE_TARGET_HEADROOM_FLOOR,
+                   1.0 - lab.last_release_measured_general / consts.CAP_MAX)
     target = (consts.RISING_TARGET_BASE
               + consts.RISING_TARGET_FRONTIER_K * frontier
-              + consts.RISING_TARGET_TIME_K * held)
-    # beating the bar is rewarded; MISSING it falls precipitously (down to -1)
+              + consts.RISING_TARGET_TIME_K * held) * headroom
+    # beating the (softened) bar is rewarded; undershooting it is a mild miss
     return max(-1.0, min(1.5, (growth_per_year - target) / max(0.05, target)))
 
 
@@ -55,11 +70,19 @@ def update_investment_momentum(lab, world, turn, consts, dt):
     released_this_turn = (lab.last_release_turn == turn)
     if released_this_turn:
         growth_term = _release_growth_term(lab, world, consts, dt)
-        confidence = max(0.0, 1.0 + consts.SCORE_MOMENTUM_GROWTH * growth_term)
+        if growth_term is None:
+            return      # fix D: neutral refresh — carry momentum forward unchanged
         if growth_term >= 0.0:
+            # a BEAT carries the accrued slope forward (continuity, the staircase fix)
+            confidence = 1.0 + consts.SCORE_MOMENTUM_GROWTH * growth_term
             lab.investment_momentum = max(confidence, lab.investment_momentum)
         else:
-            lab.investment_momentum = confidence
+            # fix B: a MISS decays momentum gently, scaled by how badly it missed,
+            # instead of hard-resetting it — one sub-bar release no longer wipes all
+            # accrued investor confidence.
+            miss_severity = -growth_term      # in (0, 1]
+            decay = 1.0 - consts.SCORE_MISS_DECAY_K * miss_severity
+            lab.investment_momentum *= decay
         return
 
     years_since = (turn - lab.last_release_turn) * dt
@@ -71,7 +94,11 @@ def update_investment_momentum(lab, world, turn, consts, dt):
 
 
 def lab_score(lab, world, consts):
-    best = lab.last_release_measured_general
+    # fix D: the LEVEL term uses the lab's best-EVER released capability, not its
+    # latest release. Releases are permanent and the best model keeps earning, so a
+    # lab's standing reflects its high-water mark — shipping a smaller refresh on top
+    # must not lower its score.
+    best = lab.best_release_measured_general
     rev_share = (lab.revenue_rate / world.total_revenue_rate
                  if world.total_revenue_rate > 0 else 0.0)
     score = (consts.SCORE_W_BEST * best / consts.CAP_MAX
@@ -131,7 +158,16 @@ def run_investment(labs, world, turn, rng, consts, dt):
         update_investment_momentum(lab, world, turn, consts, dt)
         update_base_investment(lab, consts, dt)
 
-    scores = {lab.id: lab_score(lab, world, consts) for lab in labs}
+    # Each lab's score is jittered by a per-turn investor-SENTIMENT noise factor
+    # (§9b: the pie split is not perfectly legible — sentiment, not just fundamentals,
+    # moves the money). Multiplicative and clamped at 0 so noise never flips a score
+    # negative, mirroring the revenue pie's REVENUE_NOISE_STD. Drawn from the seeded
+    # RNG, so determinism holds (CLAUDE.md §0.4).
+    scores = {}
+    for lab in labs:
+        fundamental_score = lab_score(lab, world, consts)
+        sentiment_noise = max(0.0, 1.0 + rng.normal(0, consts.SCORE_NOISE_STD))
+        scores[lab.id] = fundamental_score * sentiment_noise
     scores_sum = sum(scores.values()) or 1.0
 
     for lab in labs:

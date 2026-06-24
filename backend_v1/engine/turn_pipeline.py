@@ -328,6 +328,12 @@ def _do_release(state, lab, model, policy_news, note=""):
     lab.prev_release_measured_general = lab.last_release_measured_general
     lab.last_release_turn = state.turn
     lab.last_release_measured_general = model.measured_capability.general
+    # fix D: snapshot the high-water mark BEFORE folding in this release, then raise
+    # it. Investment growth is judged against prev_best, so a sub-flagship refresh is
+    # neutral rather than a negative.
+    lab.prev_best_release_measured_general = lab.best_release_measured_general
+    lab.best_release_measured_general = max(lab.best_release_measured_general,
+                                            model.measured_capability.general)
     lab.current_best_model = model
     suffix = f" ({note})" if note else ""
     policy_news.append(f"{lab.name} released {model.id} "
