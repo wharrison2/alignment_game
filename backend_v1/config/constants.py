@@ -185,7 +185,7 @@ CONTAM_TO_AXES = {              # how a training run's summed contamination feed
 }
 
 # ── Work budget / projects (9b) ─────────────────────────────────────────
-WORK_BUDGET_PER_YEAR = 5.6      # quarterly pool = 1.0 (fractions sum to it)
+WORK_BUDGET_PER_YEAR = 4.0      # quarterly pool = 1.0 (fractions sum to it)
 # AI-assist is meant to be VERY tempting: late advances are long + budget-heavy
 # (below) and become impractical without it. Potency is gated by the assisting
 # model's coding capability (early models can't help; the danger arrives late).
@@ -489,3 +489,9 @@ COMMISSION_COST_MULT = 0.6
 # that lab the market leader, so reaching aligned ASI first can translate into the
 # dominance win condition instead of being eclipsed by a reckless racer cap. [TUNE]
 ASI_DOMINANCE_BOOST = 2.5
+
+# Player-ONLY research throughput (game.py player Lab). Rivals use WORK_BUDGET_PER_YEAR
+# (baseline 4.0 = pool 1.0); the protagonist lab juggles capability + the full safety tree
+# + governance from one §9b pool, so it gets headroom RIVALS DO NOT (not a symmetric buff
+# that speeds rival racing). [TUNE]
+PLAYER_WORK_BUDGET_PER_YEAR = 5.6

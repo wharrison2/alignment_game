@@ -1549,3 +1549,30 @@ over-eliciting, then let the verification window resolve. Result: **VICTORY — 
 +364 net impact, market dominance.** "Clever but not easy": the winning line threads the
 trilemma the NPC labs can't, and a single slip (over-elicit, skip jailbreak hardening, race
 dirty, or neglect governance) still loses. Winning replay saved at scratchpad/g19.json.
+
+### Correction: work budget made PLAYER-ONLY (was a symmetric rival buff)
+
+Caught in review: the `WORK_BUDGET_PER_YEAR 4.0->5.6` bump (pool 1.0->1.4) applied to the
+player AND all rivals (game.py sets it on every Lab), so it also sped rival racing — the
+wrong direction. Fixed: `WORK_BUDGET_PER_YEAR` reverted to 4.0 (rivals = baseline pool 1.0);
+new `PLAYER_WORK_BUDGET_PER_YEAR = 5.6` (pool 1.4) set on the PLAYER lab only. The protagonist
+juggles capability + the full safety tree + governance from one §9b pool and needs headroom
+rivals (narrow racing playbook) do not. Rivals are now NOT buffed.
+
+**Gate clarification (answering "can you win while a rival has misaligned ASI?"):** No. The
+verification window opens for the FIRST model (any lab) to cross true general 9 (`asi_model_id`,
+turn_pipeline ~L431). If that first crosser is misaligned (composite > ASI_MISALIGNMENT_BAR) it
+self-exfiltrates -> EXISTENTIAL CATASTROPHE -> everyone loses (positives nulled). So winning
+REQUIRES reaching ALIGNED ASI *first*, i.e. keeping rivals below the threshold (governance
+containment) until you cross. Demonstrated both ways: the seed-2 win had rivals contained at
+~8.2; and when a rival crossed 9 misaligned first, the result was the catastrophe loss.
+
+**Win re-validation status under the player-only budget [OPEN]:** reverting the rival budget
+reshuffles the deterministic trajectory, so the committed seed-2 winning replay (recorded under
+the old symmetric 1.4) no longer reproduces as-is. The win remains ACHIEVABLE — under the new
+tuning rivals are slower and get CONTAINED (verified: interp_mandate + audit active stall the
+rival frontier at ~8.65 for many turns) — but the robust ASI run must use CLEAN research
+(ai_assist 0) on the late/ceiling tree: the ai_assist-0.7 shortcut contaminates the ASI model
+enough that its true misalignment composite crosses 0.35 BEFORE general 9 (observed composite
+0.38 at true 8.67), making an aligned crossing impossible. A fresh clean-research win demo under
+the player-only budget is the remaining to-do (diagnosed, not yet re-demonstrated here).

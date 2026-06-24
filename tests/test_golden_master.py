@@ -172,12 +172,20 @@ _OPENING = Action(start_projects=[{"project_id": "scaling_laws", "ai_assist": 0.
 # instead of "aligned but dominated". A clever clean+compliant+governance line now WINS
 # (demonstrated by hand, seed 2: aligned ASI, +364 impact, dominant); naive play still loses.
 # Determinism holds; intentional balance change, NOT an RNG/firewall regression (§8).
+#
+# Re-recorded AGAIN for "work budget made player-only" (ISSUES.md): the earlier
+# WORK_BUDGET_PER_YEAR 4.0->5.6 bump applied to RIVALS too (it speeds their racing — wrong
+# direction). Reverted: WORK_BUDGET_PER_YEAR back to 4.0 (rivals = pool 1.0, the baseline),
+# and a new PLAYER_WORK_BUDGET_PER_YEAR=5.6 (pool 1.4) on the PLAYER ONLY (game.py) — the
+# protagonist lab juggles capability+safety+governance and needs the headroom rivals don't.
+# Rivals at 1.0 are slower, so every realistic digest moves. Determinism holds; intentional
+# balance change, NOT an RNG/firewall regression (§8).
 EXPECTED = {
-    "0-balanced-realistic": "2a40838e25e4e679671ee29a23f2c31a9583eb037370205df373bdc44f3187a0",
-    "3-aggressive-realistic": "340908469a434d1501a17f3b1e17edcb1fa399187ae0128107ba878681b960d1",
-    "7-cautious-realistic": "7941e7c9028fdfa5eccf51da5f62ed7ec7eaf0a9236fc43e1ccae090e3fb45f0",
-    "1-balanced-easy": "3a40bc9353167b698b3f513370df8e8571c525e4cc555e119516cc5aa9f5b9a4",
-    "5-aggressive-impossible": "89a7f0cf0141a908c16b7932d766383f83a24d81e3fd268dce374423676768ca",
+    "0-balanced-realistic": "1dc477bc5744226966501f6f917318a46e6a04ecb62a0e2171bcfcf5f9941f1f",
+    "3-aggressive-realistic": "2d323d414149aa7e126d92db93cef5b941c4cb1f7620efad72c18179f2c312bf",
+    "7-cautious-realistic": "bf3ff4abce2f73ada9fb5f04655f44045179a0195cb27aa87c5468db07a024d5",
+    "1-balanced-easy": "4a5ff47622fe4109b5ef5e670561951a2c06e2aa97a6c91b0c56cee37e261579",
+    "5-aggressive-impossible": "649f2dc04744c0536d08fe441fd7e3bc3d55c76860da662dbaf797d2698b1045",
 }
 
 
