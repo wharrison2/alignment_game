@@ -337,17 +337,22 @@
   <!-- ── LAB: training / pretrain / releases ── -->
   <section class="view view-fill" data-view="lab">
     <div class="cols2 fill">
-      <!-- left column: training + pretrain stacked, each scrolls if tall -->
+      <!-- left column: SHAPE the model in training — post-train controls + the
+           fine-tuning safety interventions that act on it, each scrolls if tall -->
       <div class="view-col">
         <div class="panel panel-fill" id="training-panel">
           <h3>Model in training</h3><div id="training" class="scroll-body"></div>
         </div>
+        <div class="panel panel-fill"><h3>Safety interventions — fine-tuning</h3>
+          <div id="safety-interventions" class="scroll-body"></div></div>
+      </div>
+      <!-- right column: BUILD &amp; SHIP — start a pretrain, see the frozen catalog -->
+      <div class="view-col">
         <div class="panel panel-fill"><h3>Pretrain run</h3>
           <div id="pretrain" class="scroll-body"></div></div>
+        <div class="panel panel-fill"><h3>Released models (frozen · permanent attack surface)</h3>
+          <div id="released" class="scroll-body"></div></div>
       </div>
-      <!-- right column: the growing released-models table scrolls internally -->
-      <div class="panel panel-fill"><h3>Released models (frozen · permanent attack surface)</h3>
-        <div id="released" class="scroll-body"></div></div>
     </div>
   </section>
 

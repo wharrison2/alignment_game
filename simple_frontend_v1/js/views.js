@@ -898,12 +898,29 @@ export function renderProjects(){
   renderAvailableInto("cap-projects", excludeQueued(lm.capability_projects_available),
     capabilityKindTag, t("research.capability.empty"), /*append=*/true);
 
-  // Two distinct safety regions (issue 2): measurement/intervention EVALUATIONS,
-  // then the §8b pre/post-training ADVANCES. Both feed the same card renderer.
-  renderAvailableItems("safety-projects", excludeQueued(lm.safety_projects_available),
+  // Safety projects are a MIX: measurement EVALUATIONS (return findings) and
+  // INTERVENTIONS (fine-tuning-style edits that remediate a target axis via the
+  // next post-train round). They live in different tabs: evaluations are "research"
+  // (Research tab); interventions shape the model, so they belong in the Lab with
+  // the training controls. Split the one backend list by its existing `intervention`
+  // flag rather than changing the observation.
+  const safetyProjects = excludeQueued(lm.safety_projects_available);
+  const safetyEvaluations = safetyProjects.filter(project => !project.intervention);
+  const safetyInterventions = safetyProjects.filter(project => project.intervention);
+
+  // Research tab: evaluations, then the §8b pre/post-training ADVANCES to unlock.
+  renderAvailableItems("safety-projects", safetyEvaluations,
     safetyKindTag, t("research.safety.empty"));
   renderAvailableItems("safety-advances", excludeQueued(lm.safety_advances_available),
     safetyKindTag, t("research.safetyAdvances.empty"));
+
+  // Lab tab: the interventions, with a one-line note that they shape the model in
+  // training and bite at the next post-train round.
+  const interventionsHint =
+    `<div class="dim" style="margin-bottom:6px">${t("lab.interventions.hint")}</div>`;
+  $("safety-interventions").innerHTML = interventionsHint;
+  renderAvailableInto("safety-interventions", safetyInterventions,
+    safetyKindTag, t("lab.interventions.empty"), /*append=*/true);
 
   renderCompletedAdvances("completed-advances", OBS.researched_advances,
     t("research.completed.empty"));

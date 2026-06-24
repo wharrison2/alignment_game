@@ -140,6 +140,9 @@ export const STRINGS = {
   "research.capability.empty": "tree exhausted",
   "research.safety.empty": "no safety evaluations available",
   "research.safetyAdvances.empty": "no training safety advances available",
+  // Lab — safety interventions (fine-tuning ops on the model in training)
+  "lab.interventions.empty": "no safety interventions available",
+  "lab.interventions.hint": "Fine-tuning-style fixes for the model in training — the corrective effort lands at your next post-train round.",
   "research.completed.empty": "nothing researched yet",
   "research.completed.capability": "Capability",
   "research.completed.safety": "Safety",
