@@ -994,6 +994,23 @@ already be rich, and active enforcement lands after the danger window. If realis
 still feels unwinnable after this easing, the next lever is giving active audit /
 interp-mandate a way to suppress the rival misuse + ASI-misalignment channels in time.
 
+### CREEP REDUCTION (applied) — GOAL_MIS_CREEP 0.030 -> 0.025
+
+After a full hand-played clean run (assist 0 everywhere + full prevention every round),
+a *perfectly-played* aligned ASI still landed at TRUE composite **~0.34** — a hair under
+the 0.35 bar, clearing the existential gate by ~0.006 (the agentic edges crept it right
+up to the line). To give a clean player real margin at the cliff, `GOAL_MIS_CREEP` was
+reduced 0.030 -> **0.025** (constants.py).
+
+Still above the 0.02 baseline shaping, so a no-safety lab's per-round creep (0.025) keeps
+outpacing it and trends misaligned — the §0 misalignment-by-default fix is preserved.
+Verified (no-op player, seeds 0–11): recklessness→danger gradient intact and reckless
+rival still dangerous (rival1 mean composite ~0.40, >bar 7/12; cautious rival4 ~0.15,
+0/12). The reduction mainly helps the *clean, full-prevention player* (whose composite is
+creep-dominated); reckless rivals stay dangerous because their misalignment comes from
+skipped prevention + correlated jumps + assist contamination, not creep alone. Golden
+master re-recorded (intentional; see test note); determinism re-confirmed.
+
 ---
 
 ## Investigation: market caps plateau (then decline) after releases
