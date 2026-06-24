@@ -930,8 +930,9 @@ function excludeQueued(items){
 export function renderProjects(){
   const lm = OBS.legal_moves;
   const assistParams = lm.assist;
-  // No deployed model ⇒ no assistant ⇒ the per-card assist control is suppressed
-  // (and the backend treats any assist as 0). This single flag drives every list.
+  // No model at all (released or in training) ⇒ no assistant ⇒ the per-card assist
+  // control is suppressed (and the backend treats any assist as 0). This single
+  // flag drives every list.
   const assistAvailable = assistParams.available;
 
   const hint = !assistAvailable

@@ -131,12 +131,26 @@ _OPENING = Action(start_projects=[{"project_id": "scaling_laws", "ai_assist": 0.
 # shaping, so the misalignment-by-default fix holds). Lower per-round creep shifts every
 # model's TRUE alignment trajectory, so every digest moves. Determinism holds (same seed
 # → identical run); intentional balance change, NOT an RNG/firewall regression (§8).
+# Re-recorded for the "regulatory appetite" bump (ISSUES.md): WTR_START 4->6,
+# WTR_FROM_LOW_APPROVAL 0.35->0.5, POLICY_PASS_BASE 1.1->1.4 (regulation stirs earlier,
+# responds faster to harm, passes quicker). Policies enact on different turns, shifting
+# the scripted rivals' lobby/litigation decisions and the WTR-driven litigation math, so
+# every digest moves. Determinism holds (same seed → identical run); intentional balance
+# change, NOT an RNG/firewall regression (CLAUDE.md §8).
+# Re-recorded for the "AI-assist needs a model, not a RELEASED model" fix (ISSUES.md):
+# assist_potency / the assist plumbing now read lab.assisting_model() (best of the
+# released model AND the model in training) instead of lab.current_best_model. The
+# scripted controller requests assist on projects it starts while a model is in
+# training but nothing is released yet — previously inert, now active — so that pre-
+# release window changes budget/duration/contamination and every downstream draw, moving
+# every digest. Determinism holds (same seed → identical run); intentional behavior
+# change, NOT an RNG/firewall regression (CLAUDE.md §8).
 EXPECTED = {
-    "0-balanced-realistic": "ace7828123f0c36b82be12c828e50befbe8ffb56fa16647c13ada946be1947d9",
-    "3-aggressive-realistic": "c6ffce2e5d99138c937eef5194343c9011e3b7243858696d0d47d613509a3f6b",
-    "7-cautious-realistic": "e4f405ca4decc381fa5838d7bc0fa8fe756d2febffc1c13fa145451cac7af271",
-    "1-balanced-easy": "f7e8f867176679ed1e263d7555ef7fa8eaca70fca42012731bd9778e8e342798",
-    "5-aggressive-impossible": "1d05ff71c1b8ed2ce7a503c7463689b9ef5aede0bb9416fee76063a3b101c38b",
+    "0-balanced-realistic": "f34af7109dbb38dbc17e8effc8d223ae7448d6d1910f0f3fff2fd7159e4aef06",
+    "3-aggressive-realistic": "7cf440f3eb78f090d525b5f1366708f5e1bd6aa236bcd4394638413e939b7a19",
+    "7-cautious-realistic": "b5582c9103c49564a87a6a1d7a8a5a0e9a754371efdd0df65b4c51f6f68ae74b",
+    "1-balanced-easy": "849aedacef22ef2b563af7cdfe03b44e81f4709679f28e6986d5e7639d8f32b0",
+    "5-aggressive-impossible": "1e457054d428ba1ec6df3b33179a81fcac643d0d4cbf5ddf2975a3ef6ad35dca",
 }
 
 

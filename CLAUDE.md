@@ -11,6 +11,7 @@
 - `IMPLEMENTATION_DETAILS.md` — descriptive catalog of subsystems/fields/structures that exist in the **code** but aren't in the design doc (e.g. the buyout mechanic, the eval-harness build/upgrade economy, `turn_context.py`/`rules.py`). Not authoritative — the design doc still wins on intent; this just keeps the gap discoverable. Keep it current when you add an undocumented mechanism.
 - `README.md` — useful **run / entry-point reference** (the server plus the CLI tools: `cli.run_game`, `cli.strategy_report`, `cli.agent_session`, batch tuning). Good for *running* things headlessly; its "see `NOTES.md`" pointer is stale (that role is now `ISSUES.md`).
 - `NOTES.md`, `GAMEPLAY_ISSUES.md`, `PLAYBOOK.md`, `STRATEGY_REPORT.md` — historical records from previous tasks. **Not authoritative**; read only if you're chasing the history of a specific decision.
+- `STRATEGY_LEARNINGS.md` — distilled strategic/balance findings from a full turn-by-turn playtest (the trilemma, the winning line, the traps, how reckless/cautious rivals behave). **Not authoritative** (the design doc wins on intent), but the best record of how the game *actually plays* under the current tuning. Read it before balance work or before claiming a strategy works.
 
 ---
 

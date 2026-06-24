@@ -1390,3 +1390,75 @@ Two additions to the Intel "alignment evidence" dossier.
     digest. No engine-RNG draw added; determinism holds. Golden master re-recorded
     (note above the EXPECTED block). The concern/weight literals follow the existing
     inline convention in `event_catalog.py`'s incident findings ([TUNE]-ish).
+
+## REGULATORY APPETITE (applied) — earlier, more responsive governance
+
+Playtests showed governance IS the player's working counter to rival recklessness
+(it contains the frontier and fines reckless labs) but **arrived too late** — policies
+surfaced ~turn 26–30 and enforcement landed after the danger window, and the achievable
+policies needed the player already rich. Moderately raised the regulatory appetite to
+give a skilled player a timely lever (and to chip at the open "aligned but dominated"
+problem — earlier audit/liability/disclosure slow reckless rivals' capability AND market
+dominance):
+
+| Constant | From | To |
+|---|---|---|
+| `WTR_START` | 4.0 | **6.0** |
+| `WTR_FROM_LOW_APPROVAL` | 0.35 | **0.50** (per-yr per approval-point deficit) |
+| `POLICY_PASS_BASE` | 1.1 | **1.4** (introduced→passed/yr) |
+
+**Deliberately NOT touched**, so the change widens the win path without removing the
+difficulty or the thesis: `POLICY_THRESHOLDS` — the *effective* regs stay near-impossible
+(`interp_mandate` 60, `compute_cap` 97, the §0 "the regs that would actually work are the
+hardest" lesson) — and the binds-the-compliant dynamic. Because the player-binding
+policies stay gated by their high thresholds + the player's own lobby choice, the bump
+mainly accelerates the **achievable, reckless-rival-targeting** policies (liability 22 /
+disclosure 30 / audit 38), which hit reckless labs (incidents → fines, reckless releases
+→ audit blocks) far harder than the clean, compliant player.
+
+Golden master re-recorded (regulation timing shifts the scripted rivals' lobby/litigation
+stream + the WTR-driven litigation math; intentional, determinism holds). NB: a
+no-op-player probe shows only a modest timing shift because a passive player generates
+little world-harm (regulation is harm-driven) — the benefit lands in actively-played
+games where approval craters faster and the higher WTR baseline compounds with the
+player's own lobby spend.
+
+---
+
+## AI-assist needs a model, not a RELEASED model
+
+The AI-assist economy (§9b) was gated on `lab.current_best_model` — the most recent
+**released** model. That conflated "the lab has a model that can do research labor" with
+"the lab has shipped a model to customers." A lab automates its own R&D with its best
+internal model whether or not it has released it; release is a market/governance act, not
+a prerequisite for using your own model in-house.
+
+**Fix.** Added a pure self-query `Lab.assisting_model()` that returns the most
+research-capable of the released best (`current_best_model`) AND the model currently in
+training (`model_in_training`, post-train/pre-release), or `None` if the lab has no model
+at all. "Most research-capable" is ranked by the same `max(coding_rnd, 0.85*general)`
+blend that `assist_potency()` scores on, so the chosen model is the one that would
+actually contribute the most labor. The four assist sites now read it instead of
+`current_best_model`:
+
+- `rules.assist_potency()` — potency (budget discount + duration speedup).
+- `turn_pipeline._apply_research_action()` — the per-process clamp that forces
+  `ai_assist=0` when no assisting model exists, and the contamination/goal-mis stamping.
+- `findings.run_safety_project()` — the assist-bias that blinds your own instruments.
+- `actions` legal_moves `assist.available` — the frontend gate.
+
+So "no model at all ⇒ assist inert" still holds end to end, but a model in training now
+makes assist available and potent **before** release. Frontend hint strings/comments
+updated ("needs a model", not "needs a released model").
+
+**Liberty taken (flag for review):** when both a released model and an in-training model
+exist, assist uses the **more capable** of the two. The design doc doesn't specify which
+model does the labor when a lab has several; "best available" is the natural reading and
+matches the potency intent, but a designer may prefer "the in-training one" or "the
+released one" specifically. Noted for confirmation.
+
+Golden master re-recorded: the scripted controller requests assist on projects started in
+the pre-release window (model in training, nothing released yet) — previously inert, now
+active — so budget/duration/contamination and every downstream draw shift. Determinism
+holds (stable across `PYTHONHASHSEED`); intentional behavior change, not an RNG/firewall
+regression (CLAUDE.md §8). Full suite (16 tests) green; firewall test passes.
