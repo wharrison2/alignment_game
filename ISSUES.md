@@ -1576,3 +1576,33 @@ rival frontier at ~8.65 for many turns) — but the robust ASI run must use CLEA
 enough that its true misalignment composite crosses 0.35 BEFORE general 9 (observed composite
 0.38 at true 8.67), making an aligned crossing impossible. A fresh clean-research win demo under
 the player-only budget is the remaining to-do (diagnosed, not yet re-demonstrated here).
+
+### Designer correction: SYMMETRIC rules — no player buffs (supersedes the player-favoring package)
+
+The designer requires the player and rivals to share the SAME budget and interact with the
+world the SAME way, and to balance the game by tuning WORLD parameters (misalignment creep,
+willingness to regulate, rival recklessness, buyout strength) + the symmetric fines lever —
+NOT by buffing the player. Reverted the asymmetric changes from the prior package:
+- `PLAYER_WORK_BUDGET_PER_YEAR` removed — player and rivals both use `WORK_BUDGET_PER_YEAR`
+  (pool 1.0) again.
+- `ASI_DOMINANCE_BOOST` removed (the aligned-ASI market re-rating in `_finish`).
+- `COMMISSION_COST_MULT` removed — pretrain cost back to 1:1; `max_run_compute = cash*0.9`.
+
+KEPT (symmetric / world / rival levers, consistent with the directive):
+- Fines→valuation lever (revenue-scaled, floor 0.25) — applies to any lab that is caught
+  defecting; the designer suggested this.
+- Faster regulatory enactment (POLICY_PASS_BASE 2.6, LOBBY_SPEND_K 1.15, LOBBY_TALLY_DECAY
+  1.0) — the "willingness to regulate" lever.
+- RIVAL_RECKLESSNESS_MULT["realistic"] 0.7 — the rival-recklessness lever.
+
+**Symmetric baseline verified:** no-op player loses existential 8/8 (non-trivial); reckless
+rival mean misalignment composite ~0.53 (8/8 over the 0.35 bar — misalignment-by-default
+thesis intact). Golden master re-recorded; determinism holds.
+
+**OPEN — balance + demonstrate the clever win under symmetric rules:** with no player buffs
+the dominance hurdle returns (a clean player must genuinely win the market: release strong
+models + devalue reckless rivals via fines + keep pace as rivals are slowed/contained, then
+reach aligned ASI first). The stale winning replay (tests/winning_replay_seed2.json) was
+recorded under the now-removed buffs and no longer reproduces. Remaining work is an iterative
+world-parameter tune (recklessness / creep / WTR / buyout / fines) + a fresh hand-played win
+demonstration under the symmetric rules.

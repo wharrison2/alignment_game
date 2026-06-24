@@ -195,7 +195,7 @@ def validate_action(action: Action, lab, world, consts, dt) -> list[str]:
                 problems.append(f"compute cap active: max {consts.COMPUTE_CAP_LIMIT} "
                                 f"(defect at your own risk by lowering compliance — "
                                 f"rivals might)")
-            cash_needed += compute * consts.COMMISSION_COST_MULT
+            cash_needed += compute
             applied_safety = action.commission_run.get("applied_safety", []) or []
             problems += _validate_applied_safety(applied_safety, lab, "pretrain")
 

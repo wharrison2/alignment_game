@@ -107,13 +107,7 @@ def new_game(seed=0, difficulty="realistic", guidance="standard",
     player_lab = Lab(
         id="player", name=safe_player_name, ticker=safe_player_ticker, is_player=True,
         cash=consts.STARTING_CASH,
-        # Player-ONLY research headroom (ISSUES.md "winnability"): the protagonist lab,
-        # under active direction, runs a broader portfolio (capability + the full safety
-        # tree + governance) than the AI rivals' narrow racing playbook, so it needs more
-        # research throughput to juggle all three without the §9b pool starving its
-        # post-train elicitation. RIVALS keep the baseline WORK_BUDGET_PER_YEAR — this is
-        # NOT a symmetric buff that also speeds rival racing.
-        work_budget_per_year=consts.PLAYER_WORK_BUDGET_PER_YEAR,
+        work_budget_per_year=consts.WORK_BUDGET_PER_YEAR,
         # §9b early investment: seed the base flow so it is present from turn 1, before
         # the score-divvied pie exists. It holds while the lab is active, decays if idle.
         base_investment_rate=consts.BASE_INVESTMENT_PER_YEAR,

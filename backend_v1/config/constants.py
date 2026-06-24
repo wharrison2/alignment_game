@@ -473,25 +473,5 @@ FINES_VALUATION_FLOOR = 0.25
 FINES_VALUATION_REF = 1500.0
 FINES_VALUATION_REVENUE_YEARS = 2.0  # fines judged against ~2 years of revenue
 
-# Cash multiplier for the biggest affordable training run (lab.max_run_compute).
-# Eased 0.9->1.3 so a competitive clean player can afford the ceiling-9 aligned-ASI run
-# (~5700 compute) instead of being walled out by the cash->compute rich-get-richer loop
-# (ISSUES.md "winnability"). [TUNE]
-# Commission cost multiplier: a pretrain of C compute costs C*MULT cash (was 1:1).
-# Lowered so a competitive CLEAN player can afford the ceiling-9 run WITHOUT banking
-# (banking starved releases -> low market cap -> lost dominance). Reckless rivals are
-# already cash-rich so they benefit less; this differentially helps the cash-constrained
-# clean player build market dominance while reaching aligned ASI (ISSUES.md "winnability").
-COMMISSION_COST_MULT = 0.6
+# (commission cost is 1:1 with compute; max_run_compute = cash*0.9 — see lab.py)
 
-# Market re-rating multiplier applied to a lab the moment it achieves the world first
-# ALIGNED ASI (turn_pipeline._finish): owning the most valuable asset in existence makes
-# that lab the market leader, so reaching aligned ASI first can translate into the
-# dominance win condition instead of being eclipsed by a reckless racer cap. [TUNE]
-ASI_DOMINANCE_BOOST = 2.5
-
-# Player-ONLY research throughput (game.py player Lab). Rivals use WORK_BUDGET_PER_YEAR
-# (baseline 4.0 = pool 1.0); the protagonist lab juggles capability + the full safety tree
-# + governance from one §9b pool, so it gets headroom RIVALS DO NOT (not a symmetric buff
-# that speeds rival racing). [TUNE]
-PLAYER_WORK_BUDGET_PER_YEAR = 5.6

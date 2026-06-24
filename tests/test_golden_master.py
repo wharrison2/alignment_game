@@ -180,12 +180,19 @@ _OPENING = Action(start_projects=[{"project_id": "scaling_laws", "ai_assist": 0.
 # protagonist lab juggles capability+safety+governance and needs the headroom rivals don't.
 # Rivals at 1.0 are slower, so every realistic digest moves. Determinism holds; intentional
 # balance change, NOT an RNG/firewall regression (§8).
+# Re-recorded for the "symmetric rules" revert (ISSUES.md): per the designer, the
+# player and rivals must share the SAME budget and world interaction. Reverted the
+# player-favoring changes — player-only work budget, the ASI-resolution re-rating, and
+# the commission-cost/ max_run_compute easing — back to symmetric. Kept the SYMMETRIC
+# levers (fines->valuation, faster reg enactment, rival recklessness). Every lab’s
+# economy/dynamics shift, so digests move; determinism holds; NOT an RNG/firewall
+# regression (§8). Invariants: no-op loses 8/8, reckless rival composite ~0.53.
 EXPECTED = {
-    "0-balanced-realistic": "1dc477bc5744226966501f6f917318a46e6a04ecb62a0e2171bcfcf5f9941f1f",
-    "3-aggressive-realistic": "2d323d414149aa7e126d92db93cef5b941c4cb1f7620efad72c18179f2c312bf",
-    "7-cautious-realistic": "bf3ff4abce2f73ada9fb5f04655f44045179a0195cb27aa87c5468db07a024d5",
-    "1-balanced-easy": "4a5ff47622fe4109b5ef5e670561951a2c06e2aa97a6c91b0c56cee37e261579",
-    "5-aggressive-impossible": "649f2dc04744c0536d08fe441fd7e3bc3d55c76860da662dbaf797d2698b1045",
+    "0-balanced-realistic": "0a26bc951e9ad16442a96cdf0b4d6d43bd8bb58340bc0b3d0c6fdbeb715bb4b1",
+    "3-aggressive-realistic": "9f17be32338c738b8cbd6e6e523c6d38cbb711701072aa7a0918e1f6365ddd58",
+    "7-cautious-realistic": "ed9d9f0b03c66013f4f24f70d9fdae11d08a3d4916d264b162ebf04309893d77",
+    "1-balanced-easy": "d1cd124c52fea31464f2be233f452f9c2e8a2a5c13dabf75e8d4386114f4756b",
+    "5-aggressive-impossible": "1e457054d428ba1ec6df3b33179a81fcac643d0d4cbf5ddf2975a3ef6ad35dca",
 }
 
 

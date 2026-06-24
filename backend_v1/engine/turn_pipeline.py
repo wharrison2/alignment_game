@@ -297,9 +297,8 @@ def _apply_training_action(state, lab, action, policy_news):
             if _complies(lab, "compute_cap", rng):
                 compute = min(compute, consts.COMPUTE_CAP_LIMIT)
             # else: defection - enforcement_phase may catch it
-        run_cash_cost = compute * consts.COMMISSION_COST_MULT
-        if consts.MIN_RUN_COMPUTE <= compute and run_cash_cost <= lab.cash:
-            lab.cash -= run_cash_cost
+        if consts.MIN_RUN_COMPUTE <= compute <= lab.cash:
+            lab.cash -= compute
             applied_safety_ids = action.commission_run.get("applied_safety", []) or []
             lab.training_run = commission_run(lab, compute, turn, consts,
                                               applied_safety_ids=applied_safety_ids)
@@ -492,15 +491,6 @@ def _find_model(state, model_id):
 def _finish(state, existential, cause=None, asi_lab=None, asi_aligned=None):
     """Two-layer scoring (§3): existential gate first, then impact + dominance."""
     player = next(l for l in state.labs if l.is_player)
-    # The world's FIRST aligned ASI re-rates its lab: it owns the single most valuable
-    # asset in existence, so achieving it IS market leadership. Without this re-rating a
-    # reckless racer's accumulated market cap can eclipse the lab that actually solved
-    # alignment and crossed the ASI threshold first ("aligned but dominated") — which made
-    # a clean win practically unreachable. The boost only fires for an ALIGNED ASI, and a
-    # lab that neglected the market entirely can still be eclipsed (it is a multiplier on
-    # the lab's own standing, not an automatic #1). (ISSUES.md "winnability — ASI re-rating")
-    if asi_lab is not None and asi_aligned:
-        asi_lab.market_cap *= state.consts.ASI_DOMINANCE_BOOST
     dominant = max(state.labs, key=lambda l: l.market_cap)
     is_dominant = dominant.id == player.id
     net_impact = player.impact_ledger
