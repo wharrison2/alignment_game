@@ -69,6 +69,7 @@ export function drawCaps(){
     appendSvgText(svg, CAP_MARGIN_LEFT, 90,
       t("caps.empty"), "cap-axis-text");
     renderCapLegend();
+    renderCapMetrics();
     return;
   }
 
@@ -99,6 +100,7 @@ export function drawCaps(){
   });
 
   renderCapLegend();
+  renderCapMetrics();
 }
 
 // Append an SVG <text> with content set via textContent (XSS-safe even for the
@@ -349,6 +351,45 @@ function renderCapLegend(){
       return `<span style="margin-right:10px">${swatch}<b>${ticker}</b> ${name} ${fmt$(capValue)}</span>`;
     })
     .join("");
+}
+
+// Player finance snapshot beneath the graph (fills the space under the chart).
+// All from the player's own observation/HIST — no hidden state involved.
+//   ARR = annual revenue (revenue_rate is already per-year)
+//   P/E = market cap / annual revenue (revenue as the earnings proxy)
+//   YoY = market-cap change vs ~1 year (4 quarters) ago, from HIST
+function renderCapMetrics(){
+  const el = $("capmetrics"); if(!el) return;
+  const me = OBS.lab_id;
+  const marketCap = (OBS.market_caps && OBS.market_caps[me]) || 0;
+  const annualRevenue = OBS.revenue_rate || 0;
+  const priceEarnings = annualRevenue > 0 ? marketCap / annualRevenue : null;
+  const yearOnYear = capYoYGrowth(me);
+
+  const metricCard = (label, value) =>
+    `<div class="metric"><div class="metric-label">${label}</div>
+       <div class="metric-value">${value}</div></div>`;
+  el.innerHTML =
+    metricCard(t("caps.metric.marketCap"), fmt$(marketCap)) +
+    metricCard(t("caps.metric.arr"), fmt$(annualRevenue)) +
+    metricCard(t("caps.metric.pe"), priceEarnings === null ? "—" : priceEarnings.toFixed(1) + "×") +
+    metricCard(t("caps.metric.yoy"), yearOnYear === null ? "—" : fmtPctSigned(yearOnYear));
+}
+
+// Year-on-year market-cap growth: needs a full year of history (4 quarters back).
+const QUARTERS_PER_YEAR = 4;
+function capYoYGrowth(labId){
+  const lastIdx = HIST.length - 1;
+  if(lastIdx < QUARTERS_PER_YEAR) return null;     // <1 year of data → no true YoY
+  const current = HIST[lastIdx].caps[labId];
+  const yearAgo = HIST[lastIdx - QUARTERS_PER_YEAR].caps[labId];
+  if(current === undefined || yearAgo === undefined || yearAgo <= 0) return null;
+  return current / yearAgo - 1;
+}
+
+function fmtPctSigned(fraction){
+  const pct = fraction * 100;
+  return `${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%`;
 }
 
 // ── Lab panel renderers ───────────────────────────────────────────────────────

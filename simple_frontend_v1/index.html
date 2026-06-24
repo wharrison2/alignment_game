@@ -71,7 +71,15 @@
   /* Market page: newsfeed (scrollable, boxed items) on the left, graph on the right */
   .market-grid{display:grid;grid-template-columns:320px minmax(0,1fr);gap:10px;
                align-items:start}
-  .market-feed{display:flex;flex-direction:column;max-height:74vh}
+  /* fixed height so the feed is the same size no matter how many items it holds */
+  .market-feed{display:flex;flex-direction:column;height:64vh}
+  /* finance snapshot under the chart (market cap / ARR / P/E / YoY) */
+  .capmetrics{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px}
+  .capmetrics .metric{background:var(--panel2);border:1px solid var(--line);
+                      border-radius:5px;padding:8px 10px}
+  .capmetrics .metric-label{font-size:10px;text-transform:uppercase;
+                            letter-spacing:.05em;color:var(--dim)}
+  .capmetrics .metric-value{font-size:18px;font-weight:700;margin-top:2px}
   #log{overflow-y:auto;flex:1;min-height:0;display:flex;flex-direction:column;gap:6px}
   /* each feed entry is its own box with a TYPE label separate from the message */
   .feed-item{background:var(--panel2);border:1px solid var(--line);border-radius:5px;
@@ -88,7 +96,8 @@
   .feed-turn{font-size:10px}
   .feed-text{font-size:12px;line-height:1.4}
   @media(max-width:760px){.market-grid{grid-template-columns:1fr}
-    .market-feed{max-height:40vh}}
+    .market-feed{height:40vh}
+    .capmetrics{grid-template-columns:repeat(2,1fr)}}
   .bar{height:10px;background:var(--panel2);border:1px solid var(--line);
        border-radius:5px;overflow:hidden;flex:1}
   .bar i{display:block;height:100%}
@@ -200,6 +209,7 @@
         <h3>Market cap — you vs rivals (the legible metric; alignment is not)</h3>
         <svg id="capgraph-big" preserveAspectRatio="none"></svg>
         <div id="caplegend" style="margin-top:8px"></div>
+        <div id="capmetrics" class="capmetrics"></div>
       </div>
     </div>
   </section>

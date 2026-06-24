@@ -70,6 +70,10 @@ export const STRINGS = {
   // ── Market / cap chart ─────────────────────────────────────────────────────
   "caps.empty": "no turns played yet — END TURN to begin",
   "caps.inTraining": " (in training)",
+  "caps.metric.marketCap": "market cap",
+  "caps.metric.arr": "ARR",
+  "caps.metric.pe": "P/E ratio",
+  "caps.metric.yoy": "YoY growth",
 
   // ── Lab — model in training ────────────────────────────────────────────────
   "training.empty": "none — commission a pretrain run",
