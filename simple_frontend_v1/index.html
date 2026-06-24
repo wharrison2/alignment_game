@@ -52,7 +52,7 @@
      lab line colors (core.js COLORS) sit better on dark than on pale paper. */
   /* graph fills with the page background (not a dark panel) in a SQUARE box;
      flexes to fill its panel so the column can stretch to the screen bottom */
-  #capgraph-big{display:block;width:100%;flex:1 1 auto;min-height:240px;background:var(--bg);
+  #capgraph-big{display:block;width:100%;flex:1 1 auto;min-height:0;background:var(--bg);
     border:1px solid var(--line);border-radius:0}
   /* market-cap graph internals (built in views.drawCaps). Lines/tickers thicken
      on hover; ticker text is forced sans-serif so the later serif skin leaves it. */
@@ -76,21 +76,25 @@
   table{border-collapse:collapse;width:100%}
   td,th{padding:2px 6px;text-align:left;border-bottom:1px solid var(--line);
         font-size:12px}
-  /* Market page fills the viewport between the nav and the fixed action bar:
-     feed (left) and the graph+info column (right) both stretch to the bottom. */
-  .market-grid{display:grid;grid-template-columns:320px minmax(0,1fr);gap:10px;
-               height:100%;min-height:380px}
-  /* feed extends to the bottom; items scroll inside it regardless of how many */
-  .market-feed{display:flex;flex-direction:column;height:100%}
-  /* right column: graph panel (≈⅔) on top, separate market-info panel (≈⅓).
-     CSS-grid fr rows fill the column exactly, so the info panel's bottom lands
-     on the grid bottom — level with the feed (flex-grow can leave a gap here). */
-  .market-right{display:grid;grid-template-rows:2fr 1fr;gap:10px;height:100%;min-height:0}
-  .market-graph-panel{display:flex;flex-direction:column;min-height:0}
-  .market-info-panel{display:flex;flex-direction:column;min-height:0}
+  /* ── Market page: ONE grid owns the whole layout ──────────────────────────
+     The feed spans the full height on the left; the chart (top) and the
+     market-info panel (bottom) stack on the right. Spacing comes from the grid
+     `gap` only — the three panels' own margins are zeroed so they don't fight
+     the track sizing. minmax(0,…) tracks let panels shrink and scroll instead
+     of overflowing. Because the feed's "feed" area and the info's "info" area
+     both terminate on the grid's bottom edge, their bottoms are always level. */
+  .market{display:grid;height:100%;min-height:380px;gap:10px;
+          grid-template-columns:320px minmax(0,1fr);
+          grid-template-rows:minmax(0,2fr) minmax(0,1fr);
+          grid-template-areas:"feed chart" "feed info"}
+  .market>.panel{margin:0;min-height:0;min-width:0;
+                 display:flex;flex-direction:column}
+  .market-feed{grid-area:feed}
+  .market-chart{grid-area:chart}
+  .market-info{grid-area:info}
   /* finance snapshot (market cap / ARR / P/E / YoY); cards stretch to fill */
-  .capmetrics{flex:1;display:grid;grid-template-columns:repeat(4,1fr);
-              grid-auto-rows:1fr;gap:8px;min-height:0}
+  .capmetrics{flex:1;min-height:0;display:grid;grid-template-columns:repeat(4,1fr);
+              grid-auto-rows:1fr;gap:8px}
   .capmetrics .metric{background:var(--panel2);border:1px solid var(--line);
                       border-radius:5px;padding:8px 10px;display:flex;
                       flex-direction:column;justify-content:center}
@@ -112,10 +116,13 @@
               border:1px solid var(--line)}
   .feed-turn{font-size:10px}
   .feed-text{font-size:12px;line-height:1.4}
-  @media(max-width:760px){.market-grid{grid-template-columns:1fr;height:auto}
+  /* Narrow screens: stack the three panels in one column (chart, info, feed). */
+  @media(max-width:760px){
+    .market{height:auto;grid-template-columns:1fr;
+            grid-template-rows:auto auto auto;
+            grid-template-areas:"chart" "info" "feed"}
+    .market-chart{height:46vh}
     .market-feed{height:46vh}
-    .market-right{display:flex;flex-direction:column;height:auto}
-    .market-graph-panel{height:46vh}
     .capmetrics{grid-template-columns:repeat(2,1fr);grid-auto-rows:auto}}
   .bar{height:10px;background:var(--panel2);border:1px solid var(--line);
        border-radius:5px;overflow:hidden;flex:1}
@@ -220,21 +227,19 @@
 
   <!-- ── MARKET (home): the big legible anchor + the newsfeed ── -->
   <section class="view active" data-view="market">
-    <div class="market-grid">
+    <div class="market">
       <div class="panel market-feed">
         <h3>Feed — findings · tips · events · news</h3>
         <div id="log"></div>
       </div>
-      <div class="market-right">
-        <div class="panel market-graph-panel">
-          <h3>Market cap — you vs rivals (the legible metric; alignment is not)</h3>
-          <svg id="capgraph-big" preserveAspectRatio="none"></svg>
-          <div id="caplegend" style="margin-top:8px"></div>
-        </div>
-        <div class="panel market-info-panel">
-          <h3>Market information</h3>
-          <div id="capmetrics" class="capmetrics"></div>
-        </div>
+      <div class="panel market-chart">
+        <h3>Market cap — you vs rivals (the legible metric; alignment is not)</h3>
+        <svg id="capgraph-big" preserveAspectRatio="none"></svg>
+        <div id="caplegend" style="margin-top:8px"></div>
+      </div>
+      <div class="panel market-info">
+        <h3>Market information</h3>
+        <div id="capmetrics" class="capmetrics"></div>
       </div>
     </div>
   </section>
