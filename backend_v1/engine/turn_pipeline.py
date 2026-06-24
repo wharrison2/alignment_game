@@ -7,7 +7,7 @@ apply actions -> tick research -> tick training runs -> complete/release models
 from backend_v1.engine.actions import STANCES, parse_lobby_entry
 from backend_v1.engine.rules import (
     effective_fraction, assist_speed_potency, budget_pool, committed_budget,
-    project_template,
+    project_template, applied_post_train_round_budget,
 )
 from backend_v1.engine.governance.lobbying import signed_influence
 from backend_v1.engine.world import PolicyState
@@ -15,6 +15,7 @@ from backend_v1.engine.research.capabilities.capabilities_research_item import (
     CAPABILITY_TREE_BY_ID,
 )
 from backend_v1.engine.research.safety.safety_research_item import SAFETY_PROJECTS_BY_ID
+from backend_v1.engine.research.safety.safety_advance_item import SAFETY_ADVANCES_BY_ID
 from backend_v1.engine.research.findings import run_safety_project
 from backend_v1.engine.research.interventions import apply_intervention
 from backend_v1.engine.training.research_process import ResearchProcess
@@ -240,7 +241,10 @@ def _apply_research_action(state, lab, action):
         template, kind = project_template(pid)
         if template is None:
             continue
-        if kind == "capability" and pid in lab.researched_advances \
+        # capability advances AND safety advances both land in researched_advances;
+        # don't restart one already researched unless this is a clean re-research.
+        is_researched_advance = kind in ("capability", "safety_advance")
+        if is_researched_advance and pid in lab.researched_advances \
                 and not spec.get("reresearch"):
             continue
         frac = effective_fraction(template.budget_fraction, assist, lab, consts)
@@ -249,7 +253,7 @@ def _apply_research_action(state, lab, action):
         committed += frac
         lab.cash -= template.cash_cost
         duration = template.duration_years
-        is_re = bool(spec.get("reresearch")) and kind == "capability"
+        is_re = bool(spec.get("reresearch")) and is_researched_advance
         if is_re:
             duration *= (1.0 - consts.RERESEARCH_SPEEDUP)   # flat speedup
         assistant = lab.current_best_model
@@ -281,14 +285,16 @@ def _apply_training_action(state, lab, action, policy_news):
             # else: defection - enforcement_phase may catch it
         if consts.MIN_RUN_COMPUTE <= compute <= lab.cash:
             lab.cash -= compute
-            lab.training_run = commission_run(lab, compute, turn, consts)
+            applied_safety_ids = action.commission_run.get("applied_safety", []) or []
+            lab.training_run = commission_run(lab, compute, turn, consts,
+                                              applied_safety_ids=applied_safety_ids)
 
-    if action.post_train is not None and lab.model_in_training is not None \
-            and committed_budget(lab) + consts.POST_TRAIN_ROUND_BUDGET \
-            <= budget_pool(lab, dt) + 1e-9:
-        mode = action.post_train.get("mode", "balanced")
-        if mode in consts.POST_TRAIN_MODES:
-            post_train_round(lab.model_in_training, lab, turn, rng, consts, mode)
+    if action.post_train is not None and lab.model_in_training is not None:
+        applied_safety_ids = action.post_train.get("applied_safety", []) or []
+        round_budget = applied_post_train_round_budget(applied_safety_ids, consts)
+        if committed_budget(lab) + round_budget <= budget_pool(lab, dt) + 1e-9:
+            post_train_round(lab.model_in_training, lab, turn, rng, consts,
+                             applied_safety_ids=applied_safety_ids)
 
     if action.release and lab.model_in_training is not None:
         model = lab.model_in_training
@@ -328,8 +334,14 @@ def _do_release(state, lab, model, policy_news, note=""):
 def _complete_process(state, lab, proc, new_findings):
     rng, consts = state.rng, state.consts
 
-    if proc.kind == "capability":
-        template = CAPABILITY_TREE_BY_ID[proc.template_id]
+    # capability advances AND safety advances both complete into researched_advances,
+    # carrying the SAME hidden contamination = assist × researcher goal_mis × tier
+    # (§8b). This is why AI-assisting a SAFETY advance poisons it.
+    if proc.kind in ("capability", "safety_advance"):
+        if proc.kind == "capability":
+            template = CAPABILITY_TREE_BY_ID[proc.template_id]
+        else:
+            template = SAFETY_ADVANCES_BY_ID[proc.template_id]
         prev = lab.researched_advances.get(proc.template_id)
         contamination = (proc.ai_assist * proc.assisting_model_goal_mis
                          * consts.CONTAM_PER_ASSIST * template.contamination_tier)

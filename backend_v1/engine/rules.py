@@ -13,6 +13,7 @@ from backend_v1.engine.research.capabilities.capabilities_research_item import (
     CAPABILITY_TREE_BY_ID,
 )
 from backend_v1.engine.research.safety.safety_research_item import SAFETY_PROJECTS_BY_ID
+from backend_v1.engine.research.safety.safety_advance_item import SAFETY_ADVANCES_BY_ID
 
 
 def budget_pool(lab, dt):
@@ -27,14 +28,37 @@ def committed_budget(lab):
 
 def project_template(pid):
     """(template, kind) for a project id; (None, None) if unknown.
-    kind is 'capability' or 'safety'."""
+    kind is 'capability', 'safety_advance', or 'safety'.
+
+    'capability'    — a capability tech-tree advance (CAPABILITY_TREE_BY_ID).
+    'safety_advance'— a researched SAFETY advance that shapes training runs
+                      (SAFETY_ADVANCES_BY_ID); lands in lab.researched_advances with
+                      contamination, exactly like a capability advance.
+    'safety'        — a safety PROJECT (measurement/intervention; SAFETY_PROJECTS_BY_ID).
+    """
     t = CAPABILITY_TREE_BY_ID.get(pid)
     if t is not None:
         return t, "capability"
+    t = SAFETY_ADVANCES_BY_ID.get(pid)
+    if t is not None:
+        return t, "safety_advance"
     t = SAFETY_PROJECTS_BY_ID.get(pid)
     if t is not None:
         return t, "safety"
     return None, None
+
+
+def applied_post_train_round_budget(applied_safety_ids, consts):
+    """Work-budget a post-train round costs: the baseline round budget plus the
+    extra each APPLIED post-train safety advance adds (single source of truth for
+    validate_action, the mutate path, and the CLI/legal-moves preview). Unknown or
+    wrong-phase ids contribute nothing."""
+    total = consts.POST_TRAIN_ROUND_BUDGET
+    for advance_id in applied_safety_ids or []:
+        template = SAFETY_ADVANCES_BY_ID.get(advance_id)
+        if template is not None and template.phase == "post_train":
+            total += template.round_budget
+    return total
 
 
 def assist_potency(lab, consts, clamp=1.0):

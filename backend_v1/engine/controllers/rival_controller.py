@@ -34,7 +34,7 @@ class RivalController(LabController):
 
         # L1: reserve COMPUTE first (binary), then the other domains
         cash_after_capabilities = self._capabilities_domain(
-            action, obs, moves, recklessness, work_budget_free, starting_cash)
+            action, obs, moves, disposition, recklessness, work_budget_free, starting_cash)
         self._governance_domain(
             action, obs, moves, disposition, recklessness, market_position,
             cash_after_capabilities)
@@ -53,7 +53,7 @@ class RivalController(LabController):
 
     # ── capabilities + safety + training (the tuned core, lightly disposition-weighted) ──
 
-    def _capabilities_domain(self, action, obs, moves, effective_recklessness, free, cash):
+    def _capabilities_domain(self, action, obs, moves, disposition, effective_recklessness, free, cash):
         # research: capability tree first; safety ∝ caution (1 - recklessness) and safety_priority
         for proj in moves["capability_projects_available"]:
             if free <= 0.05 or cash < proj["cash_cost"]:
@@ -65,8 +65,12 @@ class RivalController(LabController):
             cash -= proj["cash_cost"]
 
         if self.rng.random() < (1.0 - effective_recklessness) * 0.8 and free > 0.2:
+            # rivals research both safety PROJECTS (measure/intervene) and safety
+            # ADVANCES (the new training-shaping lever) from one affordable pool
+            safety_options = (moves["safety_projects_available"]
+                              + moves["safety_advances_available"])
             affordable_safety = [
-                p for p in moves["safety_projects_available"]
+                p for p in safety_options
                 if p["cash_cost"] <= cash and p["budget_fraction"] <= free
             ]
             if affordable_safety and (moves["can_post_train"] or obs.own_models):
@@ -76,10 +80,16 @@ class RivalController(LabController):
                 free -= pick["budget_fraction"]
                 cash -= pick["cash_cost"]
 
-        # training pipeline — commission when there's nothing to advance
+        # training pipeline — commission when there's nothing to advance. A rival
+        # APPLIES the safety advances it has unlocked by its safety_priority
+        # disposition (the mode knob is gone — caution is now an applied-advance
+        # choice, not a slider).
+        safety_priority = disposition.safety_priority
         if moves["can_commission_run"] and cash > max(150, moves["max_run_compute"] * 0.15):
             reserve = round(cash * (0.55 + 0.3 * effective_recklessness), 0)
-            action.commission_run = {"compute": reserve}
+            applied = self._safety_advances_to_apply(moves["applicable_pretrain_safety"],
+                                                     safety_priority)
+            action.commission_run = {"compute": reserve, "applied_safety": applied}
             cash -= reserve
         elif moves["can_post_train"] and free >= 0.3:
             model_in_training = obs.model_in_training
@@ -87,15 +97,30 @@ class RivalController(LabController):
             realized = model_in_training["measured_capability"]["general"]
             target = (0.55 + 0.35 * effective_recklessness) * ceiling
             if realized < target:
-                mode = "capability" if self.rng.random() < 0.4 + 0.5 * effective_recklessness else "balanced"
-                action.post_train = {"mode": mode}
+                # racing to capability: a cautious rival still applies its safety
+                # advances; a reckless one skips them for speed/budget.
+                apply = self.rng.random() < safety_priority * (1 - effective_recklessness)
+                applied = (self._safety_advances_to_apply(moves["applicable_post_train_safety"],
+                                                          safety_priority) if apply else [])
+                action.post_train = {"applied_safety": applied}
             else:
                 worried = obs.worry_bar["level"] > 0.45 and self.rng.random() < (1 - effective_recklessness)
                 if worried and free >= 0.3:
-                    action.post_train = {"mode": "safety"}
+                    applied = [a["advance_id"] for a in moves["applicable_post_train_safety"]]
+                    action.post_train = {"applied_safety": applied}
                 else:
                     action.release = True
         return cash
+
+    def _safety_advances_to_apply(self, applicable, safety_priority):
+        """A rival applies each unlocked safety advance with probability ∝ its
+        safety_priority disposition (cautious rivals apply more; reckless apply few).
+        Budget is enforced downstream by the defensive skip in the mutate path."""
+        applied = []
+        for entry in applicable:
+            if self.rng.random() < safety_priority:
+                applied.append(entry["advance_id"])
+        return applied
 
     # ── L2 governance: lobbying (pipeline policies) + litigation (active policies) ──
 

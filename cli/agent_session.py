@@ -2,7 +2,7 @@
 shell (state survives between calls in a pickle file).
 
   python3 -m cli.agent_session new  --seed 1 --difficulty realistic [--session F]
-  python3 -m cli.agent_session act  --action '{"post_train":{"mode":"balanced"}}'
+  python3 -m cli.agent_session act  --action '{"post_train":{"applied_safety":[]}}'
   python3 -m cli.agent_session status
   python3 -m cli.agent_session postmortem
 
@@ -69,8 +69,15 @@ def _condense(obs):
                  "target_axis": p["target_axis"], "years": p["duration_years"],
                  "cash": p["cash_cost"], "budget": p["budget_fraction"]}
                 for p in legal_moves["safety_projects_available"]],
+            "safety_advances": [
+                {"id": p["project_id"], "phase": p["phase"], "years": p["duration_years"],
+                 "cash": p["cash_cost"], "budget": p["budget_fraction"]}
+                for p in legal_moves["safety_advances_available"]],
             "can_post_train": legal_moves["can_post_train"],
-            "post_train_modes": legal_moves["post_train_modes"],
+            "applicable_post_train_safety": [a["advance_id"]
+                for a in legal_moves["applicable_post_train_safety"]],
+            "applicable_pretrain_safety": [a["advance_id"]
+                for a in legal_moves["applicable_pretrain_safety"]],
             "can_commission_run": legal_moves["can_commission_run"],
             "max_run_compute": legal_moves["max_run_compute"],
             "can_release": legal_moves["can_release"],
@@ -80,8 +87,9 @@ def _condense(obs):
         "game_over": obs_dict["game_over"], "outcome": obs_dict["outcome"],
         "action_schema": {
             "start_projects": [{"project_id": "<id>", "ai_assist": "0..1"}],
-            "post_train": {"mode": "capability|balanced|safety"},
-            "commission_run": {"compute": "<$M>"},
+            "post_train": {"applied_safety": ["<researched post_train safety advance ids>"]},
+            "commission_run": {"compute": "<$M>",
+                               "applied_safety": ["<researched pretrain safety advance ids>"]},
             "release": "true/false",
             "lobby": {"<policy_id>": {"stance": "for|against|abstain", "spend": "<$M>"}},
             "litigation": {"<active_policy_id>": {"side": "challenge|defense",
