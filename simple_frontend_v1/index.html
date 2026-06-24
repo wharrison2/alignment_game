@@ -7,8 +7,8 @@
   :root{
     /* Light editorial theme: warm off-white paper, ink text, hairline rules.
        Accent/warn/bad are darkened to read as AA-legible on the pale surfaces. */
-    --bg:#f7f5ef; --panel:#fdfcf8; --panel2:#f1eee5; --line:#ddd8cc;
-    --txt:#1f2328; --dim:#6b6256; --acc:#1a5fb4; --warn:#9a6400; --bad:#b3261e;
+    --bg:#f4ebd4; --panel:#fdf9ec; --panel2:#eee3c9; --line:#e0d3b2;
+    --txt:#1f2328; --dim:#6a6049; --acc:#1a5fb4; --warn:#90600a; --bad:#b3261e;
     /* Serif body stack — system serifs only, no web-font fetch (server is offline). */
     --serif:Georgia,"Iberian","Times New Roman",Cambria,"Liberation Serif",serif;
   }
@@ -125,6 +125,20 @@
   .ritem .ri-meta{color:var(--dim);font-size:11px}
   .ritem .ri-desc{color:var(--dim);font-size:11px;line-height:1.35}
   .ritem .ri-assist-row{display:flex;align-items:center;gap:5px}
+  /* ── governance policy items (views.renderGovernance) ──
+     Header is a fixed-column grid so the lifecycle stage (dormant/introduced/
+     passed/signed/active) lines up vertically across every policy item. */
+  .policy{background:var(--panel2);border:1px solid var(--line);border-radius:6px;
+          padding:8px 10px;margin:6px 0}
+  .policy-head{display:grid;grid-template-columns:1fr 150px;align-items:baseline;
+               gap:8px}
+  .policy-name{font-weight:700;letter-spacing:.02em}
+  .policy-stage{display:flex;gap:5px;align-items:baseline}
+  .policy-teaches{color:var(--dim);font-size:11px;margin:2px 0 4px}
+  /* stage tag colours — scan the aligned column at a glance */
+  .stage-dormant{background:var(--panel);color:var(--dim);border-color:var(--line)}
+  .stage-introduced,.stage-passed,.stage-signed{color:var(--warn);border-color:var(--warn)}
+  .stage-active{color:#1a7a3f;border-color:#1a7a3f}
 </style>
 </head>
 <body>

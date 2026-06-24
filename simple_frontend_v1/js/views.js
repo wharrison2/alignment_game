@@ -795,11 +795,16 @@ export function renderGovernance(){
   $("governance").innerHTML = pols.map(policy => {
     const pid = policy.policy_id;
 
-    let inner = `<div class="row"><b style="min-width:210px">${policy.name}</b>
-      <span class="tag">${policy.stage}</span>`;
+    // Header: name | stage. The stage cell is a fixed-width grid column so the
+    // lifecycle label (dormant/introduced/passed/signed/active) aligns vertically
+    // across every policy item — scan the column to read the whole board's state.
+    let stageCell = `<span class="tag stage-${policy.stage}">${policy.stage}</span>`;
     if(policy.stage === "active")
-      inner += `<span class="tag ${ENF_COLOR[policy.enforcement]||'dim'}">${t("gov.enforce", {level: policy.enforcement})}</span>`;
-    inner += `</div><div class="dim" style="font-size:11px;margin:-2px 0 4px">${policy.teaches}</div>`;
+      stageCell += `<span class="tag ${ENF_COLOR[policy.enforcement]||'dim'}">${t("gov.enforce", {level: policy.enforcement})}</span>`;
+    let inner = `<div class="policy-head">
+      <span class="policy-name">${policy.name}</span>
+      <span class="policy-stage">${stageCell}</span></div>
+      <div class="policy-teaches">${policy.teaches}</div>`;
 
     // LOBBY — any pre-active policy (early money on a dormant one is efficient but a bet)
     if(policy.lobbyable){
@@ -851,7 +856,7 @@ export function renderGovernance(){
           approval: defPreview.approval_hit_if_caught})}</span></div>`;
     }
 
-    return `<div style="border-bottom:1px solid var(--line);padding:7px 0">${inner}</div>`;
+    return `<div class="policy">${inner}</div>`;
   }).join("");
 }
 
