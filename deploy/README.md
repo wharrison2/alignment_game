@@ -102,12 +102,20 @@ Result: `.git` is a fraction of its full size and no `.md` files sit on the serv
 while your laptop and the repo are untouched. (Code is intact — verify with
 `ls backend_v1/server/server.py`.)
 
-To update later (stays shallow, keeps docs excluded):
+To update later, just run the bundled script (it does the fetch/reset/chown/
+restart, stays shallow, and keeps docs excluded):
+
+```bash
+/opt/alignment_game/deploy/update.sh
+```
+
+Equivalent manual steps, if you prefer:
 
 ```bash
 cd /opt/alignment_game
 git fetch --depth 1 origin main
 git reset --hard origin/main
+chown -R alignment:alignment /opt/alignment_game
 systemctl restart alignment
 ```
 
@@ -282,7 +290,7 @@ Also consider disabling SSH password login in `/etc/ssh/sshd_config`
 | Backend logs              | `journalctl -u alignment -n 100 -f`                |
 | Reload Caddy after edit   | `systemctl reload caddy`                           |
 | Caddy / cert logs         | `journalctl -u caddy -n 100 -f`                    |
-| Deploy new code           | `cd /opt/alignment_game && git fetch --depth 1 origin main && git reset --hard origin/main && systemctl restart alignment` |
+| Deploy new code           | `/opt/alignment_game/deploy/update.sh` |
 
 ### Why updating is safe for your config
 
