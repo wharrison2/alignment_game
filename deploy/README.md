@@ -130,12 +130,31 @@ curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
 apt update && apt install -y caddy
 ```
 
-Install the project's Caddyfile and put your real domain in it:
+Install the project's Caddyfile (copy it **verbatim** — it has no per-host values;
+the domain comes from the `DOMAIN` environment variable):
 
 ```bash
 cp /opt/alignment_game/deploy/Caddyfile /etc/caddy/Caddyfile
-nano /etc/caddy/Caddyfile          # replace both yourdomain.com occurrences, save
-systemctl reload caddy
+```
+
+Set your domain once, in a systemd override (this lives outside the repo, so
+`git pull` never touches it):
+
+```bash
+systemctl edit caddy
+```
+
+In the editor that opens, add exactly:
+
+```ini
+[Service]
+Environment=DOMAIN=yourdomain.com
+```
+
+Save and exit, then apply:
+
+```bash
+systemctl restart caddy
 ```
 
 Within ~30 seconds Caddy obtains the certificate. Watch it happen if you like:
@@ -235,6 +254,19 @@ Also consider disabling SSH password login in `/etc/ssh/sshd_config`
 | Reload Caddy after edit   | `systemctl reload caddy`                           |
 | Caddy / cert logs         | `journalctl -u caddy -n 100 -f`                    |
 | Deploy new code           | `cd /opt/alignment_game && git pull && systemctl restart alignment` |
+
+### Why `git pull` is safe for your config
+
+Nothing host-specific lives in the repo. The two config files are **templates copied
+out of the repo** — your live `/etc/systemd/system/alignment.service` and
+`/etc/caddy/Caddyfile` are separate copies a pull never touches. The only per-host
+value, your domain, lives in the `systemctl edit caddy` override (also outside the
+repo). The backend bind address is `127.0.0.1` on every machine (it must be —
+that keeps the server behind Caddy), and your droplet's public IP lives only in
+GoDaddy DNS, never in the code. So a pull updates code and leaves all host values
+intact. If a pull ever changes a *template* (`deploy/Caddyfile` /
+`deploy/alignment.service`) and you want the improvement, re-run its `cp` step;
+your `DOMAIN` override and paths still apply.
 
 ---
 

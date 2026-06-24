@@ -5,8 +5,13 @@
 # renews a free Let's Encrypt certificate, and redirects all HTTP to HTTPS. The
 # Python backend stays on localhost:8000 and is never exposed directly.
 #
-# Replace BOTH domains below with yours, copy to /etc/caddy/Caddyfile, then:
+# This file is machine-independent — copy it verbatim, no editing. The domain is
+# read from the DOMAIN environment variable (set once via `systemctl edit caddy`,
+# see deploy/README.md Step 6), so a `git pull` never clobbers a per-host value.
+#   sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
 #   sudo systemctl reload caddy
+# If DOMAIN is unset, Caddy fails to load loudly (empty site address) — that's the
+# intended safety: it won't silently serve the wrong name.
 
 # Global options: explicit timeouts blunt slow-client (slowloris) connection
 # holding at the edge, before anything reaches the backend.
@@ -20,7 +25,7 @@
 	}
 }
 
-yourdomain.com, www.yourdomain.com {
+{$DOMAIN}, www.{$DOMAIN} {
 	encode gzip
 
 	# Reject oversized request bodies at the edge (the backend also caps this).
