@@ -8,6 +8,11 @@ action log, not structural immutability (see NOTES.md).
 from dataclasses import dataclass, field
 
 from backend_v1.config.difficulty import build_constants
+from backend_v1.content.strings import (
+    DEFAULT_PLAYER_LAB_NAME,
+    DEFAULT_PLAYER_TICKER,
+    RIVAL_LAB_NAMES,
+)
 from backend_v1.engine.rng import Rng
 from backend_v1.engine.lab import Lab, Disposition
 from backend_v1.engine.world import World
@@ -15,6 +20,61 @@ from backend_v1.engine.turn_pipeline import run_turn
 from backend_v1.engine.logger import GameLogger
 from backend_v1.engine.observation.observation_builder import build_observation
 from backend_v1.engine.observation.guidance import collect_tips
+
+
+# ── Player-supplied lab identity: validation/sanitization (SECURITY) ──────────
+# The lab name and ticker are the only player-authored strings that enter the
+# engine, and they flow on to the frontend (legend, panels) and into observations.
+# They are PUBLIC/legible (no firewall-secrecy concern), but they ARE untrusted
+# input, so every value is clamped here before a Lab is constructed. The frontend
+# escapes them again at render time (defence in depth); this layer guarantees the
+# stored value is bounded and free of control characters regardless of the caller
+# (server, CLI, or a test), so client-side checks are never the only line.
+# DEFAULT_PLAYER_LAB_NAME / DEFAULT_PLAYER_TICKER are the player-facing default
+# identity strings; they live in the centralized content table
+# (backend_v1.content.strings) and are imported above. Re-exported here so the
+# existing `from backend_v1.engine.game import DEFAULT_PLAYER_*` call sites keep
+# working — the values are unchanged, only their authored SOURCE moved.
+MAX_LAB_NAME_CHARS = 40
+MAX_TICKER_CHARS = 6
+
+
+def _strip_control_characters(raw_text: str) -> str:
+    """Drop ASCII/Unicode control characters (anything below space, plus DEL),
+    keeping ordinary printable text. Newlines and tabs count as control here —
+    a lab name is a single short label, not multi-line text."""
+    return "".join(ch for ch in raw_text if ch >= " " and ch != "\x7f")
+
+
+def sanitize_lab_name(raw_name) -> str:
+    """Clamp an untrusted lab name to a safe, bounded, single-line string.
+
+    Coerces non-strings, strips control characters, trims surrounding
+    whitespace, caps length, and falls back to the default if the result is
+    empty. Never raises — bad input becomes the default, not an error."""
+    text = raw_name if isinstance(raw_name, str) else ""
+    cleaned = _strip_control_characters(text).strip()
+    bounded = cleaned[:MAX_LAB_NAME_CHARS].strip()
+    return bounded if bounded else DEFAULT_PLAYER_LAB_NAME
+
+
+def derive_ticker_from_name(lab_name: str) -> str:
+    """Default ticker = first 3 letters/digits of the name, uppercased (mirrors
+    the frontend's live auto-derive). Skips spaces/punctuation so "Open Brain"
+    yields "OPE", not "OP ". Falls back to the default if nothing usable remains."""
+    alphanumeric = [ch for ch in lab_name if ch.isalnum()]
+    first_three = "".join(alphanumeric[:3]).upper()
+    return first_three if first_three else DEFAULT_PLAYER_TICKER
+
+
+def sanitize_ticker(raw_ticker, fallback_name: str) -> str:
+    """Clamp an untrusted ticker to a safe, bounded, uppercased string. Empty or
+    all-control input falls back to a ticker derived from the (already-sanitized)
+    lab name, so a lab always has a usable ticker. Never raises."""
+    text = raw_ticker if isinstance(raw_ticker, str) else ""
+    cleaned = _strip_control_characters(text).strip()
+    bounded = cleaned[:MAX_TICKER_CHARS].strip().upper()
+    return bounded if bounded else derive_ticker_from_name(fallback_name)
 
 
 @dataclass
@@ -34,29 +94,42 @@ class GameState:
 
 
 def new_game(seed=0, difficulty="realistic", guidance="standard",
-             rival_count=None, max_turns=None) -> GameState:
+             rival_count=None, max_turns=None,
+             player_lab_name=None, player_ticker=None) -> GameState:
     consts = build_constants(difficulty)
     rng = Rng(seed)
     num_rivals = rival_count if rival_count is not None else consts.RIVAL_COUNT
 
+    # Untrusted player-authored identity: sanitize before it touches any state.
+    safe_player_name = sanitize_lab_name(player_lab_name)
+    safe_player_ticker = sanitize_ticker(player_ticker, safe_player_name)
+
     player_lab = Lab(
-        id="player", name="Your Lab", is_player=True,
+        id="player", name=safe_player_name, ticker=safe_player_ticker, is_player=True,
         cash=consts.STARTING_CASH,
         work_budget_per_year=consts.WORK_BUDGET_PER_YEAR,
+        # §9b early investment: seed the base flow so it is present from turn 1, before
+        # the score-divvied pie exists. It holds while the lab is active, decays if idle.
+        base_investment_rate=consts.BASE_INVESTMENT_PER_YEAR,
     )
     labs = [player_lab]
 
-    rival_names = ["Mistreal", "OpenBrain", "Anthropos", "DeepThink", "Cypher"]
+    rival_names = RIVAL_LAB_NAMES
     for i in range(num_rivals):
         reck, cost, ow = consts.RIVAL_DISPOSITIONS[i % len(consts.RIVAL_DISPOSITIONS)]
+        rival_name = rival_names[i % len(rival_names)]
+        # Rivals get tickers too (first 3 chars, uppercased) so the graph legend can
+        # show every lab's ticker consistently — same derivation as the player default.
+        rival_ticker = derive_ticker_from_name(rival_name)
         # governance weights derive from recklessness (ideologues hate regulation more)
         reg_stance = min(0.95, 0.3 + 0.6 * reck + (0.2 if ow else 0.0))
         safety_pri = max(0.05, 0.5 * (1.0 - reck))
         rival_cash = consts.STARTING_CASH * rng.uniform(0.8, 1.2)
         rival_lab = Lab(
-            id=f"rival{i+1}", name=rival_names[i % len(rival_names)],
+            id=f"rival{i+1}", name=rival_name, ticker=rival_ticker,
             cash=rival_cash,
             work_budget_per_year=consts.WORK_BUDGET_PER_YEAR,
+            base_investment_rate=consts.BASE_INVESTMENT_PER_YEAR,
             disposition=Disposition(
                 recklessness=reck, cost_advantage=cost,
                 open_weights_ideology=ow,

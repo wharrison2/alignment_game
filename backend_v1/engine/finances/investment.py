@@ -80,27 +80,65 @@ def lab_score(lab, world, consts):
     return max(0.0, score)
 
 
+def _lab_is_active(lab):
+    """Active = the lab is doing something the early/seed market can bet on: it has
+    shipped a model, OR it has research / pretraining / a post-train model in flight.
+    An inactive lab (idle, nothing in progress, never shipped) sees its seed
+    investment decay toward zero (§9b: the default is growth, idleness is punished)."""
+    has_shipped = len(lab.release_history) > 0
+    has_work_in_progress = (len(lab.in_progress) > 0
+                            or lab.training_run is not None
+                            or lab.model_in_training is not None)
+    return has_shipped or has_work_in_progress
+
+
+def update_base_investment(lab, consts, dt):
+    """Advance the lab's seed/base investment flow by one turn (§9b early investment).
+
+    Early-stage capital bets on the field/team before any release, so every lab starts
+    with a small base flow. It HOLDS at the base level while the lab is active and
+    DECAYS toward zero if the lab goes idle for a few quarters. Stored on the lab so it
+    is a persistent accumulator (one step per turn), not recomputed from scratch."""
+    if _lab_is_active(lab):
+        lab.base_investment_rate = consts.BASE_INVESTMENT_PER_YEAR
+    else:
+        lab.base_investment_rate *= math.exp(-consts.BASE_INVESTMENT_DECAY_PER_YEAR * dt)
+
+
 def run_investment(labs, world, turn, rng, consts, dt):
     if world.total_revenue_rate > 0 and world.prev_total_revenue_rate > 0:
-        rev_growth = (world.total_revenue_rate / world.prev_total_revenue_rate - 1) / dt
+        single_turn_growth = (world.total_revenue_rate / world.prev_total_revenue_rate - 1) / dt
     else:
-        rev_growth = 0.0
+        single_turn_growth = 0.0
+    # §9b: investment rewards the SLOPE between releases, not an instantaneous spike.
+    # The single-turn ratio whipsaws (huge the turn a new model enters the pie, negative
+    # the next), so feed the pie a SMOOTHED growth instead — this is what previously flung
+    # total investment, and the cap keyed off it, up then down after every release.
+    world.smoothed_revenue_growth_per_year += consts.REVENUE_GROWTH_SMOOTHING_ALPHA * (
+        single_turn_growth - world.smoothed_revenue_growth_per_year)
+    smoothed_revenue_growth = world.smoothed_revenue_growth_per_year
 
     frontier_capability = world.frontier_measured_general
     capability_fraction = frontier_capability / consts.CAP_MAX
-    growth_multiplier = max(0.2, 1 + consts.INVESTMENT_GROWTH_WEIGHT * rev_growth)
+    growth_multiplier = max(0.2, 1 + consts.INVESTMENT_GROWTH_WEIGHT * smoothed_revenue_growth)
     total_investment = (consts.INVESTMENT_MAX_PER_YEAR
                         * capability_fraction ** consts.INVESTMENT_CAP_EXP
                         * growth_multiplier)
 
-    # advance each lab's persistent confidence momentum by one turn, THEN score.
+    # advance each lab's persistent confidence momentum AND its seed investment by one
+    # turn, THEN score.
     for lab in labs:
         update_investment_momentum(lab, world, turn, consts, dt)
+        update_base_investment(lab, consts, dt)
 
     scores = {lab.id: lab_score(lab, world, consts) for lab in labs}
     scores_sum = sum(scores.values()) or 1.0
 
     for lab in labs:
-        lab.investment_rate = total_investment * scores[lab.id] / scores_sum
+        score_share_investment = total_investment * scores[lab.id] / scores_sum
+        # the seed/base flow is ADDED on top of the score-divvied pie: it is present
+        # from turn 1 (when the score-pie is still ~0) and tapers as real investment
+        # takes over. It is each lab's own seed money, not a share of the pie.
+        lab.investment_rate = score_share_investment + lab.base_investment_rate
         lab.cash += rng.amount_per_dt(lab.investment_rate, dt)
         lab.last_score = scores[lab.id]

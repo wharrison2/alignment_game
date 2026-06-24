@@ -42,18 +42,31 @@ _OPENING = Action(start_projects=[{"project_id": "scaling_laws", "ai_assist": 0.
                   commission_run={"compute": 300})
 
 # Baselines captured with --record on the reconciled (legibility + structural
-# + §7 features) engine. Re-recorded after the §9b investment-momentum fix:
-# investor confidence is now a PERSISTENT per-lab accumulator carried across
-# releases (instead of being recomputed from "quarters since last release" and
-# reset at every release), so a release that beats its bar no longer drops the
-# market cap — an intentional trajectory change that moves cash/market_cap in
-# every game's TRUE log.
+# + §7 features) engine.
+# Re-recorded for the "Advance-driven training" change (ISSUES.md): the per-round
+# post-train MODE knob (POST_TRAIN_MODES) was removed and REPLACED by researched
+# SAFETY ADVANCES that the scripted RivalController now applies via the new
+# post_train/commission_run "applied_safety" field. The round baseline reproduces
+# the former "balanced" mode, but the scripted player's action stream changed
+# (it picks applied_safety lists from legal_moves instead of a mode string), so
+# the TRUE trajectory — and thus every digest — moves. Per CLAUDE.md §8 this is an
+# expected action-stream change, NOT an RNG/firewall regression.
+#
+# Re-recorded AGAIN for the finance fixes (ISSUES.md "Finance fixes"): (1) market cap
+# now anchors on a SMOOTHED investment flow (lab.smoothed_investment_rate) instead of
+# the spiky per-turn investment_rate, and total investment keys off a SMOOTHED world
+# revenue-growth (world.smoothed_revenue_growth_per_year) — so a healthy release keeps
+# the market-cap staircase climbing instead of declining; (2) a small early/seed
+# BASE_INVESTMENT_PER_YEAR flow is present from turn 1 and decays if a lab goes idle.
+# These move every lab's cash trajectory each turn, so the TRUE log — and every digest —
+# moves. The scripted controller acts on the same legal_moves; this is an expected
+# finance-dynamics change, NOT an RNG/firewall regression (CLAUDE.md §8).
 EXPECTED = {
-    "0-balanced-realistic": "b1d0420ce6a8b5faf8cad1265769d9a76ba357a63572cff5cf3a923473aa446f",
-    "3-aggressive-realistic": "e993c77b70822ba2b2692949cef0b3efa7a9032b07b30bc030894d5e915e5ccc",
-    "7-cautious-realistic": "14ba6e2e4f07a1ac0f42d14905ccd52cb4ae6981f99ea68dbbccc4181bd10d84",
-    "1-balanced-easy": "1ce275b908103950deaa200d5ad0c8116f0e087717214662e997ee6f8cf8f3cc",
-    "5-aggressive-impossible": "5cbab8a1b2678086025b66c0e2bba86fbceff9dbdc65270d62b613416ed35feb",
+    "0-balanced-realistic": "e9b22cb137a3269ede844f94ee46258569577f58717e0b679c41e25f56afdd62",
+    "3-aggressive-realistic": "e77b4b427755b9289d830add8d186a96728fc5dd607a1b07799c0fd718cb4fd2",
+    "7-cautious-realistic": "0d63c22442ab0ed739c088f265400129809b6846e78bc2a1a8cbafcc176808d2",
+    "1-balanced-easy": "9e946f2242ab7fcb4c5aec3562c308efb98366529df1aef475ef5e8148ca3259",
+    "5-aggressive-impossible": "2de541e993625a262637f301cb62f72df35d69d90e09b714d5c29da86cf34d7d",
 }
 
 

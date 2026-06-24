@@ -41,6 +41,13 @@ class World:
     # revenue-pie bookkeeping (release-to-release growth needs world revenue history)
     total_revenue_rate: float = 0.0
     prev_total_revenue_rate: float = 0.0
+    # Smoothed (EMA) world revenue-growth-per-year. §9b says investment rewards the
+    # SLOPE measured BETWEEN releases, not an instantaneous spike: raw single-turn
+    # growth whipsaws hard (huge on the turn a new model enters the pie, negative the
+    # next as it mean-reverts), which used to fling total investment — and the market
+    # cap that keys off it — up then down after every release. Smoothing it keeps the
+    # slope signal continuous so the post-release staircase climbs instead of sawtooths.
+    smoothed_revenue_growth_per_year: float = 0.0
     frontier_measured_general: float = 0.0
     asi_window_turns_left: int | None = None       # verification cliff countdown
     asi_model_id: str | None = None

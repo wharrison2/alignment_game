@@ -28,6 +28,11 @@ class Disposition:
 class Lab:
     id: str
     name: str
+    # Short public stock-style ticker (e.g. "YOU", "MIS"). Public/legible like the
+    # name — not hidden state, so it crosses the observation boundary freely. Always
+    # an already-sanitized, length-bounded string by the time a Lab is constructed
+    # (see game.sanitize_ticker); never built from any TRUE/hidden field.
+    ticker: str = ""
     is_player: bool = False
     cash: float = 0.0                       # SINGLE pot (revenue + investment)
     work_budget_per_year: float = 4.0       # quarterly pool = this * dt
@@ -40,6 +45,16 @@ class Lab:
     # economy
     revenue_rate: float = 0.0               # $M/yr, recomputed each turn
     investment_rate: float = 0.0
+    # Seed/base investment flow (§9b early investment): early-stage capital betting on
+    # the field/team, present from turn 1, decaying toward zero if the lab goes idle.
+    # Persistent accumulator advanced one step per turn (see update_base_investment).
+    base_investment_rate: float = 0.0
+    # Smoothed (EMA) investment flow — the SIZE anchor the market cap multiplies by.
+    # The raw per-turn investment_rate is a share of a per-turn-noisy pie (a rival's
+    # surge or a one-turn revenue blip swings it wildly); using it directly made the
+    # cap spike on a release turn then decline as the rate mean-reverted. Smoothing
+    # keeps valuation tracking the lab's rising score, not the flow's single-turn jitter.
+    smoothed_investment_rate: float = 0.0
     market_cap: float = 100.0
     last_release_turn: int | None = None
     prev_release_turn: int | None = None       # release before last (investment hold-time)
@@ -108,6 +123,10 @@ class Lab:
         return {
             "id": self.id,
             "name": self.name,
+            # NOTE: ticker is intentionally NOT in the snapshot. The snapshot feeds
+            # the TRUE-state log (golden-master digest) and the post-mortem; the
+            # public ticker reaches the frontend via the server's lab_tickers() map
+            # and rival_public, so it never needs to enter the logged true state.
             "is_player": self.is_player,
             "cash": self.cash,
             "revenue_rate": self.revenue_rate,
