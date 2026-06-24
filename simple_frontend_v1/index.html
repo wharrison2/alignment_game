@@ -286,6 +286,28 @@
   .stage-active{color:#1a7a3f;border-color:#1a7a3f}
   /* Narrow screens: drop the rival box below the policy controls. */
   @media(max-width:760px){ .policy{grid-template-columns:1fr} }
+  /* ── Tutorial coach box (js/tutorial.js) ───────────────────────────────────
+     An optional guided walkthrough. The box floats at the bottom-right, ABOVE
+     the action bar (#queue is ~40px tall) and below the new-game overlay, so it
+     never covers the tab it is talking about. The directional ring (.tut-highlight)
+     pulses around whichever nav target the current step points at. */
+  #tutorial-coach{position:fixed;right:18px;bottom:64px;width:340px;
+    max-width:calc(100vw - 36px);background:var(--panel);border:1px solid var(--acc);
+    border-radius:8px;box-shadow:0 8px 28px rgba(31,35,40,.22);padding:14px 16px;
+    z-index:18;display:none}
+  #tutorial-coach.show{display:block}
+  #tutorial-coach .tut-step{font-size:10px;text-transform:uppercase;letter-spacing:.06em;
+    color:var(--dim);margin-bottom:4px}
+  #tutorial-coach h3{color:var(--acc);margin-bottom:6px}
+  #tutorial-coach .tut-body{font-size:13px;line-height:1.5;margin:6px 0 12px}
+  #tutorial-coach .tut-controls{display:flex;gap:8px;align-items:center}
+  #tutorial-coach .tut-controls .tut-skip{margin-left:auto;color:var(--dim);
+    font-size:12px;background:none;border:none}
+  #tutorial-coach .tut-controls .tut-skip:hover{color:var(--acc)}
+  /* the pulsing ring that points the player at the step's nav target / action bar */
+  .tut-highlight{outline:3px solid var(--acc);outline-offset:2px;border-radius:5px;
+    animation:tut-pulse 1.2s ease-in-out infinite}
+  @keyframes tut-pulse{0%,100%{outline-color:var(--acc)}50%{outline-color:transparent}}
 </style>
 </head>
 <body>
@@ -449,6 +471,9 @@
 
 <!-- §7c per-item "explain it, then carry it out" modal -->
 <div id="itemmodal"><div class="modal-card" id="modal-body"></div></div>
+
+<!-- optional guided walkthrough (js/tutorial.js); hidden until the player opts in -->
+<div id="tutorial-coach"></div>
 
 <script type="module" src="js/main.js"></script>
 </body>

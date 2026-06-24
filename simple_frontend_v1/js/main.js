@@ -15,6 +15,9 @@ import {
 import {
   openProjectModal, carryOutProject, closeItemModal,
 } from "./warnings.js";
+import {
+  startTutorial, tutorialNext, tutorialPrev, tutorialEnd,
+} from "./tutorial.js";
 
 // ── Master render — updates every panel ──────────────────────────────────────
 function render(){
@@ -45,6 +48,11 @@ function render(){
 // taken. Set true only when newGame() completes.
 let started = false;
 
+// Whether the player wants the guided walkthrough on the next game they start. The
+// new-game checkbox reflects (and updates) this; it defaults ON so a first-time
+// player gets the tour, and remembers the choice for later new games (mirrors DEV).
+let wantTutorial = true;
+
 // ── Dev mode (god-view Truth tab) — OFF by default, opt-in per game ──────────
 // The Truth tab bypasses the true/measured firewall; it's a debug instrument, so
 // it stays hidden unless the player ticks "dev mode" when starting a game.
@@ -73,6 +81,7 @@ function closeOverlay(){ $("overlay").classList.remove("show"); }
 function showNewGame(opts){
   // On first load the modal is mandatory — no cancel, so a game can't be skipped.
   const initial = !!(opts && opts.initial);
+  tutorialEnd();   // a running walkthrough must not float over the new-game modal
   $("overlay-content").innerHTML = `
     <div class="panel" style="max-width:460px;margin:60px auto">
     <h3>${t("newgame.title")}</h3>
@@ -90,6 +99,8 @@ function showNewGame(opts){
     <div class="row">${t("newgame.guidance.label")} <select id="ng-guid">
       ${["hint_heavy","standard","sparse"].map(g=>
         `<option ${g==="standard"?"selected":""}>${g}</option>`).join("")}</select></div>
+    <div class="row"><label><input type="checkbox" id="ng-tutorial" ${wantTutorial?"checked":""}>
+      ${t("newgame.tutorial.label")}</label></div>
     <div class="row"><label><input type="checkbox" id="ng-dev" ${DEV?"checked":""}>
       ${t("newgame.dev.label")}</label></div>
     <div class="row" style="margin-top:10px">
@@ -129,6 +140,8 @@ async function newGame(){
   // Dev mode is OPTIONAL: an UNCHECKED box is the normal path. It only toggles the
   // god-view Truth tab; nothing about starting a game depends on it being on.
   const devChecked = $("ng-dev") ? $("ng-dev").checked : false;
+  // Remember the tutorial choice for later new-game modals (same pattern as DEV).
+  wantTutorial = $("ng-tutorial") ? $("ng-tutorial").checked : false;
   // Send the raw name/ticker; the server sanitizes (length-clamp, control-char
   // strip, empty→default) — client values are convenience only, never trusted.
   const fresh = await api("/api/new",
@@ -149,6 +162,9 @@ async function newGame(){
   apply(fresh);
   setDevMode(devChecked);
   closeOverlay();
+  // Kick off the guided walkthrough last — after OBS is populated and the modal is
+  // closed — so its first switchView has real state to render and a clear board.
+  if(wantTutorial) startTutorial();
 }
 
 async function showPostmortem(){
@@ -218,6 +234,7 @@ Object.assign(window, {
   openPolicyModal,
   newGame, closeOverlay, openProjectModal, carryOutProject, closeItemModal,
   onLabNameInput, onTickerInput,
+  tutorialNext, tutorialPrev, tutorialEnd,
 });
 
 setDevMode(false);   // Truth tab hidden until a game is started with dev mode on

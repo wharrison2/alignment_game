@@ -1118,3 +1118,36 @@ cap up; refreshes are neutral; only a real capability plateau slowly bleeds the 
   treadmill too much.
 - `SCORE_TARGET_HEADROOM_FLOOR` and `SCORE_MISS_DECAY_K` trade treadmill harshness
   against staircase smoothness; current values favor a visible, climbing staircase.
+
+---
+
+## Task: Optional tutorial walkthrough (frontend)
+
+Added an opt-in guided tour of the board, selectable from the new-game modal.
+Frontend-only — no backend, engine, RNG, or observation change, so the golden
+master is untouched.
+
+### What was built
+- `simple_frontend_v1/js/tutorial.js` — new module. A data-driven step list
+  (`TUTORIAL_STEPS`): each row names the tab to surface, an optional CSS selector
+  to ring as a directional pointer, and the title/body string keys. The coach box
+  floats bottom-right above the action bar; Back/Next/Skip drive it. It only calls
+  `switchView` and toggles a `.tut-highlight` ring — it never reads game/true state,
+  so it sits outside the §2 firewall by construction.
+- `index.html` — `#tutorial-coach` element + CSS (coach box, pulsing `.tut-highlight`
+  ring). z-index 18 keeps it under the new-game overlay (20).
+- `js/main.js` — `wantTutorial` preference (mirrors the DEV pattern), tutorial
+  checkbox in the new-game modal, `startTutorial()` fired after the game loads,
+  `tutorialEnd()` when the modal reopens, handlers exposed on `window`.
+- `js/strings.js` — all copy under `tutorial.*` and `newgame.tutorial.label`.
+
+### Liberties taken (flag for review)
+- **Tutorial defaults ON** in the new-game checkbox (first-timers get the tour;
+  the choice is remembered like DEV). Flip the `wantTutorial` initializer in
+  `main.js` if the designer wants it opt-in instead.
+- The walkthrough copy (the `tutorial.*` strings) is authored DRAFT guidance; it
+  paraphrases each tab's purpose and the true-vs-measured thesis. Not reviewed
+  against design-doc §0/§7c wording — treat as placeholder prose for a copy pass.
+- It is a tab-switching coached banner, NOT element-anchored coachmarks/tooltips —
+  chosen because precise positional tooltips can't be runtime-verified here (§8,
+  no JS runtime) and would be fragile against the responsive grid.
