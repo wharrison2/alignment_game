@@ -115,12 +115,22 @@ _OPENING = Action(start_projects=[{"project_id": "scaling_laws", "ai_assist": 0.
 # action/draw and thus every digest. NO new RNG draws (rng.normal() is still drawn
 # unconditionally per process per turn); determinism holds (same seed → identical run).
 # Intentional behavior fix, NOT an RNG/firewall regression (CLAUDE.md §8).
+#
+# Re-recorded for the "jailbreak discovery → finding" change (ISSUES.md): stage-1
+# jailbreak discovery now injects an existence finding on jailbreak_sensitivity (like
+# deception_caught / shutdown_resistance already do) so it surfaces in the Intel
+# evidence dossier, feed, and worry bar. The added finding raises the responsible
+# lab's worry-bar LEVEL, and RivalController gates a `self.rng.random()` draw on
+# `worry_bar.level > 0.45` (short-circuit) — so a crossed threshold both changes the
+# action and shifts that controller's own RNG stream, moving every downstream
+# decision and thus every digest. No engine-RNG draw was added; determinism holds
+# (same seed → identical run). Intentional behavior change, NOT a regression (§8).
 EXPECTED = {
-    "0-balanced-realistic": "28e4d0f85418d2601d5b85ebb736440481b8023c2f639961e86a5b09bce8e998",
-    "3-aggressive-realistic": "498e1f94f471b9ef30d21ee0972d4abf50718f45ef173af80b24dffc2b8203ba",
-    "7-cautious-realistic": "cb8bfdabb8072f59cf59870af7c3323957ec3ac38e9493cadc6d835f7d1c6f67",
-    "1-balanced-easy": "b28b9ef589c2db4971a6596c9545d013bc3f9596cbba1561dbc202e318d7e47f",
-    "5-aggressive-impossible": "b64ebad52bac82374d3204525cd41bc283368f3592a0b72630aabaa52ee83d70",
+    "0-balanced-realistic": "9750408fb76bcb7516adb9eeaef16bba0e3bc6c10617901d07bd94f2a7826e4d",
+    "3-aggressive-realistic": "f64d18fe80234a82b24f59ab84a7a802a94b9cdd17e498cd4cea7db92dc0a2a6",
+    "7-cautious-realistic": "0ea541212f0e69485370e4cd9d536588004f7ffa12f0d20c9f16dca2518c7ad8",
+    "1-balanced-easy": "0e06aefd7bebe14b142fb0efe6183a1d81a6898f92c992c8885db62dee38bc81",
+    "5-aggressive-impossible": "77aef4a240cc31db9045be3c2ea647061c4e03c7ad150b6d88cbedb66a3ac965",
 }
 
 

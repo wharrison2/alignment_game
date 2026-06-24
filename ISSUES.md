@@ -1267,3 +1267,31 @@ no model behind it nonetheless jittered completion timing (mean-neutral, pure no
   input is suppressed (replaced by a "needs a released model" hint) when unavailable,
   so the control can't be set in the first place. `queueProject`/`carryOutProject`
   already default a missing slider to 0, so suppression is safe.
+
+---
+
+## Task: Intel evidence — surface null findings clearly + jailbreak discoveries
+
+Two additions to the Intel "alignment evidence" dossier.
+
+- **Null findings** were already compiled into the dossier (the dossier includes
+  every `lab.findings` entry), but the renderer faded them to 60% opacity, which read
+  as "excluded/disabled". A null result is genuine (ambiguous) evidence, so the
+  `.ev-null` style now keeps full legibility and just marks the item with a neutral
+  grey left-rail instead of the accent rail (`index.html`). No data change.
+
+- **Jailbreak discoveries** previously only set a per-model flag + a hidden_history
+  note + a feed event — they injected no finding, so they never reached the dossier
+  (and `hidden_history` is firewall-forbidden, so the dossier can't read it). Stage-1
+  discovery in `latent_events.run_latent_phase` now injects an incident finding
+  (`project_id="incident"`, `evidence="existence"`, axis `jailbreak_sensitivity`,
+  concern scaling with the true sensitivity it exposed, weight 1.5), exactly like
+  `deception_caught` / `shutdown_resistance`. It therefore lands in the dossier (as an
+  EXTERNAL item), the feed, and the worry bar — jailbreak-sensitivity is a worry axis,
+  so feeding worry is consistent.
+  - **Determinism:** the new finding raises the responsible lab's worry LEVEL, and
+    `RivalController` short-circuits a `self.rng.random()` draw on `level > 0.45`, so a
+    crossed threshold shifts that controller's RNG stream → action stream → every
+    digest. No engine-RNG draw added; determinism holds. Golden master re-recorded
+    (note above the EXPECTED block). The concern/weight literals follow the existing
+    inline convention in `event_catalog.py`'s incident findings ([TUNE]-ish).

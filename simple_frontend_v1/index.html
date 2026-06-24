@@ -296,7 +296,9 @@
   .ev-item{background:var(--panel2);border:1px solid var(--line);border-radius:5px;
     border-left:3px solid var(--acc);padding:6px 8px;margin:5px 0}
   .ev-item.ev-external{border-left-color:var(--bad)}
-  .ev-item.ev-null{opacity:.6}
+  /* a null result is genuine (ambiguous) evidence, not absent — keep it fully
+     legible, just mark it with a neutral grey rail instead of the accent rail */
+  .ev-item.ev-null{border-left-color:var(--dim)}
   .ev-item-head{display:flex;align-items:baseline;justify-content:space-between;gap:6px}
   .ev-axis{font-weight:700;text-transform:capitalize;font-size:12px}
   .ev-turn{font-size:10px}
