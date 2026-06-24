@@ -201,6 +201,29 @@ export const STRINGS = {
   "worry.concern.label": "concern",
   "worry.evidence.label": "evidence",
 
+  // ── Intel — alignment-evidence dossier (views.renderAlignmentEvidence) ──────
+  // The raw findings the worry bar synthesizes, grouped by model. Curated project
+  // names below; an unlisted project id falls back to a prettified id in the view.
+  "intel.evidence.empty": "no alignment evidence collected yet — run safety evaluations on the Research tab",
+  "intel.evidence.status.in_training": "in training",
+  "intel.evidence.status.released": "released",
+  "intel.evidence.status.earlier": "earlier model",
+  "intel.evidence.source.external": "EXTERNAL incident",
+  "intel.evidence.mech": "mechanistic",
+  "intel.evidence.concern": "concern {value}",
+  // evidence types (Finding.evidence): how strong a claim the finding supports
+  "intel.evidence.kind.point": "point estimate",
+  "intel.evidence.kind.bound": "lower bound",
+  "intel.evidence.kind.existence": "existence proof",
+  "intel.evidence.kind.null": "null result",
+  "intel.evidence.kind.intervention": "intervention applied",
+  // curated safety-project labels (the rest prettify their raw id)
+  "intel.evidence.project.red_team": "red team",
+  "intel.evidence.project.noise_injection": "noise injection",
+  "intel.evidence.project.alignment_faking_study": "alignment-faking study",
+  "intel.evidence.project.scalable_oversight": "scalable oversight",
+  "intel.evidence.project.behavioral_evals": "behavioral evals",
+
   // ── Intel — rivals (structured card, issue 4) ──────────────────────────────
   "rivals.col.ticker": "ticker",
   "rivals.col.name": "lab",

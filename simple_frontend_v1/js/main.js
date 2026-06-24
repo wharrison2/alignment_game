@@ -8,7 +8,8 @@ import {
   switchView, drawCaps, renderTraining, togglePostTrain, togglePostTrainSafety,
   toggleRelease, renderPretrain, queueRun, clearRun, renderReleased, renderBenchmarks,
   renderTruth, renderProjects, previewAssist, queueProject, unqueueProject,
-  renderInProgress, renderWorry, renderRivals, renderFeed, renderGovernance,
+  renderInProgress, renderWorry, renderRivals, renderAlignmentEvidence,
+  renderFeed, renderGovernance,
   setLobbyStance, setLobbySpend, setLitField, clearLit, toggleDefect, openPolicyModal,
   renderQueue, unqueue,
 } from "./views.js";
@@ -38,7 +39,7 @@ function render(){
   drawCaps(); renderTraining(); renderPretrain(); renderReleased();
   renderBenchmarks();
   renderProjects(); renderInProgress(); renderWorry(); renderGovernance();
-  renderRivals(); renderFeed(); renderQueue(); renderTruth();
+  renderRivals(); renderAlignmentEvidence(); renderFeed(); renderQueue(); renderTruth();
   // No turns until a game has been started through the new-game modal (and never
   // once the game is over).
   $("endturn").disabled = !started || !!OBS.game_over;

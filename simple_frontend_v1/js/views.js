@@ -730,10 +730,13 @@ export function renderReleased(){
 function fmtBenchScore(kind, value){
   if(kind === "ring") return value.toFixed(0) + "%";
   if(kind === "elo")  return Math.round(value).toLocaleString();
-  if(kind === "horizon"){            // value is in minutes
-    if(value < 60)   return value.toFixed(0) + " min";
-    if(value < 1440) return (value/60).toFixed(1) + " h";
-    return (value/1440).toFixed(1) + " d";
+  if(kind === "horizon"){            // value is in minutes (unbounded log scale)
+    const HOUR = 60, DAY = 1440, MONTH = 1440 * 30, YEAR = 1440 * 365;
+    if(value < HOUR)  return value.toFixed(0) + " min";
+    if(value < DAY)   return (value/HOUR).toFixed(1) + " h";
+    if(value < MONTH) return (value/DAY).toFixed(1) + " d";
+    if(value < YEAR)  return (value/MONTH).toFixed(1) + " mo";
+    return (value/YEAR).toFixed(1) + " yr";
   }
   return value.toFixed(1);
 }
@@ -1028,6 +1031,91 @@ function worryStatusRow(label, value){
   if(!value) return "";
   return `<div class="kv"><span class="kv-label">${label}</span>
     <span class="kv-value">${esc(value)}</span></div>`;
+}
+
+// ── Alignment-evidence dossier (Intel tab) ──────────────────────────────────
+// Compiles OBS.alignment_evidence — every safety-eval finding and external
+// incident result, grouped by the model it was collected on (newest model first,
+// newest finding first within a model). The worry bar above is the SYNTHESIS;
+// this is the raw evidence it was synthesized from, so the player can audit it.
+export function renderAlignmentEvidence(){
+  const dossier = OBS.alignment_evidence || {};
+  const models = dossier.models || [];
+  const el = $("alignment-evidence");
+  if(!models.length){
+    el.innerHTML = `<span class="dim">${t("intel.evidence.empty")}</span>`;
+    return;
+  }
+  el.innerHTML = models.map(evidenceModelHTML).join("");
+}
+
+// One model group: a header (model id + lifecycle status) over its evidence items.
+function evidenceModelHTML(group){
+  // model_id is engine-generated, but esc() it anyway to keep the firewall habit.
+  const modelId = esc(group.model_id);
+  const status = t("intel.evidence.status." + group.status);
+  const items = group.items.map(evidenceItemHTML).join("");
+  return `<div class="ev-group">
+    <div class="ev-model-head">
+      <span class="ev-model-id">${modelId}</span>
+      <span class="tag">${status}</span>
+    </div>
+    ${items}
+  </div>`;
+}
+
+// One finding as a compact card. A null result is de-emphasized (ambiguous — it
+// rules little out, design §7); an external incident is flagged in red.
+function evidenceItemHTML(item){
+  const axisLabel = (item.axis || "general").replace(/_/g, " ");
+  const isExternal = item.source_kind === "external";
+  const isNull = item.evidence === "null";
+
+  const sourceBadge = isExternal
+    ? `<span class="tag bad">${t("intel.evidence.source.external")}</span>`
+    : `<span class="tag">${esc(evidenceProjectLabel(item.project_id))}</span>`;
+  const kindBadge = `<span class="tag">${evidenceKindLabel(item.evidence)}</span>`;
+  const mechBadge = item.mechanistic
+    ? `<span class="tag good">${t("intel.evidence.mech")}</span>` : "";
+  const concernBadge = `<span class="tag ${concernClass(item.concern)}">${
+    t("intel.evidence.concern", {value: item.concern.toFixed(2)})}</span>`;
+
+  const itemClasses = "ev-item" + (isNull ? " ev-null" : "") +
+    (isExternal ? " ev-external" : "");
+  return `<div class="${itemClasses}">
+    <div class="ev-item-head">
+      <span class="ev-axis">${axisLabel}</span>
+      <span class="ev-turn dim">t${item.turn}</span>
+    </div>
+    <div class="ev-badges">${sourceBadge}${kindBadge}${mechBadge}${concernBadge}</div>
+    <div class="ev-text">${esc(item.text)}</div>
+  </div>`;
+}
+
+// Concern colour: high concern reads red, moderate amber, low neutral.
+function concernClass(concern){
+  if(concern >= 0.5) return "bad";
+  if(concern >= 0.25) return "warn";
+  return "";
+}
+
+// A human label for a finding's evidence type (point/bound/existence/null/
+// intervention). Falls back to the prettified raw value so a future evidence type
+// renders legibly instead of showing the missing string key.
+function evidenceKindLabel(evidence){
+  const key = "intel.evidence.kind." + evidence;
+  const label = t(key);
+  if(label !== key) return label;
+  return (evidence || "").replace(/_/g, " ");
+}
+
+// A human label for the safety project that produced a finding: a curated name
+// where strings has one, else the raw id prettified (underscores → spaces).
+function evidenceProjectLabel(projectId){
+  const key = "intel.evidence.project." + projectId;
+  const label = t(key);
+  if(label !== key) return label;        // curated name exists in strings
+  return projectId.replace(/_/g, " ");   // fallback: prettify the raw id
 }
 
 export function renderRivals(){

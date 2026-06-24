@@ -1200,3 +1200,42 @@ Fix: `_do_release` now prints the precise `[measured general X.X]` only for the
 player's own lab (`lab.is_player`); a rival's release is announced as a bare
 headline. The player gauges rivals from the fogged Intel estimate + public
 benchmark scores, as intended. No RNG/action-stream change → golden master holds.
+
+---
+
+## Task: Intel alignment-evidence view + METR time-horizon recalibration
+
+### Part 1 — Intel "alignment evidence" dossier (grouped by model)
+
+New compiled view on the Intel tab listing every misalignment finding the player
+has collected — safety-eval results AND external incident results — grouped by the
+model they were collected on, newest model and newest finding first. The worry bar
+above it stays as the SYNTHESIS; this is the raw evidence it synthesizes.
+
+- **Firewall:** the dossier is a pure re-presentation of `lab.findings`, whose
+  fields ALREADY cross to the player each turn via `new_findings=[dict(f) ...]`
+  (`observation_builder.py`). Adding `Observation.alignment_evidence` exposes no new
+  true state — it only regroups, tags each item's source (`research` vs `external`
+  = incident-injected), and drops the internal worry-bar `weight`. Firewall test
+  passes (no forbidden key crosses).
+- **Determinism:** building the field reads no RNG and changes no legal move /
+  action stream → golden master unchanged (verified).
+- **Backend:** `_alignment_evidence(lab)` in `observation_builder.py`; field added to
+  the `Observation` dataclass (`observations.py`).
+- **Frontend:** Intel section re-laid-out (left column = worry bar on top + evidence
+  dossier below; rivals unchanged); `renderAlignmentEvidence()` + helpers in
+  `views.js`; copy under `intel.evidence.*` in `strings.js`; wired into `render()`.
+  Evidence types covered: point/bound/existence/null/intervention (the eval-harness
+  "number" type never enters `lab.findings`); unknown future types fall back to a
+  prettified label rather than a missing-key string.
+
+### Part 2 — METR time-horizon recalibration  [TUNE]
+
+`METR_CAPABILITY_PER_DOUBLING` 0.8 → **0.45** (`constants.py`). The old curve gave
+cap-9 ("ASI", existential endgame) only ~14 h and CAP_MAX ~34 h — far too short for
+the superintelligence framing (design §115/§268-272). New curve `2·2^((cap−2)/0.45)`:
+~3.4 h @cap5 · ~34 h @cap6.5 · ~14 d @cap8 · ~2 mo @cap9 · ~10 mo @cap10 (verified).
+The chosen 0.45 is an assistant-picked balance number per §0 — flagged for the
+designer. The horizon score is **display-only** (no game logic reads it), so this is
+pure calibration: golden master and full suite unchanged. `fmtBenchScore` (`views.js`)
+extended to format months/years so the recalibrated top reads cleanly.

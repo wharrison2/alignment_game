@@ -251,6 +251,62 @@ def _eval_cards(lab, consts):
     return cards
 
 
+def _alignment_evidence(lab):
+    """Compile every misalignment finding this lab has collected into a per-model
+    dossier for the Intel tab. This is a pure RE-PRESENTATION of lab.findings — the
+    SAME player-safe dicts already crossing the firewall each turn via new_findings
+    (see build_observation below). No true state is read here; we only regroup, tag
+    each finding's source (a safety eval you ran vs an EXTERNAL incident that taught
+    you something), and drop the internal worry-bar `weight` the player never reasons
+    about directly.
+
+    Grouped by the model the evidence was collected on (the player juggles several
+    models and asks "what do I actually know about THIS one?"). Within a model the
+    items are newest-first; models are ordered by their most recent finding, so the
+    model you're actively probing sits on top."""
+    released_ids = {model.id for model in lab.release_history}
+    in_training_id = (lab.model_in_training.id
+                      if lab.model_in_training is not None else None)
+
+    items_by_model = {}
+    for finding in lab.findings:
+        model_id = finding["model_id"]
+        # "external" is incident-injected evidence (a real-world breach revealed
+        # something); everything else came from a safety project you commissioned.
+        source_kind = "external" if finding["project_id"] == "incident" else "research"
+        evidence_item = {
+            "turn": finding["turn"],
+            "axis": finding["axis"],
+            "evidence": finding["evidence"],
+            "concern": finding["concern"],
+            "mechanistic": finding["mechanistic"],
+            "assist_used": finding["assist_used"],
+            "source_kind": source_kind,
+            "project_id": finding["project_id"],
+            "text": finding["text"],
+        }
+        items_by_model.setdefault(model_id, []).append(evidence_item)
+
+    model_entries = []
+    for model_id, items in items_by_model.items():
+        items.sort(key=lambda item: item["turn"], reverse=True)   # newest-first
+        if model_id == in_training_id:
+            status = "in_training"
+        elif model_id in released_ids:
+            status = "released"
+        else:
+            status = "earlier"          # superseded model whose findings still matter
+        model_entries.append({
+            "model_id": model_id,
+            "status": status,
+            "latest_turn": items[0]["turn"],
+            "items": items,
+        })
+
+    model_entries.sort(key=lambda entry: entry["latest_turn"], reverse=True)
+    return {"models": model_entries, "total_count": len(lab.findings)}
+
+
 def build_observation(state, lab, tips, policy_news, public_events,
                       new_findings) -> Observation:
     consts = state.consts
@@ -294,6 +350,7 @@ def build_observation(state, lab, tips, policy_news, public_events,
         researched_advances=_researched_advance_entries(lab),
         new_findings=[dict(f) for f in new_findings],
         worry_bar=synthesize_worry_bar(lab.findings, state.turn, consts),
+        alignment_evidence=_alignment_evidence(lab),
         rival_public=rivals_pub,
         public_approval=round(state.world.public_approval, 1),
         regulatory_chatter=_chatter(state.world.wtr),

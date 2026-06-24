@@ -78,7 +78,10 @@ SURFACE_EMERGENCE_RATE = 0.10   # per round pull toward baseline
 # [TUNE] per round baseline proxy-chasing creep. Raised 0.016->0.035 in the
 # misalignment-by-default retune (ISSUES.md) so creep outpaces the (now smaller)
 # baseline shaping — a no-safety lab trends misaligned, per §0 thesis #1/#5.
-GOAL_MIS_CREEP = 0.035
+# Eased 0.035->0.030 (ISSUES.md "playtest easing") to give the player a bit more
+# room to keep their own models aligned; still well above the 0.02 baseline
+# shaping, so a no-safety lab still trends misaligned (fix intact).
+GOAL_MIS_CREEP = 0.030
 # Capability-gated axes: near zero early, rising with capability.
 EVAL_AWARE_RATE = 0.045         # [TUNE]
 EVAL_AWARE_ONSET = 4.0          # general capability where the gate is half-open
@@ -426,7 +429,12 @@ ELO_BASE = 1000.0             # Arena-style rating at capability 0 (unbounded he
 ELO_PER_CAPABILITY = 80.0     # rating points per unit measured general capability
 METR_MINUTES_AT_BASE = 2.0    # task time-horizon (minutes) at the reference capability
 METR_CAPABILITY_AT_BASE = 2.0 # reference capability for the METR horizon curve
-METR_CAPABILITY_PER_DOUBLING = 0.8   # capability gain that doubles the time-horizon
+# [TUNE] Smaller = faster horizon growth, so the top of the scale reads as genuine
+# superintelligence rather than a workday. At 0.45 the curve 2·2^((cap−2)/0.45)
+# gives ~3.4h @cap5, ~34h @cap6.5, ~2wk @cap8, ~2mo @cap9 (ASI), ~1yr @cap10 — a
+# month-to-year ASI horizon. Was 0.8 (ASI only ~14h, too short for the framing).
+# Display-only (no game logic reads the horizon score), so this is pure calibration.
+METR_CAPABILITY_PER_DOUBLING = 0.45  # capability gain that doubles the time-horizon
 
 # ── Private passive evals (§7) — build-once harnesses, your models only ──
 EVAL_EXISTENCE_THRESHOLD = 0.30   # apparent axis value above which a scenario surfaces

@@ -286,6 +286,22 @@
   .stage-active{color:#1a7a3f;border-color:#1a7a3f}
   /* Narrow screens: drop the rival box below the policy controls. */
   @media(max-width:760px){ .policy{grid-template-columns:1fr} }
+  /* ── Intel alignment-evidence dossier (views.renderAlignmentEvidence) ──────
+     Findings compiled per model. Each model is a header over its evidence items;
+     an external incident rings red, a null result fades (it rules little out). */
+  .ev-group{margin-bottom:10px}
+  .ev-model-head{display:flex;align-items:baseline;gap:6px;margin:6px 0 4px;
+    padding-bottom:3px;border-bottom:1px solid var(--line)}
+  .ev-model-id{font-weight:700;letter-spacing:.02em}
+  .ev-item{background:var(--panel2);border:1px solid var(--line);border-radius:5px;
+    border-left:3px solid var(--acc);padding:6px 8px;margin:5px 0}
+  .ev-item.ev-external{border-left-color:var(--bad)}
+  .ev-item.ev-null{opacity:.6}
+  .ev-item-head{display:flex;align-items:baseline;justify-content:space-between;gap:6px}
+  .ev-axis{font-weight:700;text-transform:capitalize;font-size:12px}
+  .ev-turn{font-size:10px}
+  .ev-badges{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0}
+  .ev-text{font-size:12px;line-height:1.4;color:var(--dim)}
   /* ── Tutorial coach box (js/tutorial.js) ───────────────────────────────────
      An optional guided walkthrough. The box floats at the bottom-right, ABOVE
      the action bar (#queue is ~40px tall) and below the new-game overlay, so it
@@ -425,17 +441,24 @@
   <!-- ── INTEL: epistemics + rivals (the feed now lives on the Market page) ── -->
   <section class="view view-fill" data-view="intel">
     <div class="cols2 fill">
-      <!-- worry bar is short content; let it scroll internally if it ever grows -->
-      <div class="panel panel-fill">
-        <h3>Worry bar (LEVEL vs CONFIDENCE — synthesis of evidence you collected)</h3>
-        <div class="scroll-body">
-          <div class="row"><span style="width:80px">level</span>
-            <div class="bar"><i id="wb-level" style="background:var(--bad)"></i></div>
-            <span id="wb-level-n"></span></div>
-          <div class="row"><span style="width:80px">confidence</span>
-            <div class="bar"><i id="wb-conf" style="background:var(--acc)"></i></div>
-            <span id="wb-conf-n"></span></div>
-          <div class="dim" id="wb-summary"></div>
+      <!-- left column: the worry-bar SYNTHESIS on top (short, fixed height), then
+           the raw EVIDENCE it was synthesized from below (fills, scrolls) -->
+      <div class="view-col">
+        <div class="panel panel-fill" style="flex:0 0 auto">
+          <h3>Worry bar (LEVEL vs CONFIDENCE — synthesis of evidence you collected)</h3>
+          <div>
+            <div class="row"><span style="width:80px">level</span>
+              <div class="bar"><i id="wb-level" style="background:var(--bad)"></i></div>
+              <span id="wb-level-n"></span></div>
+            <div class="row"><span style="width:80px">confidence</span>
+              <div class="bar"><i id="wb-conf" style="background:var(--acc)"></i></div>
+              <span id="wb-conf-n"></span></div>
+            <div class="dim" id="wb-summary"></div>
+          </div>
+        </div>
+        <div class="panel panel-fill">
+          <h3>Alignment evidence — what your evals &amp; incidents have surfaced</h3>
+          <div id="alignment-evidence" class="scroll-body"></div>
         </div>
       </div>
       <!-- the rivals list grows with the field; scroll it inside the panel -->
