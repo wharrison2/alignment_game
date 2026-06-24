@@ -26,9 +26,13 @@ FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 
 class Session:
     def __init__(self, seed=0, difficulty="realistic", guidance="standard",
-                 rivals=None, max_turns=None):
+                 rivals=None, max_turns=None,
+                 player_lab_name=None, player_ticker=None):
+        # new_game sanitizes player_lab_name / player_ticker (untrusted input).
         self.state = new_game(seed=seed, difficulty=difficulty, guidance=guidance,
-                              rival_count=rivals, max_turns=max_turns)
+                              rival_count=rivals, max_turns=max_turns,
+                              player_lab_name=player_lab_name,
+                              player_ticker=player_ticker)
         self.engine = GameEngine()
         self.rival_ctrl = RivalController(Rng(seed + 1))
         self.observations = None      # per-lab observations from the last step
@@ -49,6 +53,9 @@ class Session:
 
     def lab_names(self):
         return {l.id: l.name for l in self.state.labs}
+
+    def lab_tickers(self):
+        return {l.id: l.ticker for l in self.state.labs}
 
     def truth_payload(self):
         """God's-eye TRUE state for the debug Truth tab. Reads the logger's
@@ -91,7 +98,8 @@ class Session:
     def state_payload(self):
         return {"observation": self.player_observation().to_dict(),
                 "caps_history": self.caps_history(),
-                "lab_names": self.lab_names()}
+                "lab_names": self.lab_names(),
+                "lab_tickers": self.lab_tickers()}
 
     def postmortem(self):
         if not self.state.game_over:
@@ -183,7 +191,11 @@ class Handler(BaseHTTPRequestHandler):
                     difficulty=body.get("difficulty", "realistic"),
                     guidance=body.get("guidance", "standard"),
                     rivals=body.get("rivals"),
-                    max_turns=body.get("max_turns"))
+                    max_turns=body.get("max_turns"),
+                    # Untrusted player input — new_game() sanitizes (length-clamp,
+                    # control-char strip, empty→default) before constructing the lab.
+                    player_lab_name=body.get("lab_name"),
+                    player_ticker=body.get("ticker"))
             except ValueError as e:
                 self._json({"errors": [str(e)]}, 400)
                 return
