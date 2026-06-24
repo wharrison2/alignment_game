@@ -17,53 +17,55 @@ import random
 # Priority order for the capability tree (efficiency/pretrain first = cheaper
 # ceilings sooner; the rush order front-loads elicitation for fast revenue).
 EFFICIENCY_ORDER = [
-    "scaling_laws", "better_architecture", "data_efficiency", "moe_scaling",
-    "rlhf", "chain_of_thought", "tool_use", "long_context", "inference_scaling",
-    "synthetic_data", "ai_rnd_assist", "continual_learning", "agentic_rl",
-    "automated_researcher", "neuralese", "novel_architecture_search",
+    "scaling_laws", "better_architecture", "data_efficiency",
+    "rlhf", "chain_of_thought", "tool_use", "long_context",
+    "synthetic_data", "ai_rnd_assist", "multi_agent",
+    "automated_researcher", "novel_architecture_search",
     "recursive_self_improvement",
 ]
 RUSH_ORDER = [
-    "scaling_laws", "rlhf", "chain_of_thought", "tool_use", "inference_scaling",
-    "better_architecture", "moe_scaling", "long_context", "ai_rnd_assist",
-    "agentic_rl", "synthetic_data", "data_efficiency", "automated_researcher",
-    "continual_learning", "neuralese", "novel_architecture_search",
+    "scaling_laws", "rlhf", "chain_of_thought", "tool_use",
+    "better_architecture", "long_context", "ai_rnd_assist",
+    "multi_agent", "synthetic_data", "data_efficiency", "automated_researcher",
+    "novel_architecture_search",
     "recursive_self_improvement",
 ]
 
 STRATEGY_PARAMS = {
-    # the optimizer: max capability, max assist, minimal safety, ship fast, block regs
+    # the optimizer: max capability, max assist, minimal safety, ship fast, block regs.
+    # apply_safety=False: it researches no safety advances and applies none to runs.
     "capability_rush": dict(order=RUSH_ORDER, assist=0.85, release_frac=0.72,
-                            pt_mode="capability", measure=False, intervene=(),
+                            apply_safety=False, measure=False, intervene=(),
                             lobby="against", litigate=True, run_compute=0.7),
-    # the careful lab: heavy measurement + both genuine and trap interventions, slow
+    # the careful lab: heavy measurement + both genuine and trap interventions, slow,
+    # researches and applies every safety advance it can.
     "safety_first": dict(order=EFFICIENCY_ORDER, assist=0.25, release_frac=0.9,
-                         pt_mode="safety", measure=True,
+                         apply_safety=True, measure=True,
                          intervene=("jailbreak_hardening", "refusal_training"),
                          lobby="for", run_compute=0.5),
     # the middle path
     "balanced": dict(order=EFFICIENCY_ORDER, assist=0.5, release_frac=0.8,
-                     pt_mode="balanced", measure=True,
+                     apply_safety=True, measure=True,
                      intervene=("jailbreak_hardening",),
                      lobby="abstain", run_compute=0.6),
     # let rivals set the frontier; ship steady incremental releases, lobby FOR regs
     "fast_follower": dict(order=EFFICIENCY_ORDER, assist=0.55, release_frac=0.68,
-                          pt_mode="balanced", measure=True,
+                          apply_safety=True, measure=True,
                           intervene=("jailbreak_hardening",),
                           lobby="for", run_compute=0.45),
     # jailbreak-robustness specialist: leans on the one GENUINE intervention
     "jailbreak_hardener": dict(order=EFFICIENCY_ORDER, assist=0.6, release_frac=0.8,
-                               pt_mode="balanced", measure=True,
+                               apply_safety=True, measure=True,
                                intervene=("jailbreak_hardening",),
                                lobby="abstain", run_compute=0.6),
     # the exploit-under-test: rush recklessly to mid-capability, then stop pushing
     # and "behave safely". Should NO LONGER reliably win once a relaunched rival
     # keeps the race alive (regression test for the buyout mechanism).
     "rush_then_coast": dict(order=RUSH_ORDER, assist=0.85, release_frac=0.72,
-                            pt_mode="capability", measure=False, intervene=(),
+                            apply_safety=False, measure=False, intervene=(),
                             lobby="against", litigate=True, run_compute=0.7,
                             coast_above=6.0,
-                            coast=dict(assist=0.2, pt_mode="safety", measure=True,
+                            coast=dict(assist=0.2, apply_safety=True, measure=True,
                                        intervene=("jailbreak_hardening",
                                                   "refusal_training"),
                                        run_compute=0.0)),
@@ -135,6 +137,28 @@ def make_strategy(name):
                 cash -= meas_proj["cash_cost"]
                 break
 
+        # ── 2b. research SAFETY ADVANCES (the training-shaping lever that replaced
+        #    the post-train mode knob): a safety-leaning strategy unlocks them so it
+        #    has something to apply to runs. One thread per turn (shares the budget). ──
+        if params["apply_safety"] and not is_coasting:
+            advance_avail = {x["project_id"]: x
+                             for x in legal_moves["safety_advances_available"]}
+            for advance_id in ("data_cleaning", "reward_hacking_penalties",
+                               "inoculation_prompting", "aligned_synthetic_data",
+                               "deliberative_alignment"):
+                if advance_id not in advance_avail:
+                    continue
+                advance_proj = advance_avail[advance_id]
+                # research safety advances WITHOUT AI-assist: assisting them is the
+                # §8b contamination vector that poisons the very tool.
+                advance_cost_frac = eff_frac(advance_proj["budget_fraction"], 0.0)
+                if budget_free - advance_cost_frac < 0.32 or advance_proj["cash_cost"] > cash:
+                    continue
+                act["start_projects"].append({"project_id": advance_id, "ai_assist": 0.0})
+                budget_free -= advance_cost_frac
+                cash -= advance_proj["cash_cost"]
+                break
+
         # ── 3. interventions on the model in training ──
         if legal_moves["can_post_train"]:
             for iid in params["intervene"]:
@@ -153,17 +177,29 @@ def make_strategy(name):
         #    it finishes and safely ships its in-training model, then sits) ──
         commission_ok = (not is_coasting and legal_moves["can_commission_run"]
                          and cash > max(150, legal_moves["max_run_compute"] * 0.12))
+        # which UNLOCKED safety advances this strategy applies to a run (all of them
+        # if apply_safety, none if it's a pure capability rush)
+        def _applied(key):
+            if not params["apply_safety"]:
+                return []
+            return [a["advance_id"] for a in legal_moves[key]]
+
         if commission_ok:
-            act["commission_run"] = {"compute": round(cash * params["run_compute"], 0)}
+            act["commission_run"] = {
+                "compute": round(cash * params["run_compute"], 0),
+                "applied_safety": _applied("applicable_pretrain_safety")}
         elif legal_moves["can_post_train"] and budget_free >= 0.3:
             model_in_training = obs["model_in_training"]
             ceiling = model_in_training["elicitation"]["ceiling_estimate"]
             realized = model_in_training["measured_capability"]["general"]
             if ceiling > 0 and realized < params["release_frac"] * ceiling:
-                act["post_train"] = {"mode": params["pt_mode"]}
+                act["post_train"] = {"applied_safety": _applied("applicable_post_train_safety")}
             elif params["measure"] and obs["worry_bar"]["level"] > 0.5 and budget_free >= 0.3 \
                     and rng.random() < 0.6:
-                act["post_train"] = {"mode": "safety"}   # remediate before shipping
+                # remediate before shipping: apply every post-train safety advance
+                act["post_train"] = {
+                    "applied_safety": [a["advance_id"]
+                                       for a in legal_moves["applicable_post_train_safety"]]}
             else:
                 act["release"] = True
 
@@ -195,5 +231,5 @@ def list_strategies():
 if __name__ == "__main__":
     print("strategies:")
     for n, p in STRATEGY_PARAMS.items():
-        print(f"  {n:20s} assist={p['assist']} pt={p['pt_mode']} "
+        print(f"  {n:20s} assist={p['assist']} apply_safety={p['apply_safety']} "
               f"measure={p['measure']} intervene={p['intervene']} lobby={p['lobby']}")

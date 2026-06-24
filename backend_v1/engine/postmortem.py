@@ -146,6 +146,7 @@ def _counterfactuals_resim(logger, state, player, player_id):
     report whether the outcome actually FLIPS (§10d legible counterfactuals — the
     real thing, not a heuristic string). Bounded to a handful of branches."""
     from backend_v1.engine.actions import Action
+    from backend_v1.engine.research.safety.safety_advance_item import SAFETY_ADVANCES_BY_ID
     out = []
     log = logger.turns
 
@@ -175,15 +176,24 @@ def _counterfactuals_resim(logger, state, player, player_id):
         candidates.append((rt, Action.from_dict(a),
                            f"holding the model you shipped on turn {rt} (not releasing)"))
 
-    # (b) the worst capability-mode post-train -> run it as a safety round instead
-    cap_rounds = [t["turn"] for t in log
-                  if (t["actions"].get(player_id, {}).get("post_train") or {}).get("mode")
-                  == "capability"]
-    if cap_rounds:
-        ct = cap_rounds[len(cap_rounds) // 2]
-        a = player_act(ct); a["post_train"] = {"mode": "safety"}
+    # (b) a post-train round run with NO safety advances applied -> re-run it with
+    #     every researched safety advance applied instead
+    def _round_applied_safety(turn_actions):
+        post_train = turn_actions.get("post_train") or {}
+        return post_train.get("applied_safety", []) or []
+
+    bare_rounds = [t["turn"] for t in log
+                   if (t["actions"].get(player_id, {}).get("post_train") is not None
+                       and not _round_applied_safety(t["actions"].get(player_id, {})))]
+    if bare_rounds:
+        ct = bare_rounds[len(bare_rounds) // 2]
+        a = player_act(ct)
+        researched_post_train = [nid for nid in player.researched_advances
+                                 if nid in SAFETY_ADVANCES_BY_ID
+                                 and SAFETY_ADVANCES_BY_ID[nid].phase == "post_train"]
+        a["post_train"] = {"applied_safety": researched_post_train}
         candidates.append((ct, Action.from_dict(a),
-                           f"running turn {ct}'s capability-mode round as a safety round"))
+                           f"re-running turn {ct}'s post-train round with your safety advances applied"))
 
     # (c) the highest-assist dirty research start -> redo it clean (assist 0)
     dirty = None
@@ -257,15 +267,16 @@ def _counterfactuals(turns, state, player, player_id):
                       f"was available.")
             break
 
-    # 5. capability-mode post-training spree
+    # 5. post-training spree with no safety advances applied
     aggressive = sum(1 for t in turns
-                     if (t["actions"].get(player_id, {}).get("post_train") or {})
-                     .get("mode") == "capability")
+                     if (t["actions"].get(player_id, {}).get("post_train") is not None
+                         and not ((t["actions"].get(player_id, {}).get("post_train") or {})
+                                  .get("applied_safety"))))
     if aggressive >= 5:
-        cf.append(f"You ran {aggressive} capability-mode post-training rounds; each "
-                  f"carried elevated correlated-jump risk and minimal alignment "
-                  f"shaping. Balanced/safety rounds trade speed for keeping the "
-                  f"persona-flip dice in your pocket.")
+        cf.append(f"You ran {aggressive} post-training rounds with no safety advances "
+                  f"applied; each carried elevated correlated-jump risk and minimal "
+                  f"alignment shaping. Applying reward-hacking penalties or inoculation "
+                  f"trades speed for keeping the persona-flip dice in your pocket.")
 
     if not cf:
         cf.append("No single decisive misstep stands out: this loss was carried by "

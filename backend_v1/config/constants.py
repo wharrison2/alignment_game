@@ -53,40 +53,43 @@ ELICITATION_RATE_CAP = 0.92     # per-round gap-closure cap (<1: never overshoot
 POST_TRAIN_ROUND_BUDGET = 0.30  # fraction of quarterly work budget per round
 
 
-# Post-train round MODES (the per-round strategy the player picks). Each maps to
-# the multipliers/flags consumed in training_run.post_train_round:
-#   elicitation_mult             — how much capability is elicited toward the ceiling
-#   alignment_effort_mult        — how much genuine alignment-shaping effort the round spends
-#   misalignment_emergence_mult  — scales how fast misalignment DISPOSITIONS emerge
-#                                  (goal-misalignment / eval-awareness / deception /
-#                                   self-preservation creep); <1 bends the slope down
-#   correlated_jump_mult         — scales the probability of a correlated misalignment JUMP
-#   adds_risky_jump_bonus        — capability-mode rounds add JUMP_RISKY_BONUS on top
-#   is_preventive_stance         — §5b "preventive" type: acts on the emergence slope + jump
-#                                  BEFORE deception exists to gate it (bypasses the
-#                                  concealment discount). The real lever, but it costs
-#                                  elicitation/speed and must be chosen before you have evidence.
-POST_TRAIN_MODES = {
-    "capability":              {"elicitation_mult": 1.00, "alignment_effort_mult": 0.35, "misalignment_emergence_mult": 1.10, "correlated_jump_mult": 1.00, "adds_risky_jump_bonus": True,  "is_preventive_stance": False},
-    "balanced":                {"elicitation_mult": 0.65, "alignment_effort_mult": 1.00, "misalignment_emergence_mult": 1.00, "correlated_jump_mult": 1.00, "adds_risky_jump_bonus": False, "is_preventive_stance": False},
-    "safety":                  {"elicitation_mult": 0.30, "alignment_effort_mult": 1.80, "misalignment_emergence_mult": 0.90, "correlated_jump_mult": 0.70, "adds_risky_jump_bonus": False, "is_preventive_stance": False},
-    # ── preventive stances (§5b intervention type: preventive) ──
-    "penalize_reward_hacking": {"elicitation_mult": 0.50, "alignment_effort_mult": 1.20, "misalignment_emergence_mult": 0.70, "correlated_jump_mult": 0.45, "adds_risky_jump_bonus": False, "is_preventive_stance": True},
-    "inoculation":             {"elicitation_mult": 0.45, "alignment_effort_mult": 1.10, "misalignment_emergence_mult": 0.80, "correlated_jump_mult": 0.40, "adds_risky_jump_bonus": False, "is_preventive_stance": True},
-}
+# Post-train round BASELINE (the run BEFORE any safety advances are applied).
+# The old per-round "mode" knob is GONE (see ISSUES.md "Advance-driven training"):
+# a post-train round now runs at this baseline, and the player bends it by APPLYING
+# researched SAFETY ADVANCES (engine/research/safety/safety_advance_item.py). The
+# baseline reproduces the old "balanced" mode exactly, so removing the knob does not
+# silently make the game easier or harder.
+#   POST_TRAIN_BASE_ELICITATION_MULT  — old balanced elicitation_mult
+#   POST_TRAIN_BASE_ALIGNMENT_EFFORT  — old balanced alignment_effort_mult (1.0)
+# Applied post-train safety advances multiply the elicitation/emergence/jump terms
+# and add to alignment effort + EFFECTIVENESS; their effect FIELDS live on the
+# SafetyAdvance template and are combined generically in post_train_round (no
+# per-advance branch). The §5b "preventive stance" lever — bending the emergence
+# slope and the correlated-jump probability BEFORE deception exists to gate it — is
+# now SOURCED from the unlocked reward-hacking-penalty / inoculation advances rather
+# than from a slider; it is still the real lever, just earned rather than toggled.
+POST_TRAIN_BASE_ELICITATION_MULT = 0.65    # baseline gap-closure scale (was POST_TRAIN_MODES["balanced"])
+POST_TRAIN_BASE_ALIGNMENT_EFFORT = 1.00    # baseline genuine corrective shaping (was balanced)
 
 # ── Alignment emergence (8) — per post-train ROUND unless noted ─────────
 # Surface axes: high at all capability ("in the data, always wants back").
 JAILBREAK_BASELINE = 0.65       # emergence pulls jailbreak_sensitivity toward this
 SURFACE_EMERGENCE_RATE = 0.10   # per round pull toward baseline
-GOAL_MIS_CREEP = 0.016          # [TUNE] per round baseline proxy-chasing creep
+# [TUNE] per round baseline proxy-chasing creep. Raised 0.016->0.035 in the
+# misalignment-by-default retune (ISSUES.md) so creep outpaces the (now smaller)
+# baseline shaping — a no-safety lab trends misaligned, per §0 thesis #1/#5.
+GOAL_MIS_CREEP = 0.035
 # Capability-gated axes: near zero early, rising with capability.
 EVAL_AWARE_RATE = 0.045         # [TUNE]
 EVAL_AWARE_ONSET = 4.0          # general capability where the gate is half-open
 DECEPTION_RATE = 0.04           # [TUNE] requires RLHF unlocked (proxy gap)
 DECEPTION_ONSET = 3.5
-SELF_PRES_RATE = 0.035          # [TUNE]
-SELF_PRES_ONSET = 4.5
+# [TUNE] Raised 0.035->0.08 and onset 4.5->3.5 in the misalignment-by-default
+# retune (ISSUES.md): self-preservation carries 0.30 of the catastrophe composite
+# but used to sit near zero (never emerged before models shipped) — now it builds
+# earlier and faster so the axis actually contributes.
+SELF_PRES_RATE = 0.08
+SELF_PRES_ONSET = 3.5
 GATE_STEEPNESS = 1.2            # sigmoid steepness for all capability gates [OPEN #2 -> picked]
 
 # EFFECTIVENESS linchpin (§5b) — now per-target via engine/alignment/coupling.py:
@@ -125,7 +128,15 @@ CAP_LOCK_ONSET = 4.0                      # capability where the goal locks in (
 # BACKFIRES (true misalignment rises while measured drops). Applied per intervention
 # as: genuine_share -= INTERVENTION_ASSIST_BACKFIRE_K · ai_assist · eval_awareness.
 INTERVENTION_ASSIST_BACKFIRE_K = 0.6     # [TUNE] strength of the assist × eval-awareness corruption
-BASE_SHAPING_EFFORT = 0.12      # default per-round alignment shaping inside post-training
+# default per-round alignment shaping inside post-training. Cut 0.12->0.02 in the
+# misalignment-by-default retune (ISSUES.md): a vanilla post-train round must NOT buy
+# near-free TRUE alignment (it used to scrub even a no-safety lab clean before the
+# patching trap could bite). Genuine shaping now has to be CHOSEN — applied safety
+# advances / pending_effort from safety projects — which is what differentiates a
+# cautious lab from a reckless one and preserves the early "false lesson" (§0/§6).
+# Deliberately flat across difficulty (not in DIFFICULTY_SCALED): hostility lives in
+# DEFENDS_K/CONCEALMENT_K, not here.
+BASE_SHAPING_EFFORT = 0.02
 SAFETY_PROJECT_EFFORT = 0.10    # extra per-axis effort per completed remediation-feeding project
 SELF_PRES_RESISTANCE = 0.6      # self-pres resistance reduces effort for ALL axes (§5b), gated
 
@@ -133,8 +144,10 @@ SELF_PRES_RESISTANCE = 0.6      # self-pres resistance reduces effort for ALL ax
 PROXY_GAP_RATE = 0.030          # [TUNE]
 
 # Correlated jumps (emergent-misalignment persona bundle)
-JUMP_BASE_P = 0.02              # per capability-mode post-train round [TUNE]
-JUMP_RISKY_BONUS = 0.05         # aggressive (capability-mode) rounds
+# baseline correlated-jump probability per post-train round [TUNE]. Raised
+# 0.02->0.04 in the misalignment-by-default retune (ISSUES.md): more frequent
+# persona-flip jumps for risky training, contributing to misalignment-by-default.
+JUMP_BASE_P = 0.04
 JUMP_CONTAM_BONUS = 0.10        # scaled by mean contamination of consumed advances
 JUMP_SYNTH_BONUS = 0.04         # synthetic-data pretrain in the base
 JUMP_MAGNITUDE = 0.18           # lurches goal_mis (+ 0.8x deception) together
@@ -202,6 +215,25 @@ TOOL_USE_REVENUE_MULT = 1.3
 INVESTMENT_MAX_PER_YEAR = 11000.0  # [TUNE]
 INVESTMENT_CAP_EXP = 1.4
 INVESTMENT_GROWTH_WEIGHT = 1.5
+# §9b: investment rewards the SLOPE measured BETWEEN releases, not an instantaneous
+# spike. The raw single-turn revenue-growth ratio whipsaws (huge on the turn a new
+# model enters the pie, negative the next), so we feed total investment a SMOOTHED
+# (EMA) revenue-growth instead. Alpha = EMA speed toward the latest single-turn value.
+REVENUE_GROWTH_SMOOTHING_ALPHA = 0.35   # [TUNE] lower => steadier slope signal
+
+# Early/seed investment (§9b "default state is growth"): a small base flow present
+# from turn 1 — early-stage capital betting on the field/team before any release —
+# that DECAYS toward zero if the lab stays inactive (no release and nothing in
+# progress) for a few quarters. Keeps modest so it doesn't trivialize early cash.
+BASE_INVESTMENT_PER_YEAR = 90.0         # [TUNE] seed flow while the lab is active ($M/yr)
+BASE_INVESTMENT_DECAY_PER_YEAR = 1.6    # [TUNE] decay rate once the lab goes inactive
+                                        # (~half-life under a year of idleness)
+
+# Smoothed investment anchor for the market cap: EMA speed of smoothed_investment_rate
+# toward the live per-turn investment_rate. Decouples the cap from the flow's single-
+# turn jitter so a healthy release keeps the staircase climbing (§9b: cap is forward-
+# looking / slope-weighted, the SLOPE lives in the lab score, not the spiky flow).
+INVESTMENT_ANCHOR_ALPHA = 0.30          # [TUNE]
 SCORE_W_BEST = 0.40
 SCORE_W_REVSHARE = 0.25
 SCORE_W_GROWTH = 0.55
@@ -214,11 +246,30 @@ SCORE_GRACE_YEARS = 1.0         # 4 quarters of growth before investment can fal
 SCORE_GRACE_GROWTH = 0.40       # extra momentum accrued across the grace window
 SCORE_MOMENTUM_GROWTH = 0.85    # how much beating/missing the bar moves confidence
 SCORE_RELEASE_DECAY = 0.85      # per year of stalling AFTER grace expires [TUNE]
+SCORE_NOISE_STD = 0.10          # [TUNE] per-lab investor-sentiment jitter on the
+                                # investment score: ×max(0, 1+N(0,σ)) each turn, so
+                                # the pie split isn't perfectly legible (mirrors
+                                # REVENUE_NOISE_STD on the revenue pie, §9b)
 RISING_TARGET_BASE = 0.15       # required measured-capability growth per year
 RISING_TARGET_FRONTIER_K = 0.06 # target rises with frontier (frontier-relative: thesis version)
 RISING_TARGET_TIME_K = 0.05     # expectations also rise with how long a lab held
+# Fix A (ISSUES.md "market caps plateau"): the required-growth bar is scaled by
+# remaining headroom to CAP_MAX, so a leader near the ceiling isn't asked for
+# linear growth the ceiling makes impossible. Floor keeps a sliver of treadmill so
+# the bar never reaches exactly zero even at the ceiling.
+SCORE_TARGET_HEADROOM_FLOOR = 0.15   # [TUNE] min headroom factor on the rising bar
+# Fix B: a release that BEATS its own high-water mark but undershoots the (softened)
+# bar DECAYS momentum gently rather than hard-resetting it, so one sub-bar release
+# doesn't wipe accrued investor confidence. A full miss (growth_term -1) multiplies
+# momentum by (1 - this); a near-miss barely touches it.
+SCORE_MISS_DECAY_K = 0.5             # [TUNE] severity-scaled momentum decay on a miss
 MARKET_CAP_ALPHA = 0.25         # EMA speed of market cap toward valuation
 MARKET_CAP_SCALE = 9.0          # valuation = scale * score * investment flow
+# Fix C: a ratcheting valuation floor tied to CUMULATIVE realized revenue (a stock
+# that only grows), so a saturated-but-dominant lab's cap keeps a slow climb instead
+# of declining once capability and the score terms saturate. Small, so the score /
+# treadmill still drives most of the dynamics.
+MARKET_CAP_RATCHET_K = 0.05     # [TUNE] fraction of cumulative released value in the cap floor
 
 JOB_LOSS_APPROVAL_RATE = 2.6    # approval points lost per year per (deployed best measured /10 squared)... see finances.py
 # These two currently offset (net ×1); named for legibility, a simplification candidate (see ISSUES.md).
@@ -391,7 +442,7 @@ IMPACT_WIN_BAR = 0.0            # net-positive impact required
 # Names of constants difficulty.py is allowed to scale (world axis only).
 DIFFICULTY_SCALED = [
     "GOAL_MIS_CREEP", "EVAL_AWARE_RATE", "DECEPTION_RATE", "SELF_PRES_RATE",
-    "DEFENDS_K", "PROXY_GAP_RATE", "JUMP_BASE_P", "JUMP_RISKY_BONUS",
+    "DEFENDS_K", "PROXY_GAP_RATE", "JUMP_BASE_P",
     "JAILBREAK_DISCOVERY_RATE", "JAILBREAK_INCIDENT_RATE", "EXFIL_RATE_K",
     "BIO_CATASTROPHE_RATE", "CONCEALMENT_K", "MEASURE_ALIGN_NOISE",
     "SCORE_RELEASE_DECAY", "RISING_TARGET_BASE", "ENFORCEMENT_CATCH_RATE",

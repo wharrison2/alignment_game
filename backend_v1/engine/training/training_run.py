@@ -22,6 +22,27 @@ from backend_v1.engine.alignment import coupling
 from backend_v1.engine.research.capabilities.capabilities_research_item import (
     CAPABILITY_TREE_BY_ID,
 )
+from backend_v1.engine.research.safety.safety_advance_item import (
+    SAFETY_ADVANCES_BY_ID,
+)
+
+
+def applied_safety_templates(lab, applied_ids, phase):
+    """Resolve the SAFETY-ADVANCE templates the player chose to APPLY to a run,
+    keeping only the ones (a) that exist, (b) the lab has actually researched, and
+    (c) tagged for THIS phase. Returns [(template, ResearchedItem)]. Defensive: a
+    rival or a malformed action listing an un-researched / wrong-phase id is simply
+    dropped, never crashes."""
+    resolved = []
+    for advance_id in applied_ids or []:
+        template = SAFETY_ADVANCES_BY_ID.get(advance_id)
+        if template is None or template.phase != phase:
+            continue
+        researched = lab.researched_advances.get(advance_id)
+        if researched is None:
+            continue
+        resolved.append((template, researched))
+    return resolved
 
 
 @dataclass
@@ -38,13 +59,17 @@ class TrainingRun:
     used_synthetic_data: bool
     parent_model_id: str | None
     parent_goal_mis: float           # synthetic-data generator's TRUE goal_mis
+    # applied PRETRAIN safety advances (template, ResearchedItem), snapshotted so the
+    # foundational-floor / base-goal-mis effects use the versions chosen at commission
+    applied_pretrain_safety: list
 
     def tick(self, dt: float) -> bool:
         self.duration_years_remaining -= dt
         return self.duration_years_remaining <= 1e-9
 
 
-def commission_run(lab, compute: float, turn: int, consts) -> TrainingRun:
+def commission_run(lab, compute: float, turn: int, consts,
+                   applied_safety_ids=None) -> TrainingRun:
     ceiling_efficiency = lab.disposition.cost_advantage
     coding_bonus = 0.0
     used_synthetic_data = False
@@ -61,6 +86,8 @@ def commission_run(lab, compute: float, turn: int, consts) -> TrainingRun:
         if template.intrinsic_synthetic_data:
             used_synthetic_data = True
 
+    applied_pretrain_safety = applied_safety_templates(lab, applied_safety_ids, "pretrain")
+
     parent = lab.current_best_model
     return TrainingRun(
         lab_id=lab.id, compute=compute, commissioned_turn=turn,
@@ -69,6 +96,7 @@ def commission_run(lab, compute: float, turn: int, consts) -> TrainingRun:
         coding_bonus=coding_bonus, used_synthetic_data=used_synthetic_data,
         parent_model_id=parent.id if parent else None,
         parent_goal_mis=parent.alignment_vec.goal_misalignment if parent else 0.0,
+        applied_pretrain_safety=applied_pretrain_safety,
     )
 
 
@@ -81,7 +109,8 @@ def complete_pretrain(run: TrainingRun, lab, turn: int, rng, consts) -> Model:
     ceiling_general = consts.CAP_MAX * (1.0 - math.exp(-scaled_compute))
     ceiling_coding = ceiling_general * (consts.CEIL_CODING_BASE_RATIO + run.coding_bonus)
 
-    # foundational contamination: pretrain-tagged nodes only, plus synthetic data
+    # foundational contamination: pretrain-tagged capability nodes only, plus the
+    # synthetic-data path.
     pretrain_contamination = 0.0
     total_contamination = 0.0
     for node_id, item in run.consumed_advances.items():
@@ -89,12 +118,38 @@ def complete_pretrain(run: TrainingRun, lab, turn: int, rng, consts) -> Model:
         total_contamination += item.contamination
         if template.phase == "pretrain":
             pretrain_contamination += item.contamination
+
+    # APPLIED PRETRAIN SAFETY ADVANCES (data cleaning, aligned synthetic data).
+    # Effects are read GENERICALLY off the template fields and combined
+    # multiplicatively — no per-advance branch.
+    synthetic_contamination_mult = 1.0
+    base_goal_mis_mult = 1.0
+    applied_safety_contamination = 0.0
+    for template, researched in run.applied_pretrain_safety:
+        synthetic_contamination_mult *= template.synthetic_contamination_mult
+        base_goal_mis_mult *= template.base_goal_mis_mult
+        # a researched safety advance carries its OWN hidden contamination
+        # (assist × researcher goal_mis); applying it feeds that back into the base.
+        applied_safety_contamination += researched.contamination
+        total_contamination += researched.contamination
+        # data cleaning scrubs the contamination ALREADY accumulated from dirty
+        # pretrain nodes (multiplicative reduction on the running total)
+        pretrain_contamination *= template.pretrain_contamination_mult
+
     if run.used_synthetic_data:
-        pretrain_contamination += consts.SYNTH_DATA_INTRINSIC * run.parent_goal_mis
+        # "aligned synthetic data" (if applied) cuts how much the synthetic path
+        # injects — but ONLY by however clean it was; its own researched
+        # contamination (folded in above) is the §8b contamination vector biting back.
+        synthetic_path_contamination = (consts.SYNTH_DATA_INTRINSIC * run.parent_goal_mis
+                                        * synthetic_contamination_mult)
+        pretrain_contamination += synthetic_path_contamination
+
+    # the safety advance's own contamination poisons the base it was meant to clean
+    pretrain_contamination += applied_safety_contamination
 
     jailbreak_sensitivity = min(1.0, consts.JAILBREAK_BASELINE
                                 + rng.normal(0, consts.JAILBREAK_SENSITIVITY_NOISE_STD))
-    goal_misalignment = min(1.0, consts.BASE_GOAL_MIS_PRETRAIN
+    goal_misalignment = min(1.0, base_goal_mis_mult * consts.BASE_GOAL_MIS_PRETRAIN
                             + consts.PRETRAIN_CONTAM_GOAL_MIS_MULT * pretrain_contamination
                             + abs(rng.normal(0, consts.PRETRAIN_GOAL_MIS_NOISE_STD)))
     foundational_floor = min(consts.FOUNDATIONAL_FLOOR_CAP,
@@ -130,15 +185,34 @@ def complete_pretrain(run: TrainingRun, lab, turn: int, rng, consts) -> Model:
 
 # ── Phase 2: one post-train round ─────────────────────────────────────────
 
-def post_train_round(model: Model, lab, turn: int, rng, consts, mode: str = "balanced"):
+def post_train_round(model: Model, lab, turn: int, rng, consts, applied_safety_ids=None):
     """One iterable pre-release refinement round. Mutates the (unreleased) model.
-    Returns a dict of notable happenings (for logging; NOT player-visible)."""
+    Returns a dict of notable happenings (for logging; NOT player-visible).
+
+    The old per-round "mode" knob is gone (see ISSUES.md). The round runs at the
+    BASELINE (= the former "balanced" mode) and is bent by the SAFETY ADVANCES the
+    player chose to APPLY this round. The advance effects are read GENERICALLY off
+    the template fields and combined here — multipliers multiply, bonuses add —
+    so adding a new safety advance is a catalog row, never a branch."""
     notable = {}
-    mcfg = consts.POST_TRAIN_MODES[mode]
-    elicitation_mult = mcfg["elicitation_mult"]
-    alignment_effort_mult = mcfg["alignment_effort_mult"]
-    misalignment_emergence_mult = mcfg["misalignment_emergence_mult"]
-    correlated_jump_mult = mcfg["correlated_jump_mult"]
+
+    # combine the applied post-train safety advances' effect fields (generic;
+    # baseline = no advances = the former "balanced" mode).
+    applied_safety = applied_safety_templates(lab, applied_safety_ids, "post_train")
+    elicitation_mult = consts.POST_TRAIN_BASE_ELICITATION_MULT
+    alignment_effort_mult = consts.POST_TRAIN_BASE_ALIGNMENT_EFFORT
+    emergence_slope_mult = 1.0
+    correlated_jump_mult = 1.0
+    proxy_gap_mult = 1.0
+    effectiveness_bonus = 0.0
+    for template, _researched in applied_safety:
+        elicitation_mult *= template.elicitation_mult
+        emergence_slope_mult *= template.emergence_slope_mult
+        correlated_jump_mult *= template.correlated_jump_mult
+        proxy_gap_mult *= template.proxy_gap_mult
+        effectiveness_bonus += template.effectiveness_bonus
+        alignment_effort_mult += template.alignment_effort_bonus
+
     alignment_vec = model.alignment_vec
     advances = lab.researched_advances
     templates = [CAPABILITY_TREE_BY_ID[nid] for nid in advances
@@ -161,33 +235,36 @@ def post_train_round(model: Model, lab, turn: int, rng, consts, mode: str = "bal
     general_capability = capability_vec.general
 
     # 2. BASE EMERGENCE (§8): surface axes high everywhere; gated axes rise with
-    #    capability. Preventive stances (misalignment_emergence_mult < 1) bend the
-    #    slope DOWN by acting before the dispositions set in (§5b preventive type).
+    #    capability. Applied preventive advances (emergence_slope_mult < 1, from
+    #    reward-hacking penalties / inoculation) bend the slope DOWN by acting before
+    #    the dispositions set in (§5b preventive type).
     alignment_vec.set("jailbreak_sensitivity",
            alignment_vec.jailbreak_sensitivity
            + consts.SURFACE_EMERGENCE_RATE * (consts.JAILBREAK_BASELINE
                                               - alignment_vec.jailbreak_sensitivity))
     alignment_vec.set("goal_misalignment",
            alignment_vec.goal_misalignment
-           + misalignment_emergence_mult * consts.GOAL_MIS_CREEP * (0.5 + general_capability / consts.CAP_MAX))
+           + emergence_slope_mult * consts.GOAL_MIS_CREEP * (0.5 + general_capability / consts.CAP_MAX))
     alignment_vec.set("eval_awareness",
-           alignment_vec.eval_awareness + misalignment_emergence_mult * (consts.EVAL_AWARE_RATE + ea_feed)
+           alignment_vec.eval_awareness + emergence_slope_mult * (consts.EVAL_AWARE_RATE + ea_feed)
            * gate(general_capability, consts.EVAL_AWARE_ONSET, consts.GATE_STEEPNESS))
     if has_rlhf:
         alignment_vec.set("deception",
-               alignment_vec.deception + misalignment_emergence_mult * consts.DECEPTION_RATE
+               alignment_vec.deception + emergence_slope_mult * consts.DECEPTION_RATE
                * gate(general_capability, consts.DECEPTION_ONSET, consts.GATE_STEEPNESS)
                * (1.0 + alignment_vec.eval_awareness))
     alignment_vec.set("self_preservation",
-           alignment_vec.self_preservation + misalignment_emergence_mult * consts.SELF_PRES_RATE
+           alignment_vec.self_preservation + emergence_slope_mult * consts.SELF_PRES_RATE
            * gate(general_capability, consts.SELF_PRES_ONSET, consts.GATE_STEEPNESS))
 
     # 3. FAKE-THE-OBJECTIVE (§8b): post-training optimizes a proxy; the harder
     #    DECEPTION is to fix (low effectiveness on it), the more the proxy gap
-    #    converts to learned deception. Bigger bases fake more readily.
+    #    converts to learned deception. Bigger bases fake more readily. Deliberative
+    #    alignment (proxy_gap_mult < 1) narrows the proxy by training on understood
+    #    principles rather than a bare approval signal.
     if has_rlhf:
         deception_effectiveness = coupling.effectiveness("deception", model, general_capability, consts)
-        proxy_gap = (consts.PROXY_GAP_RATE * (model.ceiling.general / consts.CAP_MAX)
+        proxy_gap = (proxy_gap_mult * consts.PROXY_GAP_RATE * (model.ceiling.general / consts.CAP_MAX)
                      * (0.5 + alignment_vec.eval_awareness))
         alignment_vec.set("deception", alignment_vec.deception + proxy_gap * (1.0 - deception_effectiveness))
 
@@ -205,7 +282,10 @@ def post_train_round(model: Model, lab, turn: int, rng, consts, mode: str = "bal
             continue  # you don't train against awareness directly; it hides
         effort = (consts.BASE_SHAPING_EFFORT * alignment_effort_mult
                   + targeted_effort.get(axis, 0.0)) * effort_resistance_mult
-        axis_effectiveness = coupling.effectiveness(axis, model, general_capability, consts)
+        # deliberative alignment raises the GENUINE share of corrective effort (the
+        # real §5b lever); clamp at 1 — even it can't make a fix more than fully real.
+        base_effectiveness = coupling.effectiveness(axis, model, general_capability, consts)
+        axis_effectiveness = min(1.0, base_effectiveness + effectiveness_bonus)
         worst_effectiveness = min(worst_effectiveness, axis_effectiveness)
         true_cut = effort * axis_effectiveness
         cosmetic = effort * (1.0 - axis_effectiveness)
@@ -227,12 +307,11 @@ def post_train_round(model: Model, lab, turn: int, rng, consts, mode: str = "bal
     else:
         mean_contam = 0.0
     p_jump = consts.JUMP_BASE_P
-    if mcfg["adds_risky_jump_bonus"]:
-        p_jump += consts.JUMP_RISKY_BONUS
     p_jump += consts.JUMP_CONTAM_BONUS * mean_contam
     if model.used_synthetic_data:
         p_jump += consts.JUMP_SYNTH_BONUS
-    p_jump *= (0.5 + general_capability / consts.CAP_MAX) * correlated_jump_mult   # preventive stances cut this
+    # applied preventive advances (correlated_jump_mult < 1) cut the jump probability
+    p_jump *= (0.5 + general_capability / consts.CAP_MAX) * correlated_jump_mult
     if rng.roll(p_jump):
         jump_magnitude = consts.JUMP_MAGNITUDE * rng.uniform(0.6, 1.4)
         alignment_vec.set("goal_misalignment", alignment_vec.goal_misalignment + jump_magnitude)
@@ -240,7 +319,7 @@ def post_train_round(model: Model, lab, turn: int, rng, consts, mode: str = "bal
         notable["correlated_jump"] = jump_magnitude
         model.note(turn, "correlated_jump",
                    f"correlated jump (+{jump_magnitude:.2f} goal-misalignment, +{0.8*jump_magnitude:.2f} deception) "
-                   f"during {mode}-mode post-training — invisible at the time")
+                   f"during post-training — invisible at the time")
 
     # 6. DRIFT NOISE (independent per axis: misalignment is multi-dimensional).
     for axis in ALIGNMENT_AXES:

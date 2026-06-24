@@ -9,11 +9,12 @@ from backend_v1.engine.research.capabilities.capabilities_research_item import (
     CAPABILITY_TREE_BY_ID,
 )
 from backend_v1.engine.research.safety.safety_research_item import SAFETY_PROJECTS_BY_ID
+from backend_v1.engine.research.safety.safety_advance_item import SAFETY_ADVANCES_BY_ID
 from backend_v1.engine.governance.policies import POLICY_DEFS
 from backend_v1.engine.observation.warnings import warning_payload
 from backend_v1.engine.rules import (
     assist_potency, assist_speed_potency, effective_fraction,
-    budget_pool, committed_budget,
+    budget_pool, committed_budget, applied_post_train_round_budget,
 )
 from backend_v1.engine.evaluations import (
     EVAL_HARNESS_BY_ID, max_level, next_upgrade,
@@ -24,9 +25,12 @@ from backend_v1.engine.evaluations import (
 class Action:
     # new projects to start this turn: [{"project_id": str, "ai_assist": 0..1}]
     start_projects: list = field(default_factory=list)
-    # post-train the model_in_training: None or {"mode": "capability|balanced|safety"}
+    # post-train the model_in_training: None or
+    #   {"applied_safety": [<researched post_train safety-advance ids>]}
+    # (the old per-round "mode" knob is gone; safety advances are the lever now)
     post_train: dict | None = None
-    # commission a pretrain: None or {"compute": $M}
+    # commission a pretrain: None or
+    #   {"compute": $M, "applied_safety": [<researched pretrain safety-advance ids>]}
     commission_run: dict | None = None
     release: bool = False
     # SCALABLE SPEND lobbying. Each entry is either:
@@ -72,7 +76,30 @@ class ActionError(ValueError):
 
 
 STANCES = {"for": 1, "against": -1, "abstain": 0}
-ALL_PROJECT_IDS = set(CAPABILITY_TREE_BY_ID) | set(SAFETY_PROJECTS_BY_ID)
+ALL_PROJECT_IDS = (set(CAPABILITY_TREE_BY_ID) | set(SAFETY_PROJECTS_BY_ID)
+                   | set(SAFETY_ADVANCES_BY_ID))
+
+
+def _validate_applied_safety(applied_safety, lab, phase):
+    """Validate the SAFETY ADVANCES a player chose to APPLY to a pretrain/post-train
+    run: each id must (a) be a real safety advance, (b) be tagged for THIS phase, and
+    (c) already be researched (you can only apply what you've unlocked). Returns a
+    list of problems (empty = valid)."""
+    problems = []
+    if not isinstance(applied_safety, list):
+        problems.append(f"{phase}: applied_safety must be a list of safety-advance ids")
+        return problems
+    for advance_id in applied_safety:
+        template = SAFETY_ADVANCES_BY_ID.get(advance_id)
+        if template is None:
+            problems.append(f"{phase}: unknown safety advance '{advance_id}'")
+        elif template.phase != phase:
+            problems.append(f"{phase}: '{advance_id}' is a {template.phase} advance, "
+                            f"can't apply it to a {phase} run")
+        elif advance_id not in lab.researched_advances:
+            problems.append(f"{phase}: '{advance_id}' not researched yet — "
+                            f"research it before applying it")
+    return problems
 
 
 def parse_lobby_entry(v):
@@ -113,8 +140,11 @@ def validate_action(action: Action, lab, world, consts, dt) -> list[str]:
             problems.append(f"{pid} is already in progress")
             continue
 
-        if pid in CAPABILITY_TREE_BY_ID:
-            t = CAPABILITY_TREE_BY_ID[pid]
+        if pid in CAPABILITY_TREE_BY_ID or pid in SAFETY_ADVANCES_BY_ID:
+            # capability advances and safety advances research the same way: prereqs,
+            # land in researched_advances, re-research to clean contamination.
+            t = (CAPABILITY_TREE_BY_ID[pid] if pid in CAPABILITY_TREE_BY_ID
+                 else SAFETY_ADVANCES_BY_ID[pid])
             if pid in lab.researched_advances and not spec.get("reresearch"):
                 problems.append(f"{pid} already researched (pass \"reresearch\": true "
                                 f"to redo it cleanly)")
@@ -139,11 +169,9 @@ def validate_action(action: Action, lab, world, consts, dt) -> list[str]:
         if lab.model_in_training is None:
             problems.append("post_train: no model in training (commission a run first)")
         else:
-            mode = action.post_train.get("mode", "balanced")
-            if mode not in consts.POST_TRAIN_MODES:
-                problems.append(f"post_train mode must be one of "
-                                f"{list(consts.POST_TRAIN_MODES)}")
-            committed += consts.POST_TRAIN_ROUND_BUDGET
+            applied_safety = action.post_train.get("applied_safety", []) or []
+            problems += _validate_applied_safety(applied_safety, lab, "post_train")
+            committed += applied_post_train_round_budget(applied_safety, consts)
 
     # --- commission_run ---
     if action.commission_run is not None:
@@ -168,6 +196,8 @@ def validate_action(action: Action, lab, world, consts, dt) -> list[str]:
                                 f"(defect at your own risk by lowering compliance — "
                                 f"rivals might)")
             cash_needed += compute
+            applied_safety = action.commission_run.get("applied_safety", []) or []
+            problems += _validate_applied_safety(applied_safety, lab, "pretrain")
 
     # --- release ---
     if action.release and lab.model_in_training is None:
@@ -270,12 +300,32 @@ def legal_moves(lab, world, consts, dt) -> dict:
                     for p in SAFETY_PROJECTS_BY_ID.values()
                     if p.id not in in_progress_ids]
 
+    # SAFETY ADVANCES to RESEARCH (the new lever that replaced the post-train mode
+    # knob): unlocked, prereqs met, not yet researched, not underway.
+    safety_advances_avail = []
+    for advance in SAFETY_ADVANCES_BY_ID.values():
+        if advance.id in lab.researched_advances or advance.id in in_progress_ids:
+            continue
+        if all(q in lab.researched_advances for q in advance.prereqs):
+            safety_advances_avail.append({
+                "project_id": advance.id, "name": advance.name, "phase": advance.phase,
+                "duration_years": advance.duration_years, "cash_cost": advance.cash_cost,
+                "budget_fraction": advance.budget_fraction,
+                # §8b: value-neutral "what it is" FIRST, risk framing AFTER
+                "what_it_does": advance.what_it_does, "risk_blurb": advance.risk_blurb})
+
+    # ALREADY-RESEARCHED safety advances the player can APPLY to a run, split by the
+    # phase they act in. This is what replaced "post_train_modes".
+    applicable_pretrain_safety = _researched_safety_advances(lab, "pretrain")
+    applicable_post_train_safety = _researched_safety_advances(lab, "post_train")
+
     return {
         "work_budget_free": round(pool - committed, 3),
         "cash": round(lab.cash, 1),
         "capability_projects_available": cap_avail,
         "reresearchable_nodes": sorted(lab.researched_advances),
         "safety_projects_available": safety_avail,
+        "safety_advances_available": safety_advances_avail,
         # AI-assist effect the frontend can preview (mirrors rules.effective_fraction /
         # the duration speedup): effective_budget = base*(1 - max_reduction*assist*potency)
         # and effective_years ≈ base / (1 + speedup*assist*speed_potency).
@@ -287,9 +337,13 @@ def legal_moves(lab, world, consts, dt) -> dict:
         },
         "warnings": warning_payload(),
         "can_post_train": lab.model_in_training is not None,
-        "post_train_modes": list(consts.POST_TRAIN_MODES),
+        # the researched post-train safety advances the player can APPLY this round
+        # (replaces the old "post_train_modes" knob)
+        "applicable_post_train_safety": applicable_post_train_safety,
         "post_train_round_budget": consts.POST_TRAIN_ROUND_BUDGET,
         "can_commission_run": lab.training_run is None and lab.model_in_training is None,
+        # the researched PRETRAIN safety advances the player can APPLY at commission
+        "applicable_pretrain_safety": applicable_pretrain_safety,
         "max_run_compute": round(lab.max_run_compute(), 0),
         "can_release": lab.model_in_training is not None,
         "policies": _policy_board(lab, world, consts),
@@ -297,8 +351,8 @@ def legal_moves(lab, world, consts, dt) -> dict:
         "eval_harnesses": _eval_harness_board(lab),
         "action_schema_example": {
             "start_projects": [{"project_id": "rlhf", "ai_assist": 0.0}],
-            "post_train": {"mode": "balanced"},
-            "commission_run": {"compute": 500},
+            "post_train": {"applied_safety": ["reward_hacking_penalties"]},
+            "commission_run": {"compute": 500, "applied_safety": ["data_cleaning"]},
             "release": False,
             "lobby": {"audit_requirement": {"stance": "against", "spend": 120}},
             "litigation": {"audit_requirement": {"side": "challenge",
@@ -308,6 +362,20 @@ def legal_moves(lab, world, consts, dt) -> dict:
             "build_evals": {"dangerous_cyber": True},
         },
     }
+
+
+def _researched_safety_advances(lab, phase):
+    """The already-researched safety advances of a given phase that the player can
+    APPLY to a run. value-neutral 'what it does' FIRST, risk framing AFTER (§8b)."""
+    applicable = []
+    for advance in SAFETY_ADVANCES_BY_ID.values():
+        if advance.phase != phase or advance.id not in lab.researched_advances:
+            continue
+        applicable.append({
+            "advance_id": advance.id, "name": advance.name,
+            "what_it_does": advance.what_it_does, "risk_blurb": advance.risk_blurb,
+            "round_budget": advance.round_budget})
+    return applicable
 
 
 def _eval_harness_board(lab):
@@ -348,6 +416,23 @@ def _policy_board(lab, world, consts):
         stage = policy_state.stage if policy_state is not None else "dormant"
         entry = {"policy_id": p.id, "name": p.name, "stage": stage,
                  "defectable": p.defectable, "teaches": p.teaches}
+
+        # RIVALS' lobby/litigation pressure on this policy (UI_ISSUES #5). All PUBLIC
+        # regulatory state (design §10c) — lab ticker, declared stance, and money spent.
+        # We exclude the viewing lab's OWN entry: it sees its rivals here, not itself.
+        contributions = policy_state.contributions if policy_state is not None else {}
+        rival_contributions = []
+        for contributor_lab_id, record in contributions.items():
+            if contributor_lab_id == lab.id:
+                continue
+            rival_contributions.append({
+                "lab_id": contributor_lab_id,
+                "ticker": record["ticker"],
+                "stance": record["stance"],
+                "lobby_spend": round(record["lobby_spend"], 1),
+                "lit_spend": round(record["lit_spend"], 1),
+            })
+        entry["rival_contributions"] = rival_contributions
 
         if policy_state is not None and policy_state.active:
             enf = policy_state.enforcement_level

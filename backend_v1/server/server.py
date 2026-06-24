@@ -99,9 +99,13 @@ def clamp_max_turns(raw_value):
 
 class Session:
     def __init__(self, seed=0, difficulty="realistic", guidance="standard",
-                 rivals=None, max_turns=None):
+                 rivals=None, max_turns=None,
+                 player_lab_name=None, player_ticker=None):
+        # new_game sanitizes player_lab_name / player_ticker (untrusted input).
         self.state = new_game(seed=seed, difficulty=difficulty, guidance=guidance,
-                              rival_count=rivals, max_turns=max_turns)
+                              rival_count=rivals, max_turns=max_turns,
+                              player_lab_name=player_lab_name,
+                              player_ticker=player_ticker)
         self.engine = GameEngine()
         self.rival_ctrl = RivalController(Rng(seed + 1))
         self.observations = None      # per-lab observations from the last step
@@ -122,6 +126,16 @@ class Session:
         return build_observation(self.state, self.player, [], [], [], [])
 
     def caps_history(self):
+        # Turn 0 has no logged turns yet, but every lab already has a market_cap
+        # (default 100.0). Seed a single turn-0 point from the CURRENT caps so the
+        # frontend graph renders immediately instead of "no turns played yet"
+        # (UI_ISSUES #9). Once turn 1 is logged this branch stops firing, so we never
+        # double-count turn 0. Server payload only — no TRUE-state log, no RNG.
+        if not self.engine.logger.turns:
+            turn_zero_caps = {lab.id: round(lab.market_cap, 1)
+                              for lab in self.state.labs}
+            return [{"turn": self.state.turn, "caps": turn_zero_caps}]
+
         hist = []
         for t in self.engine.logger.turns:
             per_lab_caps = {l["id"]: round(l["market_cap"], 1) for l in t["labs"]}
@@ -130,6 +144,9 @@ class Session:
 
     def lab_names(self):
         return {l.id: l.name for l in self.state.labs}
+
+    def lab_tickers(self):
+        return {l.id: l.ticker for l in self.state.labs}
 
     def truth_payload(self):
         """God's-eye TRUE state for the debug Truth tab. Reads the logger's
@@ -172,7 +189,8 @@ class Session:
     def state_payload(self):
         return {"observation": self.player_observation().to_dict(),
                 "caps_history": self.caps_history(),
-                "lab_names": self.lab_names()}
+                "lab_names": self.lab_names(),
+                "lab_tickers": self.lab_tickers()}
 
     def postmortem(self):
         if not self.state.game_over:
@@ -405,7 +423,11 @@ class Handler(BaseHTTPRequestHandler):
                 difficulty=body.get("difficulty", "realistic"),
                 guidance=body.get("guidance", "standard"),
                 rivals=body.get("rivals"),
-                max_turns=clamp_max_turns(body.get("max_turns")))
+                max_turns=clamp_max_turns(body.get("max_turns")),
+                # Untrusted player input — new_game() sanitizes (length-clamp,
+                # control-char strip, empty→default) before constructing the lab.
+                player_lab_name=body.get("lab_name"),
+                player_ticker=body.get("ticker"))
         except ValueError as e:
             self._json({"errors": [str(e)]}, 400)
             return

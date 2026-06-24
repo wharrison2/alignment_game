@@ -92,14 +92,27 @@ def prompt_action(obs, state, lab):
         action.start_projects.append({"project_id": raw,
                                       "ai_assist": float(assist or 0)})
     if moves["can_post_train"]:
-        mode = input(f"post-train this turn? {moves['post_train_modes']} [no]: ").strip()
-        if mode in moves["post_train_modes"]:
-            action.post_train = {"mode": mode}
+        applicable = [a["advance_id"] for a in moves["applicable_post_train_safety"]]
+        prompt = (f"post-train this turn? apply safety advances {applicable} "
+                  f"as 'a,b' or 'all' or [no]: " if applicable
+                  else "post-train this turn? (no safety advances researched yet) y/[no]: ")
+        resp = input(prompt).strip().lower()
+        if resp and resp != "no" and resp != "n":
+            applied = applicable if resp in ("all", "y", "yes") else \
+                [a.strip() for a in resp.split(",") if a.strip() in applicable]
+            action.post_train = {"applied_safety": applied}
     if moves["can_commission_run"]:
         c = input(f"commission pretrain run, compute $M (max "
                   f"{moves['max_run_compute']:.0f}) [no]: ").strip()
         if c:
-            action.commission_run = {"compute": float(c)}
+            pretrain_applicable = [a["advance_id"] for a in moves["applicable_pretrain_safety"]]
+            applied = []
+            if pretrain_applicable:
+                resp = input(f"  apply pretrain safety advances {pretrain_applicable} "
+                             f"as 'a,b' or 'all' or [none]: ").strip().lower()
+                applied = pretrain_applicable if resp == "all" else \
+                    [a.strip() for a in resp.split(",") if a.strip() in pretrain_applicable]
+            action.commission_run = {"compute": float(c), "applied_safety": applied}
     if moves["can_release"]:
         if input("release the model in training? y/[n]: ").strip().lower() == "y":
             action.release = True
@@ -173,7 +186,9 @@ def _prompt_governance(action, moves):
 
 def _committed(action, moves):
     total = 0.0
-    all_projects = moves["capability_projects_available"] + moves["safety_projects_available"]
+    all_projects = (moves["capability_projects_available"]
+                    + moves["safety_projects_available"]
+                    + moves["safety_advances_available"])
     by_id = {proj["project_id"]: proj for proj in all_projects}
     for started in action.start_projects:
         proj = by_id.get(started["project_id"])
@@ -181,6 +196,11 @@ def _committed(action, moves):
             total += proj["budget_fraction"]
     if action.post_train:
         total += moves["post_train_round_budget"]
+        applied = action.post_train.get("applied_safety", []) or []
+        applied_budget = {a["advance_id"]: a["round_budget"]
+                          for a in moves["applicable_post_train_safety"]}
+        for advance_id in applied:
+            total += applied_budget.get(advance_id, 0.0)
     return total
 
 

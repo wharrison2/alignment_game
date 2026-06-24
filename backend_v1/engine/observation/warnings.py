@@ -119,7 +119,9 @@ def warning_payload():
         # against the item it's rendering a modal for.
         "assist": "high_ai_assist",
         "assist_emphasis_threshold": HIGH_ASSIST_EMPHASIS,
-        "post_train": {"capability": "elicitation_pressure"},
+        # the post-train mode knob is gone; a bare post-train round (no safety
+        # advances applied) still carries the elicitation-pressure warning.
+        "post_train": "elicitation_pressure",
         "intervention_disposition": "behavioral_patch",
         "disposition_axes": list(DISPOSITION_AXES),
         "release": "release",

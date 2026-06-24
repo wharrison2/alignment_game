@@ -22,6 +22,7 @@ class Observation:
     own_models: list                  # measured stats only
     model_in_training: dict | None    # measured + ceiling ESTIMATE + elicitation curve
     in_progress: list
+    researched_advances: list         # COMPLETED advances (non-secret fields only)
     new_findings: list
     worry_bar: dict
     rival_public: list                # coarse estimates of rivals' released models

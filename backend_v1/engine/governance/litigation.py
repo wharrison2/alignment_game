@@ -109,6 +109,12 @@ def apply_litigation_action(world, lab, policy_id, spec, consts):
         case.defense_effort += points
         case.defenders.add(lab.id)
 
+    # PURE LOGGING (UI_ISSUES #5): record this lab's litigation spend + its side as
+    # the stance so the board can show per-rival court pressure. `st` is the policy's
+    # PolicyState (already resolved above); `cost` is the cash actually deducted. This
+    # does NOT touch the effort/margin math above — that already happened.
+    st.record_contribution(lab, stance=side, lit_spend=cost)
+
     return True, f"{lab.name} {side} {pdef.name} ({tier})"
 
 
