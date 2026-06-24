@@ -168,6 +168,35 @@ described.
   approval/WTR news event (e.g. striking a *popular safety* policy wins in court but
   costs approval and raises WTR), riding the §9 event/narration channel.
 
+## Per-policy rival pressure recording (`engine/world.py`, observation)
+
+- **`PolicyState.contributions` (`engine/world.py`).** `lab_id -> {"ticker": str,
+  "stance": str, "lobby_spend": float, "lit_spend": float}`. PURE-LOGGING mirror of
+  lobbying/litigation money already spent on a policy, added so the board can show
+  each rival's pressure (UI_ISSUES #5). Spends are **CUMULATIVE** over the game (the
+  box reflects total pressure, not a single turn); `stance` is the lab's **latest**
+  declared stance (lobby stances re-set each turn; for litigation the stance is the
+  `side`, challenge/defense). Written by `PolicyState.record_contribution(...)`,
+  called from `turn_pipeline._apply_governance_action` (lobby) and
+  `governance/litigation.apply_litigation_action` (litigation) AFTER the existing
+  tally/effort math — it never feeds enactment, margin, or any RNG draw, so the
+  golden master is byte-identical. All fields are PUBLIC regulatory state (design
+  §10c), safe across the firewall.
+- **Observation `legal_moves.policies[*].rival_contributions`
+  (`engine/actions.py` `_policy_board`).** Per policy, a list of
+  `{"lab_id", "ticker", "stance", "lobby_spend", "lit_spend"}` for every contributing
+  lab **except the viewing lab** (you see rivals, not yourself). Derived purely from
+  `PolicyState.contributions`; the ticker is stamped at record time so `_policy_board`
+  needs no labs list (it only receives `lab, world, consts`).
+
+## Turn-0 market-cap graph seed (`server/server.py` `caps_history`)
+
+`caps_history()` seeds a single turn-0 point from the labs' CURRENT market caps when
+`engine.logger.turns` is empty, so the frontend graph renders immediately instead of
+"no turns played yet" (UI_ISSUES #9). Once turn 1 is logged the seed branch stops
+firing, so turn 0 is never double-counted. Server-payload only — no TRUE-state log,
+no RNG.
+
 ## Actions schema (`engine/actions.py`) — fields beyond the README example
 
 The `Action` dataclass carries, in addition to the documented

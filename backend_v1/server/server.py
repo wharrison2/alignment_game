@@ -45,6 +45,16 @@ class Session:
         return build_observation(self.state, self.player, [], [], [], [])
 
     def caps_history(self):
+        # Turn 0 has no logged turns yet, but every lab already has a market_cap
+        # (default 100.0). Seed a single turn-0 point from the CURRENT caps so the
+        # frontend graph renders immediately instead of "no turns played yet"
+        # (UI_ISSUES #9). Once turn 1 is logged this branch stops firing, so we never
+        # double-count turn 0. Server payload only — no TRUE-state log, no RNG.
+        if not self.engine.logger.turns:
+            turn_zero_caps = {lab.id: round(lab.market_cap, 1)
+                              for lab in self.state.labs}
+            return [{"turn": self.state.turn, "caps": turn_zero_caps}]
+
         hist = []
         for t in self.engine.logger.turns:
             per_lab_caps = {l["id"]: round(l["market_cap"], 1) for l in t["labs"]}

@@ -417,6 +417,23 @@ def _policy_board(lab, world, consts):
         entry = {"policy_id": p.id, "name": p.name, "stage": stage,
                  "defectable": p.defectable, "teaches": p.teaches}
 
+        # RIVALS' lobby/litigation pressure on this policy (UI_ISSUES #5). All PUBLIC
+        # regulatory state (design §10c) — lab ticker, declared stance, and money spent.
+        # We exclude the viewing lab's OWN entry: it sees its rivals here, not itself.
+        contributions = policy_state.contributions if policy_state is not None else {}
+        rival_contributions = []
+        for contributor_lab_id, record in contributions.items():
+            if contributor_lab_id == lab.id:
+                continue
+            rival_contributions.append({
+                "lab_id": contributor_lab_id,
+                "ticker": record["ticker"],
+                "stance": record["stance"],
+                "lobby_spend": round(record["lobby_spend"], 1),
+                "lit_spend": round(record["lit_spend"], 1),
+            })
+        entry["rival_contributions"] = rival_contributions
+
         if policy_state is not None and policy_state.active:
             enf = policy_state.enforcement_level
             entry["enforcement"] = _enf_tier(enf)

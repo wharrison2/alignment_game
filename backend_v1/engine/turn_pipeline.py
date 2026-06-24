@@ -211,6 +211,10 @@ def _apply_governance_action(state, lab, action, policy_news):
         lab.cash -= spend
         st = state.world.policies.setdefault(pid, PolicyState())
         st.lobby_tally += signed_influence(stance, spend, lab.market_cap, consts)
+        # PURE LOGGING (UI_ISSUES #5): record this lab's cumulative lobby spend +
+        # latest stance so the board can show per-rival pressure. Does NOT feed the
+        # tally/enactment math above — that already happened.
+        st.record_contribution(lab, stance=stance, lobby_spend=spend)
 
     # explicit player defection choices (re-set each turn; rivals defect via disposition)
     lab.active_defections = {pid for pid, on in action.defect.items() if on}

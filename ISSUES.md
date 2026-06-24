@@ -608,3 +608,34 @@ keyed by `data-key` (new machinery, more surface) or injecting them from JS
 in place. The VOLATILE, re-rendered copy (everything the view modules generate) is
 fully centralized. If full i18n is pursued later, give the static nodes `data-key`
 attributes and add one `applyStaticStrings()` pass at bootstrap.
+
+---
+
+## Backend stage: rival lobby/litigation spend recording + turn-0 caps seed (UI_ISSUES #5, #9)
+
+Two ADDITIVE backend changes. Both are pure logging/payload — no behavior change; the
+golden master is byte-identical and the firewall test still passes.
+
+### Judgment call: CUMULATIVE spend, stance overwritten
+`PolicyState.contributions` accumulates `lobby_spend`/`lit_spend` over the WHOLE game
+(not last-turn) so the board reflects total pressure a lab has applied to a policy.
+`stance` is overwritten with the latest value, because lobby stances re-set each turn
+(there is no per-turn history to show) — for litigation the stance stored is the
+`side` (challenge/defense). Documented in the field comment and IMPLEMENTATION_DETAILS.
+If the designer wants a per-turn decaying pressure display instead, this would need a
+ring buffer or decay, not a running sum.
+
+### Judgment call: how litigation recording reaches the PolicyState
+`apply_litigation_action(world, lab, policy_id, spec, consts)` already resolves the
+policy's `PolicyState` as `st` early on (it needs `st.active`/`st.litigation`). I
+recorded directly on that `st` after the existing cash deduction + effort accrual —
+no new threading. The recorder is a method `PolicyState.record_contribution(...)` on
+the dataclass (self-mutation, not time advancement), so both `turn_pipeline` (lobby)
+and `litigation.py` call the same code with no import cycle.
+
+### Ticker resolution without a labs list
+`_policy_board(lab, world, consts)` has no access to the full labs list (and
+`World` doesn't hold labs). Rather than thread labs through `legal_moves`/
+`build_observation`, I stamp each contributor's `ticker` into the `contributions`
+entry at RECORD time (`lab.ticker` is in scope there). `_policy_board` then reads
+ticker/stance/spend straight from the dict and just filters out the viewing lab.
