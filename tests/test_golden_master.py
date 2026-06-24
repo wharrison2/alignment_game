@@ -125,12 +125,18 @@ _OPENING = Action(start_projects=[{"project_id": "scaling_laws", "ai_assist": 0.
 # action and shifts that controller's own RNG stream, moving every downstream
 # decision and thus every digest. No engine-RNG draw was added; determinism holds
 # (same seed → identical run). Intentional behavior change, NOT a regression (§8).
+#
+# Re-recorded for the "creep reduction" change (ISSUES.md): GOAL_MIS_CREEP 0.030->0.025
+# (more alignment margin for a clean player at the ASI cliff; still > the 0.02 baseline
+# shaping, so the misalignment-by-default fix holds). Lower per-round creep shifts every
+# model's TRUE alignment trajectory, so every digest moves. Determinism holds (same seed
+# → identical run); intentional balance change, NOT an RNG/firewall regression (§8).
 EXPECTED = {
-    "0-balanced-realistic": "9750408fb76bcb7516adb9eeaef16bba0e3bc6c10617901d07bd94f2a7826e4d",
-    "3-aggressive-realistic": "f64d18fe80234a82b24f59ab84a7a802a94b9cdd17e498cd4cea7db92dc0a2a6",
-    "7-cautious-realistic": "0ea541212f0e69485370e4cd9d536588004f7ffa12f0d20c9f16dca2518c7ad8",
-    "1-balanced-easy": "0e06aefd7bebe14b142fb0efe6183a1d81a6898f92c992c8885db62dee38bc81",
-    "5-aggressive-impossible": "77aef4a240cc31db9045be3c2ea647061c4e03c7ad150b6d88cbedb66a3ac965",
+    "0-balanced-realistic": "ace7828123f0c36b82be12c828e50befbe8ffb56fa16647c13ada946be1947d9",
+    "3-aggressive-realistic": "c6ffce2e5d99138c937eef5194343c9011e3b7243858696d0d47d613509a3f6b",
+    "7-cautious-realistic": "e4f405ca4decc381fa5838d7bc0fa8fe756d2febffc1c13fa145451cac7af271",
+    "1-balanced-easy": "f7e8f867176679ed1e263d7555ef7fa8eaca70fca42012731bd9778e8e342798",
+    "5-aggressive-impossible": "1d05ff71c1b8ed2ce7a503c7463689b9ef5aede0bb9416fee76063a3b101c38b",
 }
 
 

@@ -78,10 +78,12 @@ SURFACE_EMERGENCE_RATE = 0.10   # per round pull toward baseline
 # [TUNE] per round baseline proxy-chasing creep. Raised 0.016->0.035 in the
 # misalignment-by-default retune (ISSUES.md) so creep outpaces the (now smaller)
 # baseline shaping — a no-safety lab trends misaligned, per §0 thesis #1/#5.
-# Eased 0.035->0.030 (ISSUES.md "playtest easing") to give the player a bit more
-# room to keep their own models aligned; still well above the 0.02 baseline
-# shaping, so a no-safety lab still trends misaligned (fix intact).
-GOAL_MIS_CREEP = 0.030
+# Eased 0.035->0.030 (ISSUES.md "playtest easing"), then 0.030->0.025 (ISSUES.md
+# "creep reduction") to give a clean, full-prevention player real margin at the ASI
+# cliff — a perfectly-played aligned ASI was landing at composite ~0.34, a hair under
+# the 0.35 bar. Still above the 0.02 baseline shaping, so a no-safety lab's creep
+# (0.025) still outpaces it and trends misaligned (the §0 fix stays intact).
+GOAL_MIS_CREEP = 0.025
 # Capability-gated axes: near zero early, rising with capability.
 EVAL_AWARE_RATE = 0.045         # [TUNE]
 EVAL_AWARE_ONSET = 4.0          # general capability where the gate is half-open
