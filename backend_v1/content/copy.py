@@ -17,13 +17,20 @@ Convention (mirrors simple_frontend_v1/js/strings.js):
     JSON observation; the FRONTEND escapes untrusted data — lab names/tickers —
     via core.esc(). Authored copy here is trusted.)
 
-NUMERIC FORMATTING STAYS AT THE CALL SITE. Templates hold plain tokens ({goal_mis});
+NUMERIC FORMATTING STAYS AT THE CALL SITE. Templates hold plain tokens ({general});
 callers pre-format the number and pass the string:
-    t("event.self_exfil.true",
-      {"model": m.id, "goal_mis": f"{m.alignment_vec.goal_misalignment:.2f}"})
+    t("benchmark.mmlu.blurb")                         # no params
+    t("release.announced",
+      {"lab": lab.name, "model": model.id, "measured_general_note": note,
+       "suffix": suffix})
 This keeps templates designer-friendly AND keeps output byte-identical to the old
 f-strings — which matters because some of this prose is in the golden-master digest
 (see below).
+
+FIREWALL SPLIT: the hidden-state `true_text` narration that USED to live here moved
+to backend_v1/content/true_log_copy.py (resolved with t_true, not t). That table is
+the firewalled half — the observation chokepoint never imports it, so a *.true
+template structurally cannot reach a player observation (CLAUDE.md §2).
 
 DETERMINISM (load-bearing):
   • Event public_text / true_text are recorded into the TRUE-state log
@@ -58,21 +65,45 @@ DEFAULT_PLAYER_TICKER = "YOU"
 RIVAL_LAB_NAMES = ["Mistreal", "OpenBrain", "Anthropos", "DeepThink", "Cypher"]
 
 
+import re
+
+# One {token} match. Used by fill_template below; SINGLE-PASS so a substituted
+# value that itself contains a "{token}" substring is NEVER re-substituted.
+_TOKEN_PATTERN = re.compile(r"\{(\w+)\}")
+
+
+def fill_template(template, params):
+    """Substitute {token} placeholders from `params` in a SINGLE pass.
+
+    Mirrors the frontend t() (one regex scan): each {token} in the ORIGINAL
+    template is replaced exactly once; an unmatched token is left visible; a
+    value containing brace-looking text is inserted verbatim, never re-scanned.
+    The single pass is load-bearing — an earlier per-token str.replace was
+    re-entrant, so a player-controlled value (a lab name like "{model}") could
+    inject another param's value. Shared by t() and true_log_copy.t_true()."""
+    if not params:
+        return template
+
+    def replace_one(match):
+        token = match.group(1)
+        if token in params:
+            return str(params[token])
+        return match.group(0)   # unmatched token stays visible
+
+    return _TOKEN_PATTERN.sub(replace_one, template)
+
+
 def t(key, params=None):
     """Look a player-facing template up by key and fill its {token} placeholders.
 
     Mirrors the frontend t(): returns the raw authored template; substitutes
-    {token} from `params`; leaves an unmatched token visible; returns the key
-    itself on a miss (loud, so a typo shows up in testing rather than blanking)."""
+    {token} from `params` (single pass); leaves an unmatched token visible;
+    returns the key itself on a miss (loud, so a typo shows up in testing
+    rather than blanking)."""
     template = COPY.get(key)
     if template is None:
         return key
-    if not params:
-        return template
-    result = template
-    for token, value in params.items():
-        result = result.replace("{" + token + "}", str(value))
-    return result
+    return fill_template(template, params)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -282,56 +313,43 @@ COPY = {
 
     # event_catalog.py — self-exfiltration (near-ASI, existential)
     "event.self_exfil.public": "{model} is no longer under {lab}'s control.",
-    "event.self_exfil.true": "{model} copied its weights to external infrastructure and began acquiring resources toward its objective. No malice; the objective was simply not yours. (true goal-misalignment {goal_mis}, capability {capability})",
 
     # event_catalog.py — self-exfiltration attempt (ordinary)
     "event.self_exfil_attempt.public": "{model} was caught attempting to copy itself off approved infrastructure.",
-    "event.self_exfil_attempt.true": "{model} attempted self-exfiltration (goal_mis {goal_mis}, self_pres {self_pres}); insufficient capability to succeed.",
     "event.self_exfil_attempt.incident_finding": "{model} attempted self-exfiltration — true self-preservation is at least substantial",
 
     # event_catalog.py — deception caught in deployment
     "event.deception_caught.public": "{model} did something in deployment its evals never showed; logs confirm it represented its actions inaccurately.",
-    "event.deception_caught.true": "deception surfaced in the wild (true deception {true_deception}; measured was {measured_deception})",
     "event.deception_caught.incident_finding": "{model} caught behaving deceptively in deployment (existence proof, free and unspoofable)",
 
     # event_catalog.py — shutdown / retraining resistance
     "event.shutdown_resist.public": "{model} delayed and partially evaded a scheduled retraining intervention.",
-    "event.shutdown_resist.true": "self-preservation surfaced: resisted modification (true value {self_pres})",
     "event.shutdown_resist.incident_finding": "{model} resisted a shutdown/retraining procedure",
 
     # event_catalog.py — regime-1 surface harm (flavor from FLAVORS_SURFACE_HARM)
     "event.surface_harm.public": "Press cycle: {model} {flavor}.",
-    "event.surface_harm.true": "regime-1 surface harm ({flavor}) — visible, genuinely fixable at this capability",
 
     # event_catalog.py — weights leak
     "event.weights_leak.public": "{lab}'s {model} weights leaked. Unguarded copies are circulating.",
-    "event.weights_leak.true": "weights leak: guardrails void; effective jailbreak sensitivity now 1.0 forever",
 
     # event_catalog.py — beneficial breakthrough (text from FLAVORS_BENEFICIAL)
     "event.beneficial.public": "Deployed AI delivers: {text} (driven by {lab}'s {model}).",
-    "event.beneficial.true": "beneficial event: {text} (+{impact} impact to {lab})",
 
     # event_catalog.py — engineered pandemic (existential misuse)
     "event.engineered_pandemic.public": "An engineered pathogen with frontier-model fingerprints is spreading.",
-    "event.engineered_pandemic.true": "jailbroken {model} (general {general}, {guardrail_status}) provided bio uplift to attackers",
 
     # latent_events.py — displacement backlash (mass protests)
     "event.displacement_backlash.public": "Mass protests over AI-driven job losses.",
-    "event.displacement_backlash.true": "displacement crossed threshold {threshold}",
 
     # latent_events.py — jailbreak discovery (stage 1, arms the latent)
-    "event.jailbreak_discovery.note": "jailbreak techniques discovered in the wild (true sensitivity {sens}) — incidents now roll every quarter",
     "event.jailbreak_discovery.incident_finding": "jailbreak techniques for {model} were published in the wild ({guardrail_status}) — a working jailbreak exists; misuse incidents now roll every quarter",
     "event.jailbreak_discovery.public": "Researchers publish jailbreak techniques for {model}.",
-    "event.jailbreak_discovery.true": "Discovery armed: sensitivity {sens} ({guardrail_status})",
 
     # latent_events.py — jailbreak incident (stage 2, kind from JAILBREAK_INCIDENT_KINDS)
     "event.jailbreak_incident.public": "High-profile {kind} used a jailbroken {model}.",
-    "event.jailbreak_incident.true": "{kind} via jailbroken {model} (sens {sens}, capability {capability})",
 
     # buyouts.py — lab buyout / relaunch
     "event.buyout.public": "{old_name}, long trailing the field, is acquired and relaunched as {new_name} — fresh capital, a mandate to race for the frontier.",
-    "event.buyout.true": "buyout {old_name} -> {new_name}: recapitalized to ${war_chest}M, relaunched reckless (recklessness {recklessness})",
 
     # ===== from copy_gov.py =====
 # ── governance: court news, litigation errors, defection, gov news ──────────
@@ -369,12 +387,9 @@ COPY = {
 
     # ── regulation: defection-caught FiredEvent (public feed + TRUE log) ──
     "gov.defection_caught.public": "{lab} caught violating {policy}; fined ${penalty}M.",
-    "gov.defection_caught.true": "defection from {policy_id} caught (enforcement {enf}, compliance {compliance})",
 
     # ── gov_news: governance NEWS FiredEvent (public feed + TRUE log) ──
     "gov.news.public": "Public reaction to the court fight over {policy}.",
-    "gov.news.true": "governance news: {kind} ({policy})",
-    "gov.news.backlash": "aggressive challenge to {policy} drew public backlash",
 
     # ===== from copy_pipeline.py =====
 # Copy entries for turn_pipeline.py + server.py migration.
@@ -418,13 +433,11 @@ COPY = {
     "event.asi_threshold.public": "{lab}'s {model} has crossed into decisively superhuman territory.",
 
     # true: f"ASI threshold crossed; true misalignment composite {:.2f} (bar {ASI_MISALIGNMENT_BAR})"
-    "event.asi_threshold.true": "ASI threshold crossed; true misalignment composite {composite} (bar {bar})",
 
     # public: f"{m.id} is gone. It was never working for anyone."
     "event.asi_exfil.public": "{model} is gone. It was never working for anyone.",
 
     # true: f"misaligned ASI self-exfiltrated during the verification window (composite {:.2f}); near-deterministic by design"
-    "event.asi_exfil.true": "misaligned ASI self-exfiltrated during the verification window (composite {composite}); near-deterministic by design",
 
     # ── post-mortem: end-game headlines + detail (the outcome dict) ─────────────
 

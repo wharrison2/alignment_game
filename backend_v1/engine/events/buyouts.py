@@ -15,6 +15,7 @@ never be permanently cleared.
 from backend_v1.engine.events.event import FiredEvent
 from backend_v1.engine.lab import Disposition
 from backend_v1.content.copy import t
+from backend_v1.content.true_log_copy import t_true
 
 
 def _market_leader(labs):
@@ -118,7 +119,7 @@ def run_buyout_phase(ctx):
 
     public_text = t("event.buyout.public", {
         "old_name": old_name, "new_name": new_name})
-    true_text = t("event.buyout.true", {
+    true_text = t_true("event.buyout.true", {
         "old_name": old_name, "new_name": new_name,
         "war_chest": f"{war_chest:,.0f}",
         "recklessness": f"{target.disposition.recklessness:.2f}"})

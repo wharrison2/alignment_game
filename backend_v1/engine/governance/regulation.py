@@ -11,6 +11,7 @@ from backend_v1.engine.world import PolicyState
 from backend_v1.engine.events.event import FiredEvent
 from backend_v1.engine.events.effects import apply_effects
 from backend_v1.content.copy import t
+from backend_v1.content.true_log_copy import t_true
 
 
 def update_wtr(world, rng, consts, dt):
@@ -172,7 +173,7 @@ def enforcement_phase(ctx):
                 public_text = t("gov.defection_caught.public",
                                 {"lab": lab.name, "policy": pdef.name,
                                  "penalty": f"{penalty:.0f}"})
-                true_text = t("gov.defection_caught.true",
+                true_text = t_true("gov.defection_caught.true",
                               {"policy_id": pdef.id, "enf": f"{enf:.2f}",
                                "compliance": f"{lab.disposition.compliance:.2f}"})
                 ev = FiredEvent(

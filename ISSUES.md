@@ -1480,3 +1480,22 @@ Completed the "all strings named, in one file" deliverable across the whole stac
 - **Firewall intact.** `*.true` templates are authored hidden-state narration for the post-mortem/TRUE log only; none routed into a player observation. `observation_builder.py` boundary unchanged.
 
 Verification: full suite 16 green; golden master unchanged across `PYTHONHASHSEED` 0/1/2; firewall test passes; all 247 backend keys and all frontend keys resolve (no loud misses); JS modules + index serve 200; folded catalog text renders correctly through `legal_moves`.
+
+### Code-review follow-ups (string centralization)
+
+Two fixes from the high-effort review of the centralization commit:
+
+- **`t()` re-entrancy (real bug).** The backend `t()` had used per-token
+  `str.replace`, which re-expands a value that itself contains a `{token}` — a
+  player lab name like `{model}` (braces survived `sanitize_lab_name`) corrupted
+  news-feed / TRUE-log text, order-dependently. Replaced with a SINGLE-PASS regex
+  substitution (`fill_template`, shared by `t`/`t_true`), exactly mirroring the
+  frontend `t()`; an injected token is now inserted verbatim and never re-scanned.
+  Also strip `{`/`}` in `_strip_control_characters` (game.py) as defence in depth.
+- **Firewall made structural (CLAUDE.md §2).** The hidden-state `true_text`
+  narration (18 `*.true`/note/backlash keys) moved out of `copy.py`'s `COPY` into a
+  separate `backend_v1/content/true_log_copy.py` (`TRUE_LOG_COPY` + `t_true`). The
+  observation chokepoint imports only `t` (player copy) and never `t_true`, so a
+  `*.true` template structurally cannot reach a mid-game observation — the earlier
+  flat table enforced this only by convention. Determinism preserved (event
+  `true_text` is byte-identical; golden master unmoved).

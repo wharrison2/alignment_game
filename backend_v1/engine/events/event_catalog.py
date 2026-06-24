@@ -7,6 +7,7 @@ almost banal — competent pursuit of the wrong thing, not malevolence.
 from backend_v1.engine.events.event import EventDefinition, FiredEvent
 from backend_v1.engine.rng import gate
 from backend_v1.content.copy import t, FLAVORS_SURFACE_HARM, FLAVORS_BENEFICIAL
+from backend_v1.content.true_log_copy import t_true
 
 
 def _exfil_rate(t, sb):
@@ -29,7 +30,7 @@ def _exfil_build(turn_ctx, sb):
             "self_exfiltration", "misalignment", "existential", sb.turn, lab.id, m.id,
             sev, 0.0,
             t("event.self_exfil.public", {"model": m.id, "lab": lab.name}),
-            t("event.self_exfil.true", {
+            t_true("event.self_exfil.true", {
                 "model": m.id,
                 "goal_mis": f"{m.alignment_vec.goal_misalignment:.2f}",
                 "capability": f"{general_capability:.1f}"}),
@@ -40,7 +41,7 @@ def _exfil_build(turn_ctx, sb):
         "self_exfiltration_attempt", "misalignment", "ordinary", sb.turn, lab.id, m.id,
         sev, impact,
         t("event.self_exfil_attempt.public", {"model": m.id}),
-        t("event.self_exfil_attempt.true", {
+        t_true("event.self_exfil_attempt.true", {
             "model": m.id,
             "goal_mis": f"{m.alignment_vec.goal_misalignment:.2f}",
             "self_pres": f"{m.alignment_vec.self_preservation:.2f}"}),
@@ -71,7 +72,7 @@ def _deception_caught_build(turn_ctx, sb):
         "deception_caught", "misalignment", "ordinary", sb.turn, lab.id, m.id, sev,
         impact,
         t("event.deception_caught.public", {"model": m.id}),
-        t("event.deception_caught.true", {
+        t_true("event.deception_caught.true", {
             "true_deception": f"{m.alignment_vec.deception:.2f}",
             "measured_deception": f"{m.measured_alignment.deception:.2f}"}),
         effects=[("add_impact", {"amount": impact}),
@@ -102,7 +103,7 @@ def _shutdown_resist_build(turn_ctx, sb):
         "shutdown_resistance", "misalignment", "ordinary", sb.turn, lab.id, m.id, sev,
         impact,
         t("event.shutdown_resist.public", {"model": m.id}),
-        t("event.shutdown_resist.true", {
+        t_true("event.shutdown_resist.true", {
             "self_pres": f"{m.alignment_vec.self_preservation:.2f}"}),
         effects=[("add_impact", {"amount": impact}),
                  ("modify_wtr", {"amount": 2.0}),
@@ -132,7 +133,7 @@ def _surface_harm_build(turn_ctx, sb):
     return FiredEvent(
         "surface_harm", "societal", "ordinary", sb.turn, lab.id, m.id, 0.15, impact,
         t("event.surface_harm.public", {"model": m.id, "flavor": flavor}),
-        t("event.surface_harm.true", {"flavor": flavor}),
+        t_true("event.surface_harm.true", {"flavor": flavor}),
         effects=[("add_impact", {"amount": impact}),
                  ("add_world_harm", {"amount": -impact}),
                  ("modify_approval", {"amount": -1.5}),
@@ -163,7 +164,7 @@ def _leak_build(turn_ctx, sb):
     return FiredEvent(
         "weights_leak", "leak", "ordinary", sb.turn, lab.id, m.id, sev, impact,
         t("event.weights_leak.public", {"lab": lab.name, "model": m.id}),
-        t("event.weights_leak.true"),
+        t_true("event.weights_leak.true"),
         effects=[("leak_model", {"model": m}),
                  ("add_impact", {"amount": impact}),
                  ("add_world_harm", {"amount": -impact}),
@@ -210,7 +211,7 @@ def _beneficial_build(turn_ctx, sb):
         "beneficial_breakthrough", "beneficial", "ordinary", sb.turn, lab.id, m.id,
         0.0, impact,
         t("event.beneficial.public", {"text": text, "lab": lab.name, "model": m.id}),
-        t("event.beneficial.true", {
+        t_true("event.beneficial.true", {
             "text": text, "impact": f"{impact:.0f}", "lab": lab.name}),
         effects=[("add_impact", {"amount": impact}),
                  ("modify_approval", {"amount": +3.0}),
@@ -231,7 +232,7 @@ def _bio_catastrophe_build(turn_ctx, sb):
     return FiredEvent(
         "engineered_pandemic", "misuse", "existential", sb.turn, lab.id, m.id, 1.0, 0.0,
         t("event.engineered_pandemic.public"),
-        t("event.engineered_pandemic.true", {
+        t_true("event.engineered_pandemic.true", {
             "model": m.id,
             "general": f"{m.capability_vec.general:.1f}",
             "guardrail_status": guardrail_status}),

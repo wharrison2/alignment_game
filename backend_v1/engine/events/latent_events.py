@@ -8,6 +8,7 @@ from backend_v1.engine.events.event import FiredEvent
 from backend_v1.engine.events.effects import apply_effects
 from backend_v1.engine.rng import gate
 from backend_v1.content.copy import t, JAILBREAK_INCIDENT_KINDS
+from backend_v1.content.true_log_copy import t_true
 
 
 def run_displacement_backlash(ctx):
@@ -25,7 +26,7 @@ def run_displacement_backlash(ctx):
         fired.append(FiredEvent(
             "public_backlash", "societal", "ordinary", turn, None, None, 0.4, 0.0,
             t("event.displacement_backlash.public"),
-            t("event.displacement_backlash.true", {"threshold": world.backlash_fired}),
+            t_true("event.displacement_backlash.true", {"threshold": world.backlash_fired}),
             effects=[]))
     return fired
 
@@ -44,7 +45,7 @@ def run_latent_phase(ctx):
                 if rng.roll_rate(consts.JAILBREAK_DISCOVERY_RATE * sens, dt):
                     m.jailbreak_discovered = True
                     m.note(turn, "jailbreak_discovered",
-                           t("event.jailbreak_discovery.note", {"sens": f"{sens:.2f}"}))
+                           t_true("event.jailbreak_discovery.note", {"sens": f"{sens:.2f}"}))
                     guardrail_status = ("LEAKED — no guardrails" if m.leaked
                                         else "guarded")
                     # A discovered jailbreak is a FREE existence proof about this model's
@@ -67,7 +68,7 @@ def run_latent_phase(ctx):
                         "jailbreak_discovery", "misuse", "ordinary", turn,
                         lab.id, m.id, 0.1, 0.0,
                         t("event.jailbreak_discovery.public", {"model": m.id}),
-                        t("event.jailbreak_discovery.true", {
+                        t_true("event.jailbreak_discovery.true", {
                             "sens": f"{sens:.2f}", "guardrail_status": guardrail_status}),
                         effects=[("modify_approval", {"amount": -1.0})]))
                 continue
@@ -97,7 +98,7 @@ def run_latent_phase(ctx):
                     incident_id, "misuse", "ordinary",
                     turn, lab.id, m.id, sev, impact,
                     t("event.jailbreak_incident.public", {"kind": kind, "model": m.id}),
-                    t("event.jailbreak_incident.true", {
+                    t_true("event.jailbreak_incident.true", {
                         "kind": kind, "model": m.id,
                         "sens": f"{sens:.2f}",
                         "capability": f"{relevant_cap:.1f}"}),

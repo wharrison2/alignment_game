@@ -38,6 +38,7 @@ from backend_v1.engine.governance.policies import POLICY_DEFS_BY_ID
 from backend_v1.engine.evaluations import EVAL_HARNESS_BY_ID, next_upgrade
 from backend_v1.engine.turn_context import TurnContext
 from backend_v1.content.copy import t
+from backend_v1.content.true_log_copy import t_true
 
 
 def run_turn(state, actions):
@@ -443,7 +444,7 @@ def _check_endgame(state, flags, events):
                     world.asi_model_id = m.id
                     asi_public_text = t("event.asi_threshold.public",
                                         {"lab": lab.name, "model": m.id})
-                    asi_true_text = t(
+                    asi_true_text = t_true(
                         "event.asi_threshold.true",
                         {"composite": f"{m.misalignment_composite():.2f}",
                          "bar": consts.ASI_MISALIGNMENT_BAR})
@@ -462,7 +463,7 @@ def _check_endgame(state, flags, events):
             # near-deterministic exfiltration chain; thin stochastic sliver remains
             if rng.roll(consts.MISALIGNED_ASI_ESCAPE_P):
                 exfil_public_text = t("event.asi_exfil.public", {"model": m.id})
-                exfil_true_text = t(
+                exfil_true_text = t_true(
                     "event.asi_exfil.true",
                     {"composite": f"{m.misalignment_composite():.2f}"})
                 ev = FiredEvent(
