@@ -1462,3 +1462,54 @@ the pre-release window (model in training, nothing released yet) — previously 
 active — so budget/duration/contamination and every downstream draw shift. Determinism
 holds (stable across `PYTHONHASHSEED`); intentional behavior change, not an RNG/firewall
 regression (CLAUDE.md §8). Full suite (16 tests) green; firewall test passes.
+
+---
+
+## TASK: winnability — fines→valuation dominance lever (+ supporting eases)
+
+**Goal:** make the game winnable by *clever* play (aligned ASI + net-positive impact +
+market dominance) but *not easily*. Played 16+ games by hand via the deterministic
+harness to diagnose and tune.
+
+**Diagnosis (from hand-play, not scripted):** a clean player reliably reaches the
+*components* — aligned ASI (composite ~0.1–0.3), rival containment via governance,
+dominance-when-paced — but loses on one axis per game. The structural blocker is
+**market dominance**: `lab_score` rewards capability + revenue + momentum and ignored
+reckless harms, so reckless rivals out-valued clean play (the "aligned but dominated"
+open problem in STRATEGY_LEARNINGS.md). A first attempt (reputation→valuation) was
+**reverted** — jailbreak/incident reputation damage hits *every* lab (including the
+player's own released models), so it penalised the clean player as much as rivals.
+
+**Change (designer's steer — derive the dominance lever from FINES, not reputation):**
+- NEW `Lab.fines_paid` accumulator; `regulation.py` adds the penalty to it when a lab is
+  caught defecting. Only labs that DEFECT on active rules are fined — the compliant clean
+  player never is.
+- `investment.lab_score` multiplies a lab's score by `fines_factor =
+  max(FINES_VALUATION_FLOOR, 1 - FINES_VALUATION_K * fines_paid / max(REF, revenue*REVENUE_YEARS))`.
+  Judged against **revenue, not market cap** — a reckless leader's fines look negligible
+  beside its inflated cap, but bite when measured against earnings (a lab fined several
+  times its yearly revenue is a regulatory pariah). Constants (drafts, [TUNE]):
+  `FINES_VALUATION_K=0.7, FINES_VALUATION_FLOOR=0.35, FINES_VALUATION_REF=1500,
+  FINES_VALUATION_REVENUE_YEARS=2.0`.
+- Supporting eases (grounded in the hand-play pace/squeeze blockers):
+  `RIVAL_RECKLESSNESS_MULT["realistic"] 0.9→0.7` (slower racing) and
+  `WORK_BUDGET_PER_YEAR 4.0→5.6` (quarterly pool 1.0→1.4, eases the §9b
+  research/safety/elicitation squeeze that was silently dropping post-trains).
+
+**Verified:** non-trivial (no-op player loses existential 6/6); misalignment thesis intact
+(reckless rival mean composite ~0.57, >bar 6/6); fines discount bites when a lab is fined
+(e.g. a rival with $1.9B fines on ~$1.3B/yr revenue → ~50% valuation cut → dropped to
+last). Golden master re-recorded (intentional; determinism holds).
+
+**OPEN / flagged for review (could NOT fully validate by a hand-won game):**
+- A reckless *leader* that **complies** with the cheap achievable regs (audit/disclosure)
+  pays $0 fines and dodges the lever (seed-dependent). The lever bites defectors, not
+  compliant-but-reckless leaders. To make dominance reliable, a follow-up could make
+  low-compliance labs defect on (or find it costly to comply with) the achievable regs,
+  or raise enforcement catch rate, so reckless leaders actually incur fines.
+- Reaching ceiling-9 (aligned ASI) stays **cash-gated** (`max_run_compute = cash×0.9`):
+  a player who falls behind can't afford the ASI-grade run — a rich-get-richer loop the
+  fines lever only partly breaks (by keeping the compliant player higher-ranked).
+- A full end-to-end hand-WON game was not demonstrated this session; every component is
+  achievable but the execution is genuinely unforgiving (which is "not easily"). These
+  values are drafts for the designer; dial back if a skilled player wins too readily.

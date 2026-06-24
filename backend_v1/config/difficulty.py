@@ -41,7 +41,7 @@ _PROFILES = {
 # bit (smaller runs, less AI-assist, slightly more safety in the controller) so a
 # reckless rival reaches ASI later, giving the player more room. The reckless racer
 # is still reckless (0.85*0.9 = 0.77), so recklessness->danger holds.
-RIVAL_RECKLESSNESS_MULT = {"easy": 0.7, "medium": 0.85, "realistic": 0.9, "impossible": 1.15}
+RIVAL_RECKLESSNESS_MULT = {"easy": 0.7, "medium": 0.85, "realistic": 0.7, "impossible": 1.15}
 RIVAL_COST_ADV_MULT = {"easy": 0.3, "medium": 0.6, "realistic": 1.0, "impossible": 1.2}
 
 

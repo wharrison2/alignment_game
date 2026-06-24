@@ -167,6 +167,7 @@ def enforcement_phase(ctx):
                 if st.penalty_cap is not None:
                     penalty = min(penalty, st.penalty_cap * consts.DEFECTION_PENALTY * size_scale)
 
+                lab.fines_paid += penalty   # investors discount a lab bleeding fines (§9b dominance lever)
                 approval_hit = enf * consts.DEFECTION_APPROVAL_HIT
                 ev = FiredEvent(
                     "defection_caught", "societal", "ordinary", turn, lab.id, None,

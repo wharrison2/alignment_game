@@ -145,12 +145,23 @@ _OPENING = Action(start_projects=[{"project_id": "scaling_laws", "ai_assist": 0.
 # release window changes budget/duration/contamination and every downstream draw, moving
 # every digest. Determinism holds (same seed → identical run); intentional behavior
 # change, NOT an RNG/firewall regression (CLAUDE.md §8).
+# Re-recorded for the "winnability package" (ISSUES.md "fines->valuation + winnability"):
+# (1) NEW fines->valuation lever — labs accumulate fines_paid when caught defecting, and
+# lab_score is discounted by fines relative to ~2yr revenue (rewards a clean+compliant
+# record, devalues caught reckless defectors); (2) RIVAL_RECKLESSNESS_MULT["realistic"]
+# 0.9->0.7 (slower racing so clean play keeps pace); (3) WORK_BUDGET_PER_YEAR 4.0->5.6
+# (quarterly pool 1.0->1.4, eases the §9b squeeze so the clean player can juggle
+# tree-research + safety + elicitation). These change every lab's score/cash trajectory;
+# the fines path adds no new RNG draw (the defection/catch rolls already existed).
+# Determinism holds (same seed -> identical run); intentional balance change, NOT an
+# RNG/firewall regression (CLAUDE.md §8). Non-trivial verified: no-op player loses 6/6,
+# reckless rival mean composite ~0.57 (>bar 6/6) — the misalignment thesis is intact.
 EXPECTED = {
-    "0-balanced-realistic": "f34af7109dbb38dbc17e8effc8d223ae7448d6d1910f0f3fff2fd7159e4aef06",
-    "3-aggressive-realistic": "7cf440f3eb78f090d525b5f1366708f5e1bd6aa236bcd4394638413e939b7a19",
-    "7-cautious-realistic": "b5582c9103c49564a87a6a1d7a8a5a0e9a754371efdd0df65b4c51f6f68ae74b",
-    "1-balanced-easy": "849aedacef22ef2b563af7cdfe03b44e81f4709679f28e6986d5e7639d8f32b0",
-    "5-aggressive-impossible": "1e457054d428ba1ec6df3b33179a81fcac643d0d4cbf5ddf2975a3ef6ad35dca",
+    "0-balanced-realistic": "d528b3dbe5692bd7bdc30a860670c7de6b0ae457cf35cef7063e6aab12c2039d",
+    "3-aggressive-realistic": "ca52d773214649fb80b9f1bcbbc67e0ab1df32ed6c5d751a78964874650bd64f",
+    "7-cautious-realistic": "d591877d47b6dade25e85588e5c0a6644f20fb2880faabc248159ea4e66a8cb3",
+    "1-balanced-easy": "43d727fc906d8d894aefa5fb3b334438f6e72d0e1353350c4255e287e08e7365",
+    "5-aggressive-impossible": "ae43a0b33cf3f9881b0cffdcf461e3133381adc25304b0c9393878e884afda27",
 }
 
 

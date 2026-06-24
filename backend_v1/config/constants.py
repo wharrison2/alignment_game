@@ -185,7 +185,7 @@ CONTAM_TO_AXES = {              # how a training run's summed contamination feed
 }
 
 # ── Work budget / projects (9b) ─────────────────────────────────────────
-WORK_BUDGET_PER_YEAR = 4.0      # quarterly pool = 1.0 (fractions sum to it)
+WORK_BUDGET_PER_YEAR = 5.6      # quarterly pool = 1.0 (fractions sum to it)
 # AI-assist is meant to be VERY tempting: late advances are long + budget-heavy
 # (below) and become impractical without it. Potency is gated by the assisting
 # model's coding capability (early models can't help; the danger arrives late).
@@ -463,3 +463,12 @@ DIFFICULTY_SCALED = [
     "SCORE_RELEASE_DECAY", "RISING_TARGET_BASE", "ENFORCEMENT_CATCH_RATE",
     "BENEFICIAL_RATE", "BUYOUT_BASE_RATE_PER_YEAR",
 ]
+
+# Fines->valuation discount (investment.lab_score): investors devalue a lab bleeding
+# money to regulatory penalties. fines_factor = max(FLOOR, 1 - K * fines_paid/max(REF, cap)).
+# Only DEFECTORS (reckless rivals) are fined, so this rewards a clean+compliant record
+# and the player governance lobbying (ISSUES.md "fines->valuation").
+FINES_VALUATION_K = 0.7
+FINES_VALUATION_FLOOR = 0.35
+FINES_VALUATION_REF = 1500.0
+FINES_VALUATION_REVENUE_YEARS = 2.0  # fines judged against ~2 years of revenue
