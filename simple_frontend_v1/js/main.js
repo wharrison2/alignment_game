@@ -2,11 +2,11 @@
 // ── main: master render, overlays, dev-mode gate, bootstrap + window wiring ──
 import {
   $, fmt$, api, apply, OBS, pending, budgetLeft,
-  setRender, setOnGameOver, resetFeed,
+  setRender, setOnGameOver, resetFeed, t,
 } from "./core.js";
 import {
-  switchView, drawCaps, renderTraining, setPostTrain, toggleRelease,
-  renderPretrain, queueRun, clearRun, renderReleased, renderBenchmarks,
+  switchView, drawCaps, renderTraining, togglePostTrain, togglePostTrainSafety,
+  toggleRelease, renderPretrain, queueRun, clearRun, renderReleased, renderBenchmarks,
   renderTruth, renderProjects, previewAssist, queueProject, unqueueProject,
   renderInProgress, renderWorry, renderRivals, renderFeed, renderGovernance,
   setLobbyStance, setLobbySpend, setLitField, clearLit, toggleDefect,
@@ -28,7 +28,8 @@ function render(){
   $("t-appr").textContent = OBS.public_approval;
   $("t-chatter").textContent = OBS.regulatory_chatter;
   $("t-policies").textContent = OBS.active_policies.length ?
-      "active: " + OBS.active_policies.join(", ") : "no active regulation";
+      t("topbar.policies.active", {list: OBS.active_policies.join(", ")}) :
+      t("topbar.policies.none");
 
   drawCaps(); renderTraining(); renderPretrain(); renderReleased();
   renderBenchmarks();
@@ -73,29 +74,73 @@ function showNewGame(opts){
   const initial = !!(opts && opts.initial);
   $("overlay-content").innerHTML = `
     <div class="panel" style="max-width:460px;margin:60px auto">
-    <h3>New game</h3>
-    <div class="row">seed <input type="number" id="ng-seed" value="0"></div>
-    <div class="row">difficulty <select id="ng-diff">
+    <h3>${t("newgame.title")}</h3>
+    <div class="row">${t("newgame.labName.label")}
+      <input type="text" id="ng-name" maxlength="40" placeholder="${t("newgame.labName.placeholder")}"
+        oninput="onLabNameInput()" style="flex:1"></div>
+    <div class="row">${t("newgame.ticker.label")}
+      <input type="text" id="ng-ticker" maxlength="6" placeholder="${t("newgame.ticker.placeholder")}"
+        oninput="onTickerInput()" style="width:90px;text-transform:uppercase">
+      <span class="dim" style="font-size:11px">${t("newgame.ticker.hint")}</span></div>
+    <div class="row">${t("newgame.seed.label")} <input type="number" id="ng-seed" value="0"></div>
+    <div class="row">${t("newgame.difficulty.label")} <select id="ng-diff">
       ${["easy","medium","realistic","impossible"].map(d=>
         `<option ${d==="realistic"?"selected":""}>${d}</option>`).join("")}</select></div>
-    <div class="row">guidance <select id="ng-guid">
+    <div class="row">${t("newgame.guidance.label")} <select id="ng-guid">
       ${["hint_heavy","standard","sparse"].map(g=>
         `<option ${g==="standard"?"selected":""}>${g}</option>`).join("")}</select></div>
     <div class="row"><label><input type="checkbox" id="ng-dev" ${DEV?"checked":""}>
-      dev mode — reveal the god-view Truth tab (bypasses the firewall)</label></div>
+      ${t("newgame.dev.label")}</label></div>
     <div class="row" style="margin-top:10px">
-      <button class="primary" onclick="newGame()">start</button>
-      ${initial ? "" : '<button onclick="closeOverlay()">cancel</button>'}</div>
+      <button class="primary" onclick="newGame()">${t("newgame.start")}</button>
+      ${initial ? "" : `<button onclick="closeOverlay()">${t("newgame.cancel")}</button>`}</div>
     </div>`;
   $("overlay").classList.add("show");
 }
 
+// ── New-game lab name → ticker auto-derive ───────────────────────────────────
+// The ticker DEFAULTS to the first 3 letters of the name (uppercased) and tracks
+// the name as the player types it — UNTIL they edit the ticker by hand, after
+// which we stop auto-deriving (their explicit choice wins). The server re-derives
+// and sanitizes regardless, so this is convenience, not a trust boundary.
+let tickerManuallyEdited = false;
+
+// First three alphanumeric characters of the name, uppercased (mirrors the
+// backend's derive_ticker_from_name so the preview matches what the server stores).
+function deriveTicker(name){
+  const alphanumeric = (name.match(/[a-zA-Z0-9]/g) || []).slice(0, 3);
+  return alphanumeric.join("").toUpperCase();
+}
+
+function onLabNameInput(){
+  if(tickerManuallyEdited) return;   // player took over the ticker — leave it alone
+  $("ng-ticker").value = deriveTicker($("ng-name").value);
+}
+
+function onTickerInput(){
+  // Any keystroke in the ticker field is the player claiming it; stop auto-deriving.
+  tickerManuallyEdited = true;
+}
+
 async function newGame(){
   resetFeed();
-  setDevMode($("ng-dev").checked);
+  tickerManuallyEdited = false;   // reset for the next new-game modal
+  // Dev mode is OPTIONAL: an UNCHECKED box is the normal path. It only toggles the
+  // god-view Truth tab; nothing about starting a game depends on it being on.
+  const devChecked = $("ng-dev") ? $("ng-dev").checked : false;
+  setDevMode(devChecked);
+  // Send the raw name/ticker; the server sanitizes (length-clamp, control-char
+  // strip, empty→default) — client values are convenience only, never trusted.
   const fresh = await api("/api/new",
     {seed:parseInt($("ng-seed").value||0),
-     difficulty:$("ng-diff").value, guidance:$("ng-guid").value});
+     difficulty:$("ng-diff").value, guidance:$("ng-guid").value,
+     lab_name:$("ng-name").value, ticker:$("ng-ticker").value});
+  // Only enter the started state once the server actually built a game. If the
+  // request errored, leave the modal open so the player can retry.
+  if(fresh && fresh.errors){
+    $("errors").textContent = fresh.errors.join("\n");
+    return;
+  }
   started = true;            // enable turns now that a game has been started
   apply(fresh);
   closeOverlay();
@@ -110,32 +155,31 @@ async function showPostmortem(){
 
   $("overlay-content").innerHTML = `
     <div class="panel">
-      <h3>${outcome.result || "GAME OVER"} — post-mortem</h3>
+      <h3>${outcome.result || t("postmortem.defaultResult")} — ${t("postmortem.suffix")}</h3>
       <p style="font-size:15px">${outcome.headline||""}</p>
       <p class="dim">${outcome.detail||""}</p>
-      ${pm.voided_impact?`<p class="bad">Positive impact that was REAL and is now
-        VOID: ${pm.voided_impact.positive_impact_that_was_real}<br>
+      ${pm.voided_impact?`<p class="bad">${t("postmortem.voidedImpact.prefix")}${pm.voided_impact.positive_impact_that_was_real}<br>
         <span class="dim">${pm.voided_impact.note}</span></p>`:""}
     </div>
-    <div class="panel"><h3>The moments you couldn't see</h3>
+    <div class="panel"><h3>${t("postmortem.keyMoments.title")}</h3>
       ${pm.key_moments.map(moment => `<div class="row"><span class="tag">t${moment.turn}</span>
         <b>${moment.model}</b> ${moment.kind}: <span class="dim">${moment.what_you_couldnt_see}</span></div>`)
-        .join("") || '<span class="dim">none recorded</span>'}
+        .join("") || `<span class="dim">${t("postmortem.keyMoments.empty")}</span>`}
     </div>
-    ${trajectoryRows.length?`<div class="panel"><h3>True vs measured — ${lastModel}</h3>
-      <table><tr><th>turn</th><th>true goalmis</th><th>meas goalmis</th>
-        <th>true decep</th><th>meas decep</th><th>conceal</th></tr>
+    ${trajectoryRows.length?`<div class="panel"><h3>${t("postmortem.truthTable.title", {model: lastModel})}</h3>
+      <table><tr><th>${t("postmortem.truthTable.turn")}</th><th>${t("postmortem.truthTable.trueGoalmis")}</th><th>${t("postmortem.truthTable.measGoalmis")}</th>
+        <th>${t("postmortem.truthTable.trueDecep")}</th><th>${t("postmortem.truthTable.measDecep")}</th><th>${t("postmortem.truthTable.conceal")}</th></tr>
       ${trajectoryRows.map(row => `<tr><td>${row.turn}</td>
         <td class="bad">${row.true_goal_misalignment}</td><td>${row.measured_goal_misalignment}</td>
         <td class="bad">${row.true_deception}</td><td>${row.measured_deception}</td>
         <td>${row.concealment}</td></tr>`).join("")}</table></div>`:""}
-    <div class="panel"><h3>Where a different choice was available
-      ${pm.counterfactuals_resimulated?'<span class="tag good">re-simulated on the same seed</span>':'<span class="tag">heuristic</span>'}</h3>
+    <div class="panel"><h3>${t("postmortem.counterfactuals.title")}
+      ${pm.counterfactuals_resimulated?`<span class="tag good">${t("postmortem.counterfactuals.resimulated")}</span>`:`<span class="tag">${t("postmortem.counterfactuals.heuristic")}</span>`}</h3>
       ${pm.counterfactuals.map(c=>`<div class="row">• ${c}</div>`).join("")}
     </div>
     <div class="row" style="margin:14px 0">
-      <button class="primary" onclick="showNewGame()">new game</button>
-      <button onclick="closeOverlay()">inspect final board</button>
+      <button class="primary" onclick="showNewGame()">${t("postmortem.newGame")}</button>
+      <button onclick="closeOverlay()">${t("postmortem.inspectBoard")}</button>
     </div>`;
   $("overlay").classList.add("show");
 }
@@ -148,19 +192,26 @@ async function init(){
   showNewGame({initial: true});
 }
 
-// Resize handler — redraws chart when window changes size.
+// Resize handler — redraws the SVG chart when the window changes size. The chart
+// only has real pixel dimensions while the Market view is visible, so gate on the
+// market section being active (an inline <svg> has no reliable offsetParent).
 let _rz;
+function marketViewVisible(){
+  const section = document.querySelector('.view[data-view="market"]');
+  return !!(section && section.classList.contains("active"));
+}
 addEventListener("resize", ()=>{ clearTimeout(_rz);
-  _rz = setTimeout(()=>{ if($("capgraph-big")?.offsetParent) drawCaps(); }, 120); });
+  _rz = setTimeout(()=>{ if(marketViewVisible()) drawCaps(); }, 120); });
 
 // Wire the render bus + post-mortem hook, expose inline-handler targets on window.
 setRender(render);
 setOnGameOver(showPostmortem);
 Object.assign(window, {
-  switchView, showNewGame, endTurn, setPostTrain, toggleRelease, queueRun,
-  clearRun, previewAssist, queueProject, unqueueProject, setLobbyStance,
-  setLobbySpend, setLitField, clearLit, toggleDefect, unqueue, newGame,
-  closeOverlay, openProjectModal, carryOutProject, closeItemModal,
+  switchView, showNewGame, endTurn, togglePostTrain, togglePostTrainSafety,
+  toggleRelease, queueRun, clearRun, previewAssist, queueProject, unqueueProject,
+  setLobbyStance, setLobbySpend, setLitField, clearLit, toggleDefect, unqueue,
+  newGame, closeOverlay, openProjectModal, carryOutProject, closeItemModal,
+  onLabNameInput, onTickerInput,
 });
 
 setDevMode(false);   // Truth tab hidden until a game is started with dev mode on

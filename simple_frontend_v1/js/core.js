@@ -8,6 +8,21 @@
 export const $ = id => document.getElementById(id);
 export const fmt$ = v => "$" + Math.round(v).toLocaleString() + "M";
 
+// HTML-escape any value before it goes into an innerHTML template. The research
+// content we render comes from the trusted backend catalog today, but a later
+// stage adds user-entered lab name/ticker — escaping here keeps these templates
+// from becoming an XSS sink when that lands. Use for any value, not just strings.
+export function esc(value){
+  return String(value == null ? "" : value)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+// Re-export the strings table + lookup helper so view modules can import them
+// from core alongside the other shared helpers, matching the existing pattern.
+export { STRINGS, t } from "./strings.js";
+import { t } from "./strings.js";
+
 // ── Network ──────────────────────────────────────────────────────────────────
 export async function api(path, body){
   const response = await fetch(path, body===undefined ? {} :
@@ -20,20 +35,10 @@ export async function api(path, body){
 export const COLORS = {player:"#4fb3ff", rival1:"#ff6868", rival2:"#ffb347",
                        rival3:"#9a7bff", rival4:"#6fd087", rival5:"#ff8ad0"};
 
-export const PREVENTIVE_MODES = ["penalize_reward_hacking","inoculation"];
-
-export const PT_MODE_HINT = {
-  capability:"fast elicitation, minimal alignment shaping — raises jump risk",
-  balanced:"steady elicitation + alignment shaping",
-  safety:"slow elicitation, heavy corrective effort (gated late — patching trap)",
-  penalize_reward_hacking:"preventive: lowers emergence slope + jump (bypasses concealment)",
-  inoculation:"preventive: strongest jump/emergence suppression",
-};
-
 export const ENF_COLOR = {low:"dim", medium:"warn", high:"bad"};
 
 // ── Mutable game state (live-binding exports) ────────────────────────────────
-export let OBS = null, NAMES = {}, HIST = [], FEED = [], TRUTH = {turns:[]};
+export let OBS = null, NAMES = {}, TICKERS = {}, HIST = [], FEED = [], TRUTH = {turns:[]};
 export let pending = freshPending();
 
 export function freshPending(){
@@ -57,6 +62,7 @@ export async function apply(payload){
   if(payload.errors){ $("errors").textContent = payload.errors.join("\n"); return; }
   $("errors").textContent = "";
   OBS = payload.observation; NAMES = payload.lab_names; HIST = payload.caps_history;
+  TICKERS = payload.lab_tickers || {};
   pending = freshPending();
   collectFeed();
   TRUTH = await api("/api/truth");   // debug god-view, served separately from OBS
@@ -72,13 +78,13 @@ function collectFeed(){
     {turn, cls:"finding", text:`[${finding.evidence}] ${finding.text}`}));
 
   OBS.tips.forEach(tip => FEED.unshift(
-    {turn, cls:"tip", text:`tip (${tip.reliability}): ${tip.text}`}));
+    {turn, cls:"tip", text:t("feed.tip", {reliability:tip.reliability, text:tip.text})}));
 
   OBS.policy_news.forEach(newsItem => FEED.unshift(
     {turn, cls:"news", text:newsItem}));
 
   OBS.public_events.forEach(event => FEED.unshift(
-    {turn, cls:"event", text:`EVENT [${event.category}] ${event.text}`}));
+    {turn, cls:"event", text:t("feed.event", {category:event.category, text:event.text})}));
 
   if(FEED.length>400) FEED.length = 400;
 }
@@ -106,6 +112,17 @@ export function budgetLeft(){
     if(project) usedBudget += effFraction(project.budget_fraction, queued.ai_assist);
   });
 
-  if(pending.post_train) usedBudget += 0.30;
+  if(pending.post_train){
+    // a post-train round costs a base work-budget plus whatever each APPLIED safety
+    // advance adds (mirrors rules.applied_post_train_round_budget on the backend).
+    const lm = OBS.legal_moves;
+    usedBudget += lm.post_train_round_budget || 0;
+    const applied = pending.post_train.applied_safety || [];
+    const applicable = lm.applicable_post_train_safety || [];
+    applied.forEach(advanceId => {
+      const advance = applicable.find(a => a.advance_id === advanceId);
+      if(advance) usedBudget += advance.round_budget || 0;
+    });
+  }
   return OBS.work_budget_free - usedBudget;
 }

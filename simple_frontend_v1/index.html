@@ -5,21 +5,25 @@
 <title>AI Lab — playtest skin</title>
 <style>
   :root{
-    --bg:#101418; --panel:#181f26; --panel2:#1f2933; --line:#2c3a47;
-    --txt:#d7dee6; --dim:#8496a5; --acc:#4fb3ff; --warn:#ffb347; --bad:#ff6868;
+    /* Light editorial theme: warm off-white paper, ink text, hairline rules.
+       Accent/warn/bad are darkened to read as AA-legible on the pale surfaces. */
+    --bg:#f7f5ef; --panel:#fdfcf8; --panel2:#f1eee5; --line:#ddd8cc;
+    --txt:#1f2328; --dim:#6b6256; --acc:#1a5fb4; --warn:#9a6400; --bad:#b3261e;
+    /* Serif body stack — system serifs only, no web-font fetch (server is offline). */
+    --serif:Georgia,"Iberian","Times New Roman",Cambria,"Liberation Serif",serif;
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--txt);
-       font:13px/1.45 "SF Mono",Menlo,Consolas,monospace}
-  h3{margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;
-     color:var(--dim)}
+       font:14px/1.5 var(--serif)}
+  h3{margin:0 0 8px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;
+     color:var(--dim);font-weight:700}
   button{background:var(--panel2);color:var(--txt);border:1px solid var(--line);
-         border-radius:4px;padding:4px 10px;cursor:pointer;font:inherit}
+         border-radius:3px;padding:4px 10px;cursor:pointer;font:inherit}
   button:hover{border-color:var(--acc)}
-  button.primary{background:var(--acc);color:#06121c;font-weight:700}
+  button.primary{background:var(--acc);color:#ffffff;font-weight:700;border-color:var(--acc)}
   button.sel{outline:2px solid var(--acc)}
-  input,select{background:#0c1014;color:var(--txt);border:1px solid var(--line);
-               border-radius:4px;padding:3px 6px;font:inherit}
+  input,select{background:#ffffff;color:var(--txt);border:1px solid var(--line);
+               border-radius:3px;padding:3px 6px;font:inherit}
   input[type=number]{width:90px}
   #topbar{display:flex;flex-wrap:wrap;gap:14px;align-items:center;
           padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--line);
@@ -28,7 +32,7 @@
   #nav{display:flex;gap:4px;align-items:center;padding:6px 14px;background:var(--panel);
        border-bottom:1px solid var(--line);position:sticky;top:37px;z-index:4}
   #nav button{border-radius:5px 5px 0 0;padding:6px 16px;letter-spacing:.04em}
-  #nav button.active{background:var(--acc);color:#06121c;font-weight:700;border-color:var(--acc)}
+  #nav button.active{background:var(--acc);color:#ffffff;font-weight:700;border-color:var(--acc)}
   #views{padding:10px}
   .view{display:none}
   .view.active{display:block}
@@ -36,16 +40,36 @@
   .cols3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;
          padding:10px;margin-bottom:10px}
-  #capgraph-big{width:100%;height:54vh;min-height:340px;background:#0c1014;border-radius:6px}
+  /* The market-cap graph is kept as a DELIBERATE dark "chart panel" on the light
+     page — a finance/terminal convention that reads as credible, and the saturated
+     lab line colors (core.js COLORS) sit better on dark than on pale paper. */
+  #capgraph-big{display:block;width:100%;height:54vh;min-height:340px;background:#11161c;
+    border:1px solid var(--line);border-radius:6px}
+  /* market-cap graph internals (built in views.drawCaps). Lines/tickers thicken
+     on hover; ticker text is forced sans-serif so the later serif skin leaves it. */
+  #capgraph-big .cap-line{fill:none;stroke-width:1.4;cursor:pointer;
+    transition:stroke-width .08s ease}
+  #capgraph-big .cap-line.cap-line-player{stroke-width:2.4}
+  #capgraph-big .cap-line.cap-hover{stroke-width:3.6}
+  #capgraph-big .cap-tab{cursor:pointer;transition:transform .08s ease}
+  #capgraph-big .cap-tab-shape{cursor:pointer}
+  /* tickers are explicitly sans-serif (FIX_ITEMS: "ticker capitalized and sans
+     serif") and pinned to this stack so the serif body skin can't override them */
+  #capgraph-big .cap-tab-text{font-family:"Helvetica Neue",Arial,system-ui,sans-serif;
+    font-size:11px;font-weight:700;fill:#06121c;pointer-events:none;
+    text-transform:uppercase}
+  #capgraph-big .cap-axis-text{font-family:"SF Mono",Menlo,Consolas,monospace;
+    font-size:11px;fill:#7d8a97}
+  #capgraph-big .cap-gridline{stroke:#26303a;stroke-width:1}
   .row{display:flex;gap:6px;align-items:center;margin:3px 0;flex-wrap:wrap}
   .dim{color:var(--dim)} .bad{color:var(--bad)} .warn{color:var(--warn)}
-  .good{color:#6fd087}
+  .good{color:#1a7a3f}
   table{border-collapse:collapse;width:100%}
   td,th{padding:2px 6px;text-align:left;border-bottom:1px solid var(--line);
         font-size:12px}
   #log{max-height:300px;overflow-y:auto}
   #log div{padding:3px 0;border-bottom:1px dotted var(--line)}
-  .bar{height:10px;background:#0c1014;border:1px solid var(--line);
+  .bar{height:10px;background:var(--panel2);border:1px solid var(--line);
        border-radius:5px;overflow:hidden;flex:1}
   .bar i{display:block;height:100%}
   #queue{position:sticky;bottom:0;background:var(--panel);
@@ -55,11 +79,12 @@
                border-radius:4px;padding:2px 8px}
   #queue .item button{padding:0 5px;margin-left:5px;border:none;color:var(--bad)}
   #errors{color:var(--bad);white-space:pre-wrap}
-  #overlay{position:fixed;inset:0;background:rgba(5,8,11,.93);display:none;
+  #overlay{position:fixed;inset:0;background:rgba(31,35,40,.55);display:none;
            overflow-y:auto;padding:30px;z-index:20}
   #overlay.show{display:block}
   #overlay .inner{max-width:900px;margin:0 auto}
-  canvas{width:100%;height:140px;background:#0c1014;border-radius:4px}
+  /* post-mortem canvas keeps the dark chart-panel treatment (see #capgraph-big) */
+  canvas{width:100%;height:140px;background:#11161c;border:1px solid var(--line);border-radius:4px}
   .lg{display:inline-block;width:10px;height:10px;border-radius:2px;
       margin-right:4px;vertical-align:middle}
   details summary{cursor:pointer;color:var(--dim)}
@@ -77,16 +102,29 @@
   .bench .scores .me b{color:var(--acc)}
   .ring text{font:700 13px monospace;fill:var(--txt)}
   .acc{color:var(--acc)}
-  #itemmodal{position:fixed;inset:0;background:rgba(5,8,11,.78);display:none;
+  #itemmodal{position:fixed;inset:0;background:rgba(31,35,40,.45);display:none;
              align-items:center;justify-content:center;padding:24px;z-index:30}
   #itemmodal.show{display:flex}
   .modal-card{background:var(--panel);border:1px solid var(--line);border-radius:8px;
-              padding:16px 18px;max-width:540px;width:100%;max-height:86vh;overflow-y:auto}
-  .warn-item{border-left:3px solid var(--warn);background:#1a1206;border-radius:0 5px 5px 0;
+              padding:16px 18px;max-width:540px;width:100%;max-height:86vh;overflow-y:auto;
+              box-shadow:0 8px 28px rgba(31,35,40,.18)}
+  .warn-item{border-left:3px solid var(--warn);background:#fbf3e0;border-radius:0 5px 5px 0;
              padding:8px 10px;margin:8px 0}
-  .warn-item.warn-emph{border-left-color:var(--bad);background:#1d0c0c}
+  .warn-item.warn-emph{border-left-color:var(--bad);background:#fcebe9}
   .warn-line{color:var(--warn);font-weight:700}
   .warn-emph .warn-line{color:var(--bad)}
+  /* ── research-item state-machine cards (views/research.js) ── */
+  .ritem{background:var(--panel2);border:1px solid var(--line);border-radius:6px;
+         padding:8px 10px;margin:6px 0;display:flex;flex-direction:column;gap:4px}
+  .ritem.clickable{cursor:pointer}
+  .ritem.clickable:hover{border-color:var(--acc)}
+  .ritem.completed{opacity:.78;border-left:3px solid #1a7a3f}
+  .ritem.in-progress{border-left:3px solid var(--acc)}
+  .ritem .ri-head{display:flex;align-items:baseline;gap:6px;justify-content:space-between}
+  .ritem .ri-name{font-weight:700;letter-spacing:.02em}
+  .ritem .ri-meta{color:var(--dim);font-size:11px}
+  .ritem .ri-desc{color:var(--dim);font-size:11px;line-height:1.35}
+  .ritem .ri-assist-row{display:flex;align-items:center;gap:5px}
 </style>
 </head>
 <body>
@@ -120,7 +158,7 @@
   <section class="view active" data-view="market">
     <div class="panel">
       <h3>Market cap — you vs rivals (the legible metric; alignment is not)</h3>
-      <canvas id="capgraph-big" width="1200" height="500"></canvas>
+      <svg id="capgraph-big" preserveAspectRatio="none"></svg>
       <div id="caplegend" style="margin-top:8px"></div>
     </div>
   </section>
@@ -160,6 +198,7 @@
       <div class="panel"><h3>Safety research</h3><div id="safety-projects"></div></div>
       <div class="panel"><h3>In progress</h3><div id="inprogress"></div></div>
     </div>
+    <div class="panel"><h3>Completed advances</h3><div id="completed-advances"></div></div>
   </section>
 
   <!-- ── GOVERNANCE: lobby / litigate / defect ── -->
