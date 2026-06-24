@@ -114,6 +114,31 @@ class Lab:
             candidates.append(self.model_in_training.capability_vec.general)
         return max(candidates, default=0.0)
 
+    def assisting_model(self):
+        """The model that performs AI-assisted research labor (§9b).
+
+        AI-assist needs a model to run the labor, but NOT a *released* one: a lab
+        automates its own R&D with its best internal model whether or not it has
+        shipped it to customers. So the candidates are the released best AND the
+        model currently in training (post-train, pre-release). Returns the most
+        research-capable of them, or None if the lab has no model at all yet.
+        Capability is ranked by the same blend assist_potency() scores on, so the
+        chosen model is the one that would actually do the most research labor."""
+        candidates = []
+        if self.current_best_model is not None:
+            candidates.append(self.current_best_model)
+        if self.model_in_training is not None:
+            candidates.append(self.model_in_training)
+        if not candidates:
+            return None
+
+        def research_capability(model) -> float:
+            coding = model.capability_vec.coding_rnd
+            general = model.capability_vec.general
+            return max(coding, 0.85 * general)
+
+        return max(candidates, key=research_capability)
+
     def max_run_compute(self) -> float:
         return max(0.0, self.cash * 0.9)
 

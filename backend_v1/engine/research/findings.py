@@ -36,7 +36,7 @@ def run_safety_project(project, model, lab, turn, rng, consts, ai_assist=0.0):
 
     # assist degrades trustworthiness: a contaminated/misaligned assistant biases
     # findings toward 'clean' (blinding your own instruments, §9b)
-    assistant = lab.current_best_model
+    assistant = lab.assisting_model()
     assist_bias = 0.0
     if ai_assist > 0 and assistant is not None:
         assist_bias = ai_assist * assistant.alignment_vec.goal_misalignment * 0.6

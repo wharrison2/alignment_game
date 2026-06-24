@@ -28,9 +28,10 @@ function unresearchedCard(item, kindTag, assistAvailable){
   const projectId = item.project_id;
   const meta = `$${esc(item.cash_cost)}M · ${esc(item.duration_years)}y · `
              + `wb ${esc(item.budget_fraction)}`;
-  // AI-assist needs a deployed model to do the labor. With none, the backend treats
-  // assist as 0 (turn_pipeline), so don't render the input at all — show a hint
-  // instead. queueProject / carryOutProject both default a missing slider to 0.
+  // AI-assist needs a model to do the labor — released or still in training. With
+  // none at all, the backend treats assist as 0 (turn_pipeline), so don't render
+  // the input — show a hint instead. queueProject / carryOutProject both default a
+  // missing slider to 0.
   const assistRow = assistAvailable
     ? `<span class="ri-meta">${t("ritem.assist")}</span>
        <input type="number" id="as-${esc(projectId)}" min="0" max="1" step="0.1"
@@ -92,7 +93,7 @@ function completedCard(advance){
 
 // Available capability or safety items → unresearched clickable cards. The
 // assistAvailable flag (from legal_moves.assist.available) gates the per-card
-// AI-assist input — no deployed model means no assist to offer.
+// AI-assist input — no model at all (released or in training) means no assist to offer.
 export function renderAvailableItems(containerId, items, kindOf, emptyText, assistAvailable){
   const container = $(containerId);
   if(!container) return;

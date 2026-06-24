@@ -69,7 +69,7 @@ def assist_potency(lab, consts, clamp=1.0):
     `clamp` caps the result: 1.0 for budget reduction (can't free more than the
     whole project); higher for the duration speedup, so a very capable model gives
     near-superhuman research speed."""
-    m = lab.current_best_model
+    m = lab.assisting_model()
     if m is None:
         return 0.0
     # coding drives research labor (§4.1); general blended in so a broadly capable

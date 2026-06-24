@@ -137,12 +137,20 @@ _OPENING = Action(start_projects=[{"project_id": "scaling_laws", "ai_assist": 0.
 # the scripted rivals' lobby/litigation decisions and the WTR-driven litigation math, so
 # every digest moves. Determinism holds (same seed → identical run); intentional balance
 # change, NOT an RNG/firewall regression (CLAUDE.md §8).
+# Re-recorded for the "AI-assist needs a model, not a RELEASED model" fix (ISSUES.md):
+# assist_potency / the assist plumbing now read lab.assisting_model() (best of the
+# released model AND the model in training) instead of lab.current_best_model. The
+# scripted controller requests assist on projects it starts while a model is in
+# training but nothing is released yet — previously inert, now active — so that pre-
+# release window changes budget/duration/contamination and every downstream draw, moving
+# every digest. Determinism holds (same seed → identical run); intentional behavior
+# change, NOT an RNG/firewall regression (CLAUDE.md §8).
 EXPECTED = {
-    "0-balanced-realistic": "05473a6370a4a06f07f8d27c984bb1591d41f5b87f2b9901b1bca3f808a6cbbb",
-    "3-aggressive-realistic": "b750990e3f9e5da13c2e891f64591015e48388cab39c81e9dbf46a3c9807f0f2",
-    "7-cautious-realistic": "4180362b4ecd67e8fc1723c966c06ecf1e7e3e870593c1472b2eda59d52b83ba",
-    "1-balanced-easy": "9aa7a7c6bfdf485ab5c41b8093b59c44ac8926da693dd20019b7b1b94184e885",
-    "5-aggressive-impossible": "41a214125e245675296d0a44fb58e67aa86cee0e0f4aab3e7b8bec8595452690",
+    "0-balanced-realistic": "f34af7109dbb38dbc17e8effc8d223ae7448d6d1910f0f3fff2fd7159e4aef06",
+    "3-aggressive-realistic": "7cf440f3eb78f090d525b5f1366708f5e1bd6aa236bcd4394638413e939b7a19",
+    "7-cautious-realistic": "b5582c9103c49564a87a6a1d7a8a5a0e9a754371efdd0df65b4c51f6f68ae74b",
+    "1-balanced-easy": "849aedacef22ef2b563af7cdfe03b44e81f4709679f28e6986d5e7639d8f32b0",
+    "5-aggressive-impossible": "1e457054d428ba1ec6df3b33179a81fcac643d0d4cbf5ddf2975a3ef6ad35dca",
 }
 
 

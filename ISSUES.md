@@ -1344,3 +1344,43 @@ no-op-player probe shows only a modest timing shift because a passive player gen
 little world-harm (regulation is harm-driven) — the benefit lands in actively-played
 games where approval craters faster and the higher WTR baseline compounds with the
 player's own lobby spend.
+
+---
+
+## AI-assist needs a model, not a RELEASED model
+
+The AI-assist economy (§9b) was gated on `lab.current_best_model` — the most recent
+**released** model. That conflated "the lab has a model that can do research labor" with
+"the lab has shipped a model to customers." A lab automates its own R&D with its best
+internal model whether or not it has released it; release is a market/governance act, not
+a prerequisite for using your own model in-house.
+
+**Fix.** Added a pure self-query `Lab.assisting_model()` that returns the most
+research-capable of the released best (`current_best_model`) AND the model currently in
+training (`model_in_training`, post-train/pre-release), or `None` if the lab has no model
+at all. "Most research-capable" is ranked by the same `max(coding_rnd, 0.85*general)`
+blend that `assist_potency()` scores on, so the chosen model is the one that would
+actually contribute the most labor. The four assist sites now read it instead of
+`current_best_model`:
+
+- `rules.assist_potency()` — potency (budget discount + duration speedup).
+- `turn_pipeline._apply_research_action()` — the per-process clamp that forces
+  `ai_assist=0` when no assisting model exists, and the contamination/goal-mis stamping.
+- `findings.run_safety_project()` — the assist-bias that blinds your own instruments.
+- `actions` legal_moves `assist.available` — the frontend gate.
+
+So "no model at all ⇒ assist inert" still holds end to end, but a model in training now
+makes assist available and potent **before** release. Frontend hint strings/comments
+updated ("needs a model", not "needs a released model").
+
+**Liberty taken (flag for review):** when both a released model and an in-training model
+exist, assist uses the **more capable** of the two. The design doc doesn't specify which
+model does the labor when a lab has several; "best available" is the natural reading and
+matches the potency intent, but a designer may prefer "the in-training one" or "the
+released one" specifically. Noted for confirmation.
+
+Golden master re-recorded: the scripted controller requests assist on projects started in
+the pre-release window (model in training, nothing released yet) — previously inert, now
+active — so budget/duration/contamination and every downstream draw shift. Determinism
+holds (stable across `PYTHONHASHSEED`); intentional behavior change, not an RNG/firewall
+regression (CLAUDE.md §8). Full suite (16 tests) green; firewall test passes.
