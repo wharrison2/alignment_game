@@ -58,6 +58,7 @@ const CAP_TAB_CHAR_WIDTH = 7.5;   // approx advance of the 11px monospace ticker
 
 export function drawCaps(){
   const svg = $("capgraph-big"); if(!svg) return;
+  if(!OBS) return;   // switchView("market") can call this before a game exists
 
   // Size the SVG coordinate system to the displayed box so 1 unit == 1 px.
   const width = svg.clientWidth || 1200;
@@ -93,14 +94,108 @@ export function drawCaps(){
   drawCapGridlines(svg, maxCap, plotLeft, plotRight, yForCap);
   drawCapDateAxis(svg, HIST, xForTurn, plotBottom);
 
-  // Draw a line + right-edge tab ticker for every lab. Group elements so the
-  // hover handlers can thicken the line AND enlarge the tab together.
+  // UI_ISSUES issue 1: when labs have similar final caps their right-edge tabs
+  // land at nearly the same y and OVERLAP. Previously each lab wired its own
+  // mouseenter/mouseleave, so stacked tabs fought each other (flicker, multiple
+  // "hovered" at once). Fix in three parts:
+  //   (a) cluster labs by final tab-y so we know which tabs overlap;
+  //   (b) make only ONE tab per cluster interactive (player if present, else the
+  //       highest cap) — the rest get pointer-events:none so they can't grab hover;
+  //   (c) route every line/tab listener through ONE shared setHoveredLab() so a
+  //       newly hovered lab always deactivates the previously hovered one.
+  // (lastTurnIdx is already declared above for the x-axis scale; reuse it.)
+  const tabEligibleLabIds = computeTabEligibleLabIds(labIds, lastTurnIdx, yForCap);
+
+  // Shared hover state lives in this scope so only one lab is ever active. Holds
+  // the per-lab visual togglers (registered by drawCapLabSeries) and the id of
+  // the currently hovered lab; setHoveredLab() clears the old, applies the new.
+  const labHoverTogglers = new Map();
+  let hoveredLabId = null;
+  const setHoveredLab = nextLabId => {
+    if(nextLabId === hoveredLabId) return;
+    if(hoveredLabId !== null && labHoverTogglers.has(hoveredLabId)){
+      labHoverTogglers.get(hoveredLabId)(false);
+    }
+    hoveredLabId = nextLabId;
+    if(hoveredLabId !== null && labHoverTogglers.has(hoveredLabId)){
+      labHoverTogglers.get(hoveredLabId)(true);
+    }
+  };
+  // Used by a lab's mouseleave: only clear hover if that lab is the active one,
+  // so a cursor crossing straight onto a new lab (whose enter already fired)
+  // keeps the new hover instead of being wiped by the old lab's leave.
+  setHoveredLab.clearIfActive = labId => {
+    if(hoveredLabId === labId) setHoveredLab(null);
+  };
+
+  // Draw a line + right-edge tab ticker for every lab. Each series registers its
+  // visual toggler with the shared setter and reports whether its tab is the
+  // interactive one for its overlap cluster.
   labIds.forEach(labId => {
-    drawCapLabSeries(svg, labId, xForTurn, yForCap);
+    const isTabInteractive = tabEligibleLabIds.has(labId);
+    drawCapLabSeries(svg, labId, xForTurn, yForCap, {
+      isTabInteractive,
+      setHoveredLab,
+      labHoverTogglers,
+    });
   });
 
   renderCapLegend();
   renderCapMetrics();
+}
+
+// UI_ISSUES issue 1, part (a)+(b): group labs whose final tab y-positions sit
+// within CAP_TAB_HEIGHT of each other (i.e. their tabs visually overlap), then
+// pick ONE hover-eligible lab per cluster — the player (OBS.lab_id) if it falls
+// in the cluster, otherwise the highest-cap lab. Returns the set of lab ids whose
+// tabs should stay interactive; every other tab is rendered pointer-events:none.
+function computeTabEligibleLabIds(labIds, lastTurnIdx, yForCap){
+  // Snapshot each lab's final cap and the tab y it produces, so clustering and
+  // eligibility both read the same numbers the tab is actually drawn at.
+  const labsByDescendingTabY = labIds
+    .map(labId => {
+      const finalCap = HIST[lastTurnIdx].caps[labId] ?? 1;
+      return { labId, finalCap, tabY: yForCap(finalCap) };
+    })
+    .sort((a, b) => a.tabY - b.tabY);
+
+  const eligibleLabIds = new Set();
+  let currentCluster = [];
+  let clusterTopY = null;
+
+  const finalizeCluster = () => {
+    if(currentCluster.length === 0) return;
+    const eligibleLabId = pickClusterHoverLab(currentCluster);
+    eligibleLabIds.add(eligibleLabId);
+  };
+
+  labsByDescendingTabY.forEach(labEntry => {
+    const startsNewCluster = clusterTopY === null ||
+      labEntry.tabY - clusterTopY > CAP_TAB_HEIGHT;
+    if(startsNewCluster){
+      finalizeCluster();
+      currentCluster = [];
+      clusterTopY = labEntry.tabY;
+    }
+    currentCluster.push(labEntry);
+  });
+  finalizeCluster();
+
+  return eligibleLabIds;
+}
+
+// Choose the single hover-eligible lab in an overlapping cluster: the player's
+// own lab (OBS.lab_id) if it is in the cluster, else the highest-cap lab.
+function pickClusterHoverLab(cluster){
+  const playerLabId = OBS ? OBS.lab_id : null;
+  const playerEntry = cluster.find(entry => entry.labId === playerLabId);
+  if(playerEntry) return playerEntry.labId;
+
+  let highestCapEntry = cluster[0];
+  cluster.forEach(entry => {
+    if(entry.finalCap > highestCapEntry.finalCap) highestCapEntry = entry;
+  });
+  return highestCapEntry.labId;
 }
 
 // Append an SVG <text> with content set via textContent (XSS-safe even for the
@@ -160,8 +255,13 @@ function quarterLabelForTurn(turnIndex){
 }
 
 // Draw one lab's wiggling polyline plus its right-edge tab ticker, wired so
-// hovering either element thickens the line and enlarges the tab.
-function drawCapLabSeries(svg, labId, xForTurn, yForCap){
+// hovering either element thickens the line and enlarges the tab. Hover is
+// coordinated through the shared `setHoveredLab` so only one lab is ever active
+// (UI_ISSUES issue 1); `isTabInteractive` is false for tabs that lost their
+// overlap cluster's eligibility, which get pointer-events:none so they can't
+// fight the eligible tab on top of the stack.
+function drawCapLabSeries(svg, labId, xForTurn, yForCap, hoverCoordination){
+  const { isTabInteractive, setHoveredLab, labHoverTogglers } = hoverCoordination;
   const color = COLORS[labId] || "#888";
   const isPlayer = labId === "player";
 
@@ -176,20 +276,34 @@ function drawCapLabSeries(svg, labId, xForTurn, yForCap){
 
   const lineEnd = points[points.length - 1];
   const tab = buildCapTab(labId, color, lineEnd.x, lineEnd.y);
+  // Non-eligible tabs in an overlapping cluster must not grab hover; the single
+  // eligible tab stays on top and interactive (UI_ISSUES issue 1, part (b)).
+  if(!isTabInteractive) tab.style.pointerEvents = "none";
   svg.appendChild(tab);
 
-  // Hover on the line OR the tab thickens the line and grows the tab together.
-  const setHover = isHovering => {
+  // The lab's visual toggle: thicken the line and grow the tab together. The
+  // shared setHoveredLab() calls this with true/false; it never decides on its
+  // own, so two labs can't be active at once.
+  const applyHoverVisual = isHovering => {
     line.classList.toggle("cap-hover", isHovering);
     tab.classList.toggle("cap-tab-hover", isHovering);
     tab.style.transform = isHovering ?
       `translate(${lineEnd.x}px,${lineEnd.y}px) scale(1.18) translate(${-lineEnd.x}px,${-lineEnd.y}px)` :
       "";
   };
-  line.addEventListener("mouseenter", () => setHover(true));
-  line.addEventListener("mouseleave", () => setHover(false));
-  tab.addEventListener("mouseenter", () => setHover(true));
-  tab.addEventListener("mouseleave", () => setHover(false));
+  labHoverTogglers.set(labId, applyHoverVisual);
+
+  // Lines don't stack the way tabs do, so they stay individually hoverable; but
+  // every listener routes through the shared setter so entering a new line/tab
+  // deactivates the prior lab (never two active). On leave, clear only if THIS
+  // lab is still active: when the cursor crosses straight onto another lab the
+  // browser fires that lab's enter BEFORE our leave, so an unconditional clear
+  // would wipe the new hover (and reintroduce flicker).
+  const clearHoverIfStillActive = () => setHoveredLab.clearIfActive(labId);
+  line.addEventListener("mouseenter", () => setHoveredLab(labId));
+  line.addEventListener("mouseleave", clearHoverIfStillActive);
+  tab.addEventListener("mouseenter", () => setHoveredLab(labId));
+  tab.addEventListener("mouseleave", clearHoverIfStillActive);
 }
 
 // Build the wiggling point list for a lab: real quarter endpoints with the
@@ -493,11 +607,16 @@ export function renderPretrain(){
   }
 
   const defaultCompute = Math.min(Math.round(OBS.cash * 0.6), lm.max_run_compute);
-  el.innerHTML = `<div class="row">
-    ${t("pretrain.compute.pre")}<input type="number" id="run-compute" min="50" step="50"
-      value="${defaultCompute}">M
-    <span class="dim">${t("pretrain.compute.maxNote", {max: fmt$(lm.max_run_compute)})}</span>
-    <button onclick="queueRun()">${t("pretrain.queueRun")}</button></div>
+  // Labeled-form structure (issue 4): each field is a LABEL : VALUE row so the
+  // controls read as a small form, not a sentence with an input wedged in. The
+  // compute input keeps its id/handler; the queue button keeps onclick="queueRun".
+  el.innerHTML = `
+    <div class="kv"><span class="kv-label">${t("pretrain.field.compute")}</span>
+      <span class="kv-value">${t("pretrain.compute.pre")}<input type="number" id="run-compute"
+        min="50" step="50" value="${defaultCompute}">M</span></div>
+    <div class="kv"><span class="kv-label">${t("pretrain.field.max")}</span>
+      <span class="kv-value dim">${t("pretrain.compute.maxNote", {max: fmt$(lm.max_run_compute)})}</span></div>
+    <div class="row"><button onclick="queueRun()">${t("pretrain.queueRun")}</button></div>
     <div class="dim">${t("pretrain.computeHint")}</div>
     ${pretrainSafetyHTML()}`;
 
@@ -507,8 +626,9 @@ export function renderPretrain(){
     const appliedNote = applied.length
       ? t("pretrain.queued.safetyNote", {list: esc(applied.join(", "))}) : "";
     el.innerHTML =
-      `<div class="row">${t("pretrain.queued.prefix")}${fmt$(pending.commission_run.compute)}${appliedNote}
-       <button onclick="clearRun()">✕</button></div>`;
+      `<div class="kv"><span class="kv-label">${t("pretrain.field.queued")}</span>
+        <span class="kv-value">${fmt$(pending.commission_run.compute)}${appliedNote}
+        <button onclick="clearRun()">✕</button></span></div>`;
   }
 }
 
@@ -753,6 +873,16 @@ export function previewAssist(pid, base, years){
     `→ wb ${effFraction(base, assistLevel).toFixed(2)} · ~${effYears(years, assistLevel).toFixed(2)}y`;
 }
 
+// A project queued THIS turn already lives in pending.start_projects (and shows in
+// the bottom queue bar with its own ✕). The server only hides items it has already
+// started, not ones queued client-side, so we drop the queued ones here — applied
+// uniformly to every available list (capability, safety evals, safety advances) so
+// a project can't be selected twice. (issue 6)
+function excludeQueued(items){
+  const queuedProjectIds = pending.start_projects.map(queued => queued.project_id);
+  return items.filter(item => !queuedProjectIds.includes(item.project_id));
+}
+
 export function renderProjects(){
   const lm = OBS.legal_moves;
   const assistParams = lm.assist;
@@ -765,12 +895,15 @@ export function renderProjects(){
 
   $("cap-projects").innerHTML = hint;
   // append the capability cards beneath the assist hint
-  renderAvailableInto("cap-projects", lm.capability_projects_available,
+  renderAvailableInto("cap-projects", excludeQueued(lm.capability_projects_available),
     capabilityKindTag, t("research.capability.empty"), /*append=*/true);
 
-  // Safety panel = measurement/intervention projects AND the §8b safety advances.
-  const safetyItems = lm.safety_projects_available.concat(lm.safety_advances_available);
-  renderAvailableItems("safety-projects", safetyItems, safetyKindTag, t("research.safety.empty"));
+  // Two distinct safety regions (issue 2): measurement/intervention EVALUATIONS,
+  // then the §8b pre/post-training ADVANCES. Both feed the same card renderer.
+  renderAvailableItems("safety-projects", excludeQueued(lm.safety_projects_available),
+    safetyKindTag, t("research.safety.empty"));
+  renderAvailableItems("safety-advances", excludeQueued(lm.safety_advances_available),
+    safetyKindTag, t("research.safetyAdvances.empty"));
 
   renderCompletedAdvances("completed-advances", OBS.researched_advances,
     t("research.completed.empty"));
@@ -807,19 +940,81 @@ export function renderWorry(){
   $("wb-conf").style.width  = (wb.confidence*100)+"%";
   $("wb-level-n").textContent = wb.level.toFixed(2);
   $("wb-conf-n").textContent  = wb.confidence.toFixed(2);
-  $("wb-summary").textContent = wb.summary;
+
+  // The backend summary is "concern-descriptor, evidence-qualifier" (one comma;
+  // see findings.synthesize_worry_bar). Split it into two labeled status rows so
+  // "low concern / shallow evidence" vs "low concern / corroborated" read as
+  // DISTINCT structured states (design §7c), not one dim sentence.
+  const summaryParts = splitWorrySummary(wb.summary);
+  $("wb-summary").innerHTML =
+    worryStatusRow(t("worry.concern.label"), summaryParts.concern) +
+    worryStatusRow(t("worry.evidence.label"), summaryParts.evidence);
+}
+
+// Split "<concern>, <evidence>" at the FIRST comma. A summary with no comma (the
+// "no recent safety evidence collected" empty state) becomes the concern line
+// with an empty evidence line, so the structure never breaks.
+function splitWorrySummary(summary){
+  const text = summary || "";
+  const commaIndex = text.indexOf(",");
+  if(commaIndex === -1) return {concern: text, evidence: ""};
+  const concern = text.slice(0, commaIndex).trim();
+  const evidence = text.slice(commaIndex + 1).trim();
+  return {concern, evidence};
+}
+
+// One labeled status row of the worry-bar definition list. The value is authored
+// backend copy (no untrusted player data), but esc() it to stay uniform with the
+// firewall discipline (§2 — never raw untrusted-shaped data into innerHTML).
+function worryStatusRow(label, value){
+  if(!value) return "";
+  return `<div class="kv"><span class="kv-label">${label}</span>
+    <span class="kv-value">${esc(value)}</span></div>`;
 }
 
 export function renderRivals(){
+  $("rivals").innerHTML = OBS.rival_public.map(rivalCardHTML).join("");
+}
+
+// One rival as a small card (imitates the .bench card): a header (color swatch +
+// ticker + name) over an aligned field grid (market cap, # released models,
+// frontier-capability estimate) so the public race reads column-by-column.
+function rivalCardHTML(rival){
+  const color = COLORS[rival.lab_id] || "#888";
   // rival.name / rival.ticker are public lab identity but still strings that
   // (for the player's own lab) can be user-authored — escape before innerHTML.
-  $("rivals").innerHTML = OBS.rival_public.map(rival => `<div class="row">
-    <i class="lg" style="background:${COLORS[rival.lab_id]||'#888'}"></i>
-    <span class="tag">${esc(rival.ticker || rival.lab_id)}</span>
-    <b style="min-width:90px">${esc(rival.name)}</b>
-    <span class="dim">${t("rivals.cap", {cap: fmt$(rival.market_cap), releases: rival.released_models})}
-    ${rival.frontier_capability_estimate!==undefined?
-      t("rivals.frontier", {value: rival.frontier_capability_estimate}):""}</span></div>`).join("");
+  const ticker = esc(rival.ticker || rival.lab_id);
+  const name = esc(rival.name);
+
+  const marketCap = fmt$(rival.market_cap);
+  const releasedModels = t("rivals.releases.unit", {count: rival.released_models});
+  // frontier_capability_estimate is absent until the rival has released a model.
+  const frontier = rival.frontier_capability_estimate !== undefined
+    ? String(rival.frontier_capability_estimate)
+    : t("rivals.frontier.unknown");
+
+  return `<div class="rival-card">
+    <div class="rc-head">
+      <i class="lg" style="background:${color}"></i>
+      <span class="rc-ticker">${ticker}</span>
+      <span class="rc-name">${name}</span>
+    </div>
+    <div class="rc-fields">
+      ${rivalFieldHTML(t("rivals.col.cap"), marketCap)}
+      ${rivalFieldHTML(t("rivals.col.releases"), releasedModels)}
+      ${rivalFieldHTML(t("rivals.col.frontier"), frontier)}
+    </div>
+  </div>`;
+}
+
+// One labeled field cell inside a rival card. Values here are numeric/formatted
+// (no untrusted player data), so they go in raw; the player-authored name/ticker
+// are escaped at the call site in rivalCardHTML.
+function rivalFieldHTML(label, value){
+  return `<div class="rc-field">
+    <span class="rc-flabel">${label}</span>
+    <span class="rc-fvalue">${value}</span>
+  </div>`;
 }
 
 export function renderFeed(){
@@ -838,75 +1033,171 @@ export function renderFeed(){
 }
 
 // ── Governance panel ──────────────────────────────────────────────────────────
+// Each policy item is a 2-column grid: LEFT = policy identity + a short NEUTRAL
+// descriptor + the compact lobby/litigation/defect controls; RIGHT = the public
+// rival-spends box. The verbose `teaches` mechanism text is NOT shown inline — it
+// moved to a click-to-open details modal (openPolicyModal) so the board reads at a
+// glance and stops over-revealing on every row (UI_ISSUES issues 4/5/8).
 export function renderGovernance(){
-  const pols = OBS.legal_moves.policies || [];
+  const policies = OBS.legal_moves.policies || [];
+  $("governance").innerHTML = policies.map(policyItemHTML).join("");
+}
 
-  $("governance").innerHTML = pols.map(policy => {
-    const pid = policy.policy_id;
+// One full policy row: left main column + right rival-spends box.
+function policyItemHTML(policy){
+  const mainColumn = policyHeadHTML(policy) +
+    policyCategoryHTML(policy) +
+    policyControlsHTML(policy);
+  const rivalBox = rivalSpendsHTML(policy.rival_contributions || []);
+  return `<div class="policy">
+    <div class="policy-main">${mainColumn}</div>
+    ${rivalBox}
+  </div>`;
+}
 
-    // Header: name | stage. The stage cell is a fixed-width grid column so the
-    // lifecycle label (dormant/introduced/passed/signed/active) aligns vertically
-    // across every policy item — scan the column to read the whole board's state.
-    let stageCell = `<span class="tag stage-${policy.stage}">${policy.stage}</span>`;
-    if(policy.stage === "active")
-      stageCell += `<span class="tag ${ENF_COLOR[policy.enforcement]||'dim'}">${t("gov.enforce", {level: policy.enforcement})}</span>`;
-    let inner = `<div class="policy-head">
-      <span class="policy-name">${policy.name}</span>
-      <span class="policy-stage">${stageCell}</span></div>
-      <div class="policy-teaches">${policy.teaches}</div>`;
+// Header: clickable name (opens details) on the left, stage tag(s) flush RIGHT.
+function policyHeadHTML(policy){
+  const pid = policy.policy_id;
+  let stageCell = `<span class="tag stage-${policy.stage}">${policy.stage}</span>`;
+  if(policy.stage === "active")
+    stageCell += `<span class="tag ${ENF_COLOR[policy.enforcement]||'dim'}">${t("gov.enforce", {level: policy.enforcement})}</span>`;
+  // policy.name is authored backend content, but esc() to stay uniform with the
+  // rest of the firewall discipline (no untrusted data reaches innerHTML raw).
+  return `<div class="policy-head">
+    <span class="policy-name" onclick="openPolicyModal('${esc(pid)}')">${esc(policy.name)}</span>
+    <span class="policy-stage">${stageCell}</span></div>`;
+}
 
-    // LOBBY — any pre-active policy (early money on a dormant one is efficient but a bet)
-    if(policy.lobbyable){
-      if(policy.stage === "dormant")
-        inner += `<div class="dim" style="font-size:11px">${t("gov.dormantNote")}</div>`;
-      const curLobby = pending.lobby[pid] || {stance:"abstain", spend:0};
-      inner += `<div class="row">${t("gov.lobby.label")}
-        <select onchange="setLobbyStance('${pid}',this.value)">
-          ${["abstain","for","against"].map(stance =>
-            `<option ${stance===curLobby.stance?"selected":""}>${stance}</option>`).join("")}
-        </select>
-        $<input type="number" min="0" step="25" value="${curLobby.spend||0}" style="width:80px"
-          oninput="setLobbySpend('${pid}',this.value)">M
-        <span class="dim" style="font-size:11px">${t("gov.lobby.influenceNote")}</span></div>`;
-    }
+// Short NEUTRAL category/stage descriptor + a "details ▸" link to the full modal.
+// This deliberately does NOT carry policy.teaches (that lives in the modal now).
+function policyCategoryHTML(policy){
+  const pid = policy.policy_id;
+  let categoryKey;
+  if(policy.stage === "active") categoryKey = "gov.category.active";
+  else if(policy.stage === "dormant") categoryKey = "gov.category.dormant";
+  else categoryKey = "gov.category.preActive";
+  return `<div class="policy-category">${t(categoryKey)}
+    <span class="policy-details-link" onclick="openPolicyModal('${esc(pid)}')">${t("gov.detailsLink")}</span></div>`;
+}
 
-    // LITIGATION — active policies (post-passage battleground)
-    if(policy.litigable && policy.litigation){
-      const litStatus = policy.litigation;
-      const curLit = pending.litigation[pid] || {side:"challenge", tier:"amicus", spend:0};
-      inner += `<div class="row dim" style="font-size:11px">${t("gov.lit.status", {
-        court: litStatus.court_level,
-        margin: litStatus.last_margin===null?'—':litStatus.last_margin,
-        constitutionality: litStatus.constitutionality,
-        standing: litStatus.has_standing?t("gov.lit.standingYes"):t("gov.lit.standingNo")})}</div>
-        <div class="row">${t("gov.lit.label")}
-          <select onchange="setLitField('${pid}','side',this.value)">
-            ${["challenge","defense"].map(side =>
-              `<option ${side===curLit.side?"selected":""}>${side}</option>`).join("")}
-          </select>
-          <select onchange="setLitField('${pid}','tier',this.value)">
-            ${["amicus","join","fund"].map(tier =>
-              `<option ${tier===curLit.tier?"selected":""}>${tier}</option>`).join("")}
-          </select>
-          $<input type="number" min="0" step="50" value="${curLit.spend||0}" style="width:80px"
-            oninput="setLitField('${pid}','spend',this.value)">M
-          <button onclick="clearLit('${pid}')">✕</button></div>`;
-    }
+// Compact controls area: lobby (pre-active), litigation (active), defect (active).
+// One tight inline group now the explanatory prose has moved to the modal.
+function policyControlsHTML(policy){
+  return `<div class="policy-controls">
+    ${lobbyControlHTML(policy)}
+    ${litigationControlHTML(policy)}
+    ${defectControlHTML(policy)}
+  </div>`;
+}
 
-    // DEFECT — active defectable policy, with a consequence preview (warn before commit)
-    if(policy.defect_preview){
-      const defPreview = policy.defect_preview;
-      const isDefecting = !!pending.defect[pid];
-      inner += `<div class="row ${isDefecting?'bad':''}"><label><input type="checkbox" ${isDefecting?"checked":""}
-        onchange="toggleDefect('${pid}',this.checked)"> ${t("gov.defect.label")}</label>
-        <span class="warn" style="font-size:11px">${t("gov.defect.preview", {
-          catch: (defPreview.catch_prob_per_year*100).toFixed(0),
-          fine: fmt$(defPreview.penalty_if_caught),
-          approval: defPreview.approval_hit_if_caught})}</span></div>`;
-    }
+// LOBBY — any pre-active policy (early money on a dormant one is efficient but a bet).
+function lobbyControlHTML(policy){
+  if(!policy.lobbyable) return "";
+  const pid = policy.policy_id;
+  const currentLobby = pending.lobby[pid] || {stance:"abstain", spend:0};
+  const stanceOptions = ["abstain","for","against"].map(stance =>
+    `<option ${stance===currentLobby.stance?"selected":""}>${stance}</option>`).join("");
+  return `<span>${t("gov.lobby.label")}</span>
+    <select onchange="setLobbyStance('${pid}',this.value)">${stanceOptions}</select>
+    $<input type="number" min="0" step="25" value="${currentLobby.spend||0}"
+      oninput="setLobbySpend('${pid}',this.value)">M`;
+}
 
-    return `<div class="policy">${inner}</div>`;
+// LITIGATION — active policies (post-passage battleground). The verbose court
+// status moved to the details modal; the inline control is just side/tier/spend.
+function litigationControlHTML(policy){
+  if(!(policy.litigable && policy.litigation)) return "";
+  const pid = policy.policy_id;
+  const currentLit = pending.litigation[pid] || {side:"challenge", tier:"amicus", spend:0};
+  const sideOptions = ["challenge","defense"].map(side =>
+    `<option ${side===currentLit.side?"selected":""}>${side}</option>`).join("");
+  const tierOptions = ["amicus","join","fund"].map(tier =>
+    `<option ${tier===currentLit.tier?"selected":""}>${tier}</option>`).join("");
+  return `<span>${t("gov.lit.label")}</span>
+    <select onchange="setLitField('${pid}','side',this.value)">${sideOptions}</select>
+    <select onchange="setLitField('${pid}','tier',this.value)">${tierOptions}</select>
+    $<input type="number" min="0" step="50" value="${currentLit.spend||0}"
+      oninput="setLitField('${pid}','spend',this.value)">M
+    <button onclick="clearLit('${pid}')">✕</button>`;
+}
+
+// DEFECT — active defectable policy, with a consequence preview (warn before commit).
+function defectControlHTML(policy){
+  if(!policy.defect_preview) return "";
+  const pid = policy.policy_id;
+  const defectPreview = policy.defect_preview;
+  const isDefecting = !!pending.defect[pid];
+  const previewText = t("gov.defect.preview", {
+    catch: (defectPreview.catch_prob_per_year*100).toFixed(0),
+    fine: fmt$(defectPreview.penalty_if_caught),
+    approval: defectPreview.approval_hit_if_caught});
+  return `<label class="${isDefecting?'bad':''}"><input type="checkbox" ${isDefecting?"checked":""}
+      onchange="toggleDefect('${pid}',this.checked)"> ${t("gov.defect.label")}</label>
+    <span class="warn">${previewText}</span>`;
+}
+
+// The right-side rival-spends box: a structured list of every OTHER lab that has
+// spent on this policy (PUBLIC regulatory info, design §10c). Ticker is player-
+// derivable, so esc() it. Empty → a quiet "no rival spend yet".
+function rivalSpendsHTML(rivalContributions){
+  const headHTML = `<div class="rs-head">${t("gov.rivalSpends.head")}</div>`;
+  if(!rivalContributions.length)
+    return `<div class="rival-spends">${headHTML}
+      <div class="rs-empty">${t("gov.rivalSpends.empty")}</div></div>`;
+
+  const rows = rivalContributions.map(contribution => {
+    // Total declared spend on this policy (lobby + litigation), both cumulative $M.
+    const totalSpend = (contribution.lobby_spend || 0) + (contribution.lit_spend || 0);
+    return `<div class="rs-row">
+      <span class="rs-ticker">${esc(contribution.ticker || contribution.lab_id)}</span>
+      <span class="rs-stance">${esc(contribution.stance)}</span>
+      <span class="rs-spend">${fmt$(totalSpend)}</span></div>`;
   }).join("");
+  return `<div class="rival-spends">${headHTML}${rows}</div>`;
+}
+
+// Details modal for one policy — reuses the warnings.js #itemmodal pattern (same
+// #itemmodal / #modal-body card, closed by closeItemModal). Shows the full
+// `teaches` mechanism text the inline item deliberately hides, plus the key PUBLIC
+// state (stage, enforcement, litigation summary). All shown values are public
+// regulatory info or authored backend copy; esc() everything for firewall hygiene.
+export function openPolicyModal(policyId){
+  const policies = OBS.legal_moves.policies || [];
+  const policy = policies.find(p => p.policy_id === policyId);
+  if(!policy) return;   // nothing to show — never block the player
+
+  $("modal-body").innerHTML = `
+    <h3 style="text-transform:none;color:var(--txt);font-size:15px">${esc(policy.name)}</h3>
+    <div class="dim" style="margin-bottom:8px">
+      <b>${t("gov.modal.stageHeading")}:</b> ${esc(policy.stage)}
+      ${policyModalEnforcementHTML(policy)}</div>
+    ${policyModalLitigationHTML(policy)}
+    <div style="margin:10px 0 4px"><b>${t("gov.modal.teachesHeading")}</b></div>
+    <div style="margin-bottom:10px">${esc(policy.teaches || "")}</div>
+    <div class="row" style="margin-top:14px">
+      <button onclick="closeItemModal()">${t("gov.modal.close")}</button>
+    </div>`;
+  $("itemmodal").classList.add("show");
+}
+
+// Enforcement clause inside the policy modal's stage line (active policies only).
+function policyModalEnforcementHTML(policy){
+  if(policy.stage !== "active" || policy.enforcement === undefined) return "";
+  return ` · <b>${t("gov.modal.enforceHeading")}:</b> ${esc(policy.enforcement)}`;
+}
+
+// Litigation summary block inside the policy modal (active policies only) — the
+// verbose court status the inline item no longer shows.
+function policyModalLitigationHTML(policy){
+  if(!(policy.litigable && policy.litigation)) return "";
+  const litigation = policy.litigation;
+  const statusText = t("gov.lit.status", {
+    court: litigation.court_level,
+    margin: litigation.last_margin===null ? '—' : litigation.last_margin,
+    constitutionality: litigation.constitutionality,
+    standing: litigation.has_standing ? t("gov.lit.standingYes") : t("gov.lit.standingNo")});
+  return `<div style="margin:4px 0 0"><b>${t("gov.modal.litHeading")}:</b>
+    <span class="dim">${statusText}</span></div>`;
 }
 
 // Governance field setters — keep lobby/litigation state in pending.

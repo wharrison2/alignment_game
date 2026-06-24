@@ -19,9 +19,11 @@
 import { $, esc, t } from "./core.js";
 
 // ── State 1: UNRESEARCHED — a clickable card that opens the detail modal ──────
-// The card body opens the modal (openProjectModal). The assist slider lives on the
-// card; clicking it must NOT bubble up and open the modal, so the assist row stops
-// propagation. The modal's "carry it out" reads this same slider value.
+// The ENTIRE card body opens the modal (openProjectModal) — including empty space
+// in the assist row (issue 7). Only the assist INPUT itself stops propagation, so
+// dragging/typing the slider adjusts it without opening the modal; clicking
+// anywhere else in the card (labels, hint, blank assist-row space) still opens the
+// modal. The modal's "carry it out" reads this same slider value.
 function unresearchedCard(item, kindTag){
   const projectId = item.project_id;
   const meta = `$${esc(item.cash_cost)}M · ${esc(item.duration_years)}y · `
@@ -32,10 +34,10 @@ function unresearchedCard(item, kindTag){
       <span class="tag">${esc(kindTag)}</span>
     </div>
     <div class="ri-meta">${meta}</div>
-    <div class="ri-assist-row" onclick="event.stopPropagation()">
+    <div class="ri-assist-row">
       <span class="ri-meta">${t("ritem.assist")}</span>
       <input type="number" id="as-${esc(projectId)}" min="0" max="1" step="0.1"
-        value="0" style="width:55px"
+        value="0" style="width:55px" onclick="event.stopPropagation()"
         oninput="previewAssist('${esc(projectId)}',${Number(item.budget_fraction)},${Number(item.duration_years)})">
       <span class="ri-meta" id="pv-${esc(projectId)}"></span>
       <span class="ri-meta dim">${t("ritem.clickHint")}</span>

@@ -104,6 +104,10 @@ export const STRINGS = {
   "pretrain.safety.apply": "apply researched pretrain safety advances to this run:",
   "pretrain.queued.prefix": "queued: ",
   "pretrain.queued.safetyNote": " · safety: {list}",
+  // labeled-form field labels (structured controls, issue 4)
+  "pretrain.field.compute": "compute",
+  "pretrain.field.max": "ceiling",
+  "pretrain.field.queued": "queued run",
 
   // ── Lab — released models ──────────────────────────────────────────────────
   "released.empty": "nothing released yet",
@@ -134,7 +138,8 @@ export const STRINGS = {
   "research.assistHint.weak": "AI-assist has little effect yet — your model isn't capable enough to help research. It grows potent (and contaminating) as capability rises.",
   "research.assistHint.potent": "AI-assist potency {budget} (budget) / {speed} (speed) — assist now meaningfully shrinks budget &amp; time. It is also the contamination vector.",
   "research.capability.empty": "tree exhausted",
-  "research.safety.empty": "no safety work available",
+  "research.safety.empty": "no safety evaluations available",
+  "research.safetyAdvances.empty": "no training safety advances available",
   "research.completed.empty": "nothing researched yet",
   "research.completed.capability": "Capability",
   "research.completed.safety": "Safety",
@@ -159,7 +164,20 @@ export const STRINGS = {
   "modal.carryOut": "carry it out ▸",
   "modal.cancel": "cancel",
 
-  // ── Intel — rivals ─────────────────────────────────────────────────────────
+  // ── Intel — worry bar (structured status, issue 4) ─────────────────────────
+  "worry.level.label": "level",
+  "worry.confidence.label": "confidence",
+  "worry.concern.label": "concern",
+  "worry.evidence.label": "evidence",
+
+  // ── Intel — rivals (structured card, issue 4) ──────────────────────────────
+  "rivals.col.ticker": "ticker",
+  "rivals.col.name": "lab",
+  "rivals.col.cap": "market cap",
+  "rivals.col.releases": "released",
+  "rivals.col.frontier": "frontier ≈",
+  "rivals.releases.unit": "{count} models",
+  "rivals.frontier.unknown": "—",
   "rivals.cap": "cap {cap} · {releases} releases",
   "rivals.frontier": " · frontier ≈ {value}",
 
@@ -174,6 +192,19 @@ export const STRINGS = {
   "gov.defect.preview": "⚠ catch ~{catch}%/yr · fine {fine} · approval −{approval}",
   "gov.lit.standingYes": "yes",
   "gov.lit.standingNo": "no",
+  // short NEUTRAL inline descriptors — the full mechanism text moved to the modal
+  "gov.category.dormant": "not yet on the agenda · pre-passage",
+  "gov.category.preActive": "moving through the legislature · pre-passage",
+  "gov.category.active": "in force · post-passage",
+  "gov.detailsLink": "details ▸",
+  "gov.rivalSpends.head": "rival spend",
+  "gov.rivalSpends.empty": "no rival spend yet",
+  // policy details modal (reuses the warnings.js #itemmodal pattern)
+  "gov.modal.stageHeading": "Stage",
+  "gov.modal.enforceHeading": "Enforcement",
+  "gov.modal.litHeading": "Litigation",
+  "gov.modal.teachesHeading": "What this teaches",
+  "gov.modal.close": "close",
 
   // ── Turn queue (renderQueue) ───────────────────────────────────────────────
   "queue.postTrain.withSafety": "post-train (+{count} safety)",

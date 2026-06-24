@@ -1,0 +1,10 @@
+ - Tickers that overlap produce incredibly jittery behavior. Just prioritize you, and then the highest one. It should only hover one at a time. 
+ - Safety research items that perform evaluations are distinct from research items that affect pre- and post- training. They need separate regions
+ - Modeled after the market tab, nothing should require scrolling on the actual page, only within smaller scrollables
+ - Nothing should just be text in a box. It should have structure that reflects what it is and communicates it
+ - Governance items are way too large, the dormant/introduced/etc label sits awkwardly far from the right edge. You can cut this in half and reveal rival spends in a box on the right. Make it also go to the bottom of the screen.
+ - Research items are selectable twice and should leave the list of options when you select to carry it out
+ - not everywhere on the research item card results in the details modal when clicked (bottom like fifth doesn't work)
+ - governance hints in the items are reproduced everywhere and too specific. It's repetitive, visually noisy, and reveals way too much about the actual specifics. 
+ - "no turns played yet" should not be there in the market cap box. this may require a backend change, but you should have a visible market cap on turn 0. That number exists. Show it
+ - still cannot exit the new game modal without selecting dev mode

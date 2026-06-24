@@ -9,7 +9,7 @@ import {
   toggleRelease, renderPretrain, queueRun, clearRun, renderReleased, renderBenchmarks,
   renderTruth, renderProjects, previewAssist, queueProject, unqueueProject,
   renderInProgress, renderWorry, renderRivals, renderFeed, renderGovernance,
-  setLobbyStance, setLobbySpend, setLitField, clearLit, toggleDefect,
+  setLobbyStance, setLobbySpend, setLitField, clearLit, toggleDefect, openPolicyModal,
   renderQueue, unqueue,
 } from "./views.js";
 import {
@@ -18,6 +18,7 @@ import {
 
 // ── Master render — updates every panel ──────────────────────────────────────
 function render(){
+  if(!OBS) return;   // no game yet — nothing to render (guards pre-start renders)
   // Top bar chips
   $("t-turn").textContent = OBS.turn;
   $("t-year").textContent = OBS.year.toFixed(2);
@@ -128,7 +129,6 @@ async function newGame(){
   // Dev mode is OPTIONAL: an UNCHECKED box is the normal path. It only toggles the
   // god-view Truth tab; nothing about starting a game depends on it being on.
   const devChecked = $("ng-dev") ? $("ng-dev").checked : false;
-  setDevMode(devChecked);
   // Send the raw name/ticker; the server sanitizes (length-clamp, control-char
   // strip, empty→default) — client values are convenience only, never trusted.
   const fresh = await api("/api/new",
@@ -142,7 +142,12 @@ async function newGame(){
     return;
   }
   started = true;            // enable turns now that a game has been started
+  // apply() populates OBS BEFORE anything renders. setDevMode() can switchView →
+  // drawCaps, which reads OBS, so it must run AFTER apply — otherwise the
+  // dev-unchecked path renders against a null OBS, throws, and the modal never
+  // closes (looked like "can't start without dev mode"). See UI_ISSUES issue 10.
   apply(fresh);
+  setDevMode(devChecked);
   closeOverlay();
 }
 
@@ -210,6 +215,7 @@ Object.assign(window, {
   switchView, showNewGame, endTurn, togglePostTrain, togglePostTrainSafety,
   toggleRelease, queueRun, clearRun, previewAssist, queueProject, unqueueProject,
   setLobbyStance, setLobbySpend, setLitField, clearLit, toggleDefect, unqueue,
+  openPolicyModal,
   newGame, closeOverlay, openProjectModal, carryOutProject, closeItemModal,
   onLabNameInput, onTickerInput,
 });

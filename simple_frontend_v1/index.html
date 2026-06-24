@@ -41,12 +41,48 @@
   #views{flex:1 1 auto;min-height:0;overflow-y:auto;padding:10px}
   .view{display:none}
   .view.active{display:block}
-  /* the market view fills the whole content area so its columns reach the bottom */
-  .view[data-view="market"]{height:100%}
   .cols2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .cols3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  .cols4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;
          padding:10px;margin-bottom:10px}
+  /* ── Viewport-filling layout convention (UI_ISSUES issue 3) ────────────────
+     GOAL: every tab behaves like the Market tab — the page (#views) never grows
+     past the viewport; only inner regions scroll. The market & governance views
+     hand-roll this; these classes generalize it so the remaining views reuse one
+     convention instead of five per-view hacks.
+
+     How to use it on a view:
+       1. Tag the <section class="view view-fill" …> so the ACTIVE view fills the
+          content area (height:100%) instead of growing with its content.
+       2. Make the view's ROOT container a height-filling grid/flex: add
+          `.fill` to a `.cols2/3/4` (it becomes height:100% with min-height:0
+          tracks) or use `.view-col` for a vertical stack (e.g. a row of lists
+          above a "completed" panel).
+       3. Give panels inside a fill grid the `.panel-fill` class: it zeroes the
+          `.panel{margin-bottom:10px}` (which fights track sizing — it broke the
+          market layout once), sets min-height:0 so the panel can shrink, and
+          makes the panel a flex column with its heading pinned.
+       4. The panel's long inner region gets `.scroll-body`: it takes the slack
+          and scrolls INTERNALLY, exactly like #log / #governance.
+     The page stays put; overflow lives inside the panels. */
+  .view.view-fill.active{display:flex;flex-direction:column;height:100%}
+  /* the market view predates the .view-fill convention and fills the content area
+     via its own .market grid (height:100%); keep its height hook unchanged */
+  .view[data-view="market"]{height:100%}
+  /* fill variants of the column grids: stretch to the view height; minmax(0,…)
+     so columns can shrink and their panels scroll rather than overflow the page */
+  .cols2.fill,.cols3.fill,.cols4.fill{flex:1 1 auto;min-height:0;height:100%}
+  .cols2.fill{grid-template-rows:minmax(0,1fr)}
+  .cols3.fill{grid-template-rows:minmax(0,1fr)}
+  .cols4.fill{grid-template-rows:minmax(0,1fr)}
+  /* a vertical stack that fills the view (a fill grid/row, then shorter panels) */
+  .view-col{display:flex;flex-direction:column;gap:10px;flex:1 1 auto;min-height:0;height:100%}
+  /* a panel living inside a fill container: no bottom margin (the grid/flex gap
+     owns spacing), can shrink, heading stays put while the body scrolls */
+  .panel-fill{margin-bottom:0;min-height:0;display:flex;flex-direction:column}
+  /* the scrolling body of a fill panel — takes the slack, scrolls internally */
+  .scroll-body{flex:1 1 auto;min-height:0;overflow-y:auto}
   /* The market-cap graph is kept as a DELIBERATE dark "chart panel" on the light
      page — a finance/terminal convention that reads as credible, and the saturated
      lab line colors (core.js COLORS) sit better on dark than on pale paper. */
@@ -159,6 +195,29 @@
   .bench .scores .me b{color:var(--acc)}
   .ring text{font:700 13px monospace;fill:var(--txt)}
   .acc{color:var(--acc)}
+  /* ── labeled-row "definition list" (UI_ISSUES issue 4) ──────────────────────
+     A reusable LABEL : VALUE row so a few "plain text in a box" renderers (worry
+     bar status, pretrain controls) read as structured fields instead of prose.
+     The label column is fixed width so values left-align into a tidy column. */
+  .kv{display:flex;align-items:baseline;gap:8px;margin:3px 0}
+  .kv .kv-label{flex:0 0 96px;font-size:10px;text-transform:uppercase;
+                letter-spacing:.05em;color:var(--dim)}
+  .kv .kv-value{flex:1 1 auto;min-width:0;font-size:13px}
+  /* ── rivals list (issue 4): one card per rival, fields in aligned columns ──
+     Imitates the .bench card; the field grid keeps ticker/name/cap/releases/
+     frontier vertically aligned across cards so the race reads at a glance. */
+  .rival-card{background:var(--panel2);border:1px solid var(--line);border-radius:6px;
+              padding:8px 10px;margin:6px 0;display:flex;flex-direction:column;gap:6px}
+  .rival-card .rc-head{display:flex;align-items:baseline;gap:6px}
+  .rival-card .rc-ticker{font-size:10px;font-weight:700;letter-spacing:.04em;
+                         padding:1px 6px;border-radius:3px;background:var(--panel);
+                         border:1px solid var(--line);text-transform:uppercase}
+  .rival-card .rc-name{font-weight:700;letter-spacing:.02em}
+  .rival-card .rc-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px 10px}
+  .rival-card .rc-field{display:flex;flex-direction:column}
+  .rival-card .rc-field .rc-flabel{font-size:9px;text-transform:uppercase;
+                                   letter-spacing:.05em;color:var(--dim)}
+  .rival-card .rc-field .rc-fvalue{font-size:13px;font-variant-numeric:tabular-nums}
   #itemmodal{position:fixed;inset:0;background:rgba(31,35,40,.45);display:none;
              align-items:center;justify-content:center;padding:24px;z-index:30}
   #itemmodal.show{display:flex}
@@ -183,19 +242,50 @@
   .ritem .ri-desc{color:var(--dim);font-size:11px;line-height:1.35}
   .ritem .ri-assist-row{display:flex;align-items:center;gap:5px}
   /* ── governance policy items (views.renderGovernance) ──
-     Header is a fixed-column grid so the lifecycle stage (dormant/introduced/
-     passed/signed/active) lines up vertically across every policy item. */
+     UI_ISSUES issues 4/5/8. The governance VIEW fills the content area like the
+     market view; the policies list scrolls INTERNALLY while the safe-harbor row
+     stays pinned beneath it. Each policy item is a 2-column grid: LEFT holds the
+     policy name + stage tag + compact controls; RIGHT holds the rival-spends box.
+     The verbose `teaches` mechanism text moved OFF the item onto a details modal
+     (openPolicyModal), so the inline item shows only a short neutral descriptor. */
+  .view[data-view="governance"]{height:100%}
+  .gov-panel{height:100%;display:flex;flex-direction:column;margin-bottom:0}
+  /* the policies list takes the slack and scrolls; safe-harbor row stays visible */
+  #governance{flex:1 1 auto;min-height:0;overflow-y:auto;margin:4px 0}
+  .gov-safeharbor{flex:0 0 auto;border-top:1px solid var(--line);padding-top:8px}
   .policy{background:var(--panel2);border:1px solid var(--line);border-radius:6px;
-          padding:8px 10px;margin:6px 0}
-  .policy-head{display:grid;grid-template-columns:1fr 150px;align-items:baseline;
-               gap:8px}
-  .policy-name{font-weight:700;letter-spacing:.02em}
-  .policy-stage{display:flex;gap:5px;align-items:baseline}
-  .policy-teaches{color:var(--dim);font-size:11px;margin:2px 0 4px}
+          padding:8px 10px;margin:6px 0;
+          display:grid;grid-template-columns:minmax(0,1fr) 190px;gap:10px;align-items:start}
+  .policy-main{min-width:0}
+  /* Header: name on the left, stage tag flush to the RIGHT edge (issue 5). */
+  .policy-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+  .policy-name{font-weight:700;letter-spacing:.02em;cursor:pointer}
+  .policy-name:hover{color:var(--acc)}
+  .policy-stage{display:flex;gap:5px;align-items:baseline;flex-shrink:0}
+  /* short neutral category/stage descriptor + a "details ▸" affordance (issue 8) */
+  .policy-category{color:var(--dim);font-size:11px;margin:1px 0 4px}
+  .policy-details-link{cursor:pointer;color:var(--acc);font-size:11px}
+  .policy-details-link:hover{text-decoration:underline}
+  /* compact controls: one tight inline group now the explanatory text is gone */
+  .policy-controls{display:flex;flex-wrap:wrap;gap:6px;align-items:center;
+                   font-size:11px;margin-top:2px}
+  .policy-controls input[type=number]{width:74px}
+  /* rival-spends box on the RIGHT — structured list, one row per rival (issue 5) */
+  .rival-spends{background:var(--panel);border:1px solid var(--line);border-radius:5px;
+                padding:6px 8px;font-size:11px;min-width:0}
+  .rival-spends .rs-head{font-size:9px;text-transform:uppercase;letter-spacing:.05em;
+                         color:var(--dim);margin-bottom:4px}
+  .rival-spends .rs-row{display:flex;align-items:baseline;gap:5px;margin:2px 0}
+  .rival-spends .rs-ticker{font-weight:700}
+  .rival-spends .rs-stance{color:var(--dim)}
+  .rival-spends .rs-spend{margin-left:auto;font-variant-numeric:tabular-nums}
+  .rival-spends .rs-empty{color:var(--dim);font-style:italic}
   /* stage tag colours — scan the aligned column at a glance */
   .stage-dormant{background:var(--panel);color:var(--dim);border-color:var(--line)}
   .stage-introduced,.stage-passed,.stage-signed{color:var(--warn);border-color:var(--warn)}
   .stage-active{color:#1a7a3f;border-color:#1a7a3f}
+  /* Narrow screens: drop the rival box below the policy controls. */
+  @media(max-width:760px){ .policy{grid-template-columns:1fr} }
 </style>
 </head>
 <body>
@@ -245,80 +335,99 @@
   </section>
 
   <!-- ── LAB: training / pretrain / releases ── -->
-  <section class="view" data-view="lab">
-    <div class="cols2">
-      <div>
-        <div class="panel" id="training-panel">
-          <h3>Model in training</h3><div id="training"></div>
+  <section class="view view-fill" data-view="lab">
+    <div class="cols2 fill">
+      <!-- left column: training + pretrain stacked, each scrolls if tall -->
+      <div class="view-col">
+        <div class="panel panel-fill" id="training-panel">
+          <h3>Model in training</h3><div id="training" class="scroll-body"></div>
         </div>
-        <div class="panel"><h3>Pretrain run</h3><div id="pretrain"></div></div>
+        <div class="panel panel-fill"><h3>Pretrain run</h3>
+          <div id="pretrain" class="scroll-body"></div></div>
       </div>
-      <div>
-        <div class="panel"><h3>Released models (frozen · permanent attack surface)</h3>
-          <div id="released"></div></div>
-      </div>
+      <!-- right column: the growing released-models table scrolls internally -->
+      <div class="panel panel-fill"><h3>Released models (frozen · permanent attack surface)</h3>
+        <div id="released" class="scroll-body"></div></div>
     </div>
   </section>
 
   <!-- ── BENCHMARKS: §7 public scoreboard (you + rivals) ── -->
-  <section class="view" data-view="benchmarks">
-    <div class="panel">
+  <section class="view view-fill" data-view="benchmarks">
+    <div class="panel panel-fill">
       <h3>Public benchmarks — the shared scoreboard</h3>
       <div class="dim" style="margin-bottom:6px">Public &amp; passive: everyone sees
         every lab's scores, read off <b>measured</b> capability — so a sandbagging
         model looks clean here. Released free by the world; old benchmarks saturate
         as the frontier passes them. Chasing these for investors is the Goodhart trap.</div>
-      <div id="benchmarks" class="cols3"></div>
+      <!-- the benchmark-card grid scrolls inside the panel; heading + blurb stay put -->
+      <div class="scroll-body"><div id="benchmarks" class="cols3"></div></div>
     </div>
   </section>
 
-  <!-- ── RESEARCH: capability / safety / in-progress ── -->
-  <section class="view" data-view="research">
-    <div class="cols3">
-      <div class="panel"><h3>Capability research</h3><div id="cap-projects"></div></div>
-      <div class="panel"><h3>Safety research</h3><div id="safety-projects"></div></div>
-      <div class="panel"><h3>In progress</h3><div id="inprogress"></div></div>
+  <!-- ── RESEARCH: capability / safety evals / safety advances / in-progress ── -->
+  <section class="view view-fill" data-view="research">
+    <div class="view-col">
+      <!-- the four research lists fill the slack; each column scrolls internally -->
+      <div class="cols4 fill">
+        <div class="panel panel-fill"><h3>Capability research</h3>
+          <div id="cap-projects" class="scroll-body"></div></div>
+        <div class="panel panel-fill"><h3>Safety evaluations</h3>
+          <div id="safety-projects" class="scroll-body"></div></div>
+        <div class="panel panel-fill"><h3>Safety advances — training</h3>
+          <div id="safety-advances" class="scroll-body"></div></div>
+        <div class="panel panel-fill"><h3>In progress</h3>
+          <div id="inprogress" class="scroll-body"></div></div>
+      </div>
+      <!-- completed advances sit beneath the lists; capped height, scroll internally -->
+      <div class="panel panel-fill" style="flex:0 1 30%">
+        <h3>Completed advances</h3>
+        <div id="completed-advances" class="scroll-body"></div></div>
     </div>
-    <div class="panel"><h3>Completed advances</h3><div id="completed-advances"></div></div>
   </section>
 
-  <!-- ── GOVERNANCE: lobby / litigate / defect ── -->
+  <!-- ── GOVERNANCE: lobby / litigate / defect (full-height; list scrolls) ── -->
   <section class="view" data-view="governance">
-    <div class="panel">
+    <div class="panel gov-panel">
       <h3>Policies — lobby (pre-passage) · litigate (post-passage) · defect</h3>
       <div id="governance"></div>
-      <div class="row" style="margin-top:8px"><label><input type="checkbox" id="safeharbor">
+      <div class="gov-safeharbor"><label><input type="checkbox" id="safeharbor">
         sign safe-harbor code (penalty shelter)</label></div>
     </div>
   </section>
 
   <!-- ── INTEL: epistemics + rivals (the feed now lives on the Market page) ── -->
-  <section class="view" data-view="intel">
-    <div class="cols2">
-      <div class="panel">
+  <section class="view view-fill" data-view="intel">
+    <div class="cols2 fill">
+      <!-- worry bar is short content; let it scroll internally if it ever grows -->
+      <div class="panel panel-fill">
         <h3>Worry bar (LEVEL vs CONFIDENCE — synthesis of evidence you collected)</h3>
-        <div class="row"><span style="width:80px">level</span>
-          <div class="bar"><i id="wb-level" style="background:var(--bad)"></i></div>
-          <span id="wb-level-n"></span></div>
-        <div class="row"><span style="width:80px">confidence</span>
-          <div class="bar"><i id="wb-conf" style="background:var(--acc)"></i></div>
-          <span id="wb-conf-n"></span></div>
-        <div class="dim" id="wb-summary"></div>
+        <div class="scroll-body">
+          <div class="row"><span style="width:80px">level</span>
+            <div class="bar"><i id="wb-level" style="background:var(--bad)"></i></div>
+            <span id="wb-level-n"></span></div>
+          <div class="row"><span style="width:80px">confidence</span>
+            <div class="bar"><i id="wb-conf" style="background:var(--acc)"></i></div>
+            <span id="wb-conf-n"></span></div>
+          <div class="dim" id="wb-summary"></div>
+        </div>
       </div>
-      <div class="panel"><h3>Rivals (public info only)</h3><div id="rivals"></div></div>
+      <!-- the rivals list grows with the field; scroll it inside the panel -->
+      <div class="panel panel-fill"><h3>Rivals (public info only)</h3>
+        <div id="rivals" class="scroll-body"></div></div>
     </div>
   </section>
 
   <!-- ── TRUTH: god's-eye true state (DEBUG — bypasses the firewall) ── -->
-  <section class="view" data-view="truth">
-    <div class="panel">
+  <section class="view view-fill" data-view="truth">
+    <div class="panel panel-fill">
       <h3>Truth — god's-eye true state (debug)</h3>
       <div class="dim" style="margin-bottom:6px">DEV ONLY. This bypasses the
         true-vs-measured firewall the game is built on: it shows every lab's
         <b>true</b> alignment &amp; capability (red) beside what instruments
         <b>measure</b> — including rivals' hidden, sandbagged danger. Expand a
         model for its turn-by-turn true trajectory.</div>
-      <div id="truth"></div>
+      <!-- the per-model truth dump is long; scroll it inside the panel -->
+      <div id="truth" class="scroll-body"></div>
     </div>
   </section>
 
