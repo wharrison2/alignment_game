@@ -103,10 +103,15 @@ SURFACE_EMERGENCE_RATE = 0.10   # per round pull toward baseline
 # baseline shaping — a no-safety lab trends misaligned, per §0 thesis #1/#5.
 # Eased 0.035->0.030 (ISSUES.md "playtest easing"), then 0.030->0.025 (ISSUES.md
 # "creep reduction") to give a clean, full-prevention player real margin at the ASI
-# cliff — a perfectly-played aligned ASI was landing at composite ~0.34, a hair under
-# the 0.35 bar. Still above the 0.02 baseline shaping, so a no-safety lab's creep
-# (0.025) still outpaces it and trends misaligned (the §0 fix stays intact).
-GOAL_MIS_CREEP = 0.025
+# cliff. Eased AGAIN 0.025->0.022 (ISSUES.md "longer-game creep compensation"): the
+# ASI-gate/duration retune roughly DOUBLED game length (~53->110 turns) and lifted
+# per-model post-train rounds ~1.5x (3.4->5.0), so the same per-round creep accumulated
+# more — a careful player's best model drifted from composite ~0.32 (aligned) to ~0.39
+# (over the 0.35 bar) without playing worse. This PARTIALLY compensates (creep is
+# per-ROUND; a full proportional cut to ~0.017 would breach the 0.02 baseline-shaping
+# floor and flip no-safety labs to align-by-default). Still > 0.02, so the §0
+# misalignment-by-default fix holds — just with a thinner margin.
+GOAL_MIS_CREEP = 0.022
 # Capability-gated axes: near zero early, rising with capability.
 EVAL_AWARE_RATE = 0.045         # [TUNE]
 EVAL_AWARE_ONSET = 4.0          # general capability where the gate is half-open

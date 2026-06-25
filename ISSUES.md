@@ -1787,6 +1787,24 @@ bringing the full-tree pretrain efficiency to **~11.28** (the non-delegation tre
 multiplier, so it lowers the ASI cost without lifting the non-delegation plateau. (Old eff 12.85 was
 deliberately not restored — that made ASI a routine, non-gated outcome.)
 
+**Longer-game creep compensation: GOAL_MIS_CREEP 0.025 → 0.022.** Playtest measurement showed the
+ASI-gate/duration retune ~DOUBLED game length (avg ~53 → ~110 turns) and raised per-model post-train
+rounds ~1.5x (3.4 → 5.0), so the same PER-ROUND creep over-accumulated: a careful player's best model
+drifted from composite ~0.32 (under the 0.35 aligned bar) to ~0.39 (over it) without playing worse.
+Eased the per-round creep to partly compensate. Constraints/notes:
+- Creep is per-ROUND, not per-year, and is matched per-round by corrective shaping — but it must stay
+  ABOVE the 0.02 baseline-shaping floor or no-safety labs flip to align-by-default (breaks the §0
+  misalignment-by-default thesis). So 0.022 (margin 0.002) is a PARTIAL fix; a full proportional cut
+  (~0.017) is off-limits.
+- Ceteris-paribus (same model, RNG, 6 rounds, no safety): composite 0.386 → 0.373 (goal_mis
+  0.265 → 0.242). Real but modest.
+- Most of the longer-game drift is NOT goal-mis creep: it's the OTHER per-round emergence terms
+  (deception / self-preservation / eval-awareness) accumulating over the extra rounds, plus
+  contamination compounding across more researched advances. Fuller compensation would mean scaling
+  those rates too — a broader retune of several thesis-tuned constants, deferred (flagged for a
+  Monte-Carlo pass). Whole-game composite is too seed-noisy (0.20–0.71) to validate small changes;
+  trust the ceteris-paribus measurement. Golden master re-recorded.
+
 **Still pending (Stage 3 / Group C):** elaborate the `novel_architecture_search` risk —
 whether AI-discovered architectures should be mechanically harder to probe/interpret (would
 need a new interpretability-effectiveness knob) or copy-only.

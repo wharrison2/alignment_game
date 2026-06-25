@@ -195,12 +195,18 @@ _OPENING = Action(start_projects=[{"project_id": "generative_pretraining", "ai_a
 # both activates AND a release's gating outcome flips under the recency rule, shifting the TRUE
 # trajectory. The check uses no RNG (call order unchanged), so this is a pure gating-outcome change.
 # The other four games never bind on interp_mandate, so their digests are unchanged.
+# Re-recorded for the "longer-game creep compensation" change (ISSUES.md): GOAL_MIS_CREEP
+# 0.025->0.022 (the ASI-gate/duration retune lengthened games ~2x and lifted per-model
+# post-train rounds ~1.5x, so the same per-round creep over-accumulated). Lower per-round
+# goal-misalignment creep shifts every model's TRUE alignment trajectory each post-train
+# round, moving every digest. Determinism holds; intentional balance change, NOT an
+# RNG/firewall regression (CLAUDE.md §8).
 EXPECTED = {
-    "0-balanced-realistic": "fefc9177d9e7a6325ae43d1f8e9043f63c1130a69f64743eff1bd507dfcc8520",
-    "3-aggressive-realistic": "282b2a2e000ce53f75567baa93d08353fe6e9be0fdb71a2ec45297297eaaf334",
-    "7-cautious-realistic": "d4a0b5f4ed2cdb5a61b5d62c8f5b8ba994f2098e2d4ba2f2c8104b737fc3f751",
-    "1-balanced-easy": "2d27a8f8d1caaf0beb351e5bc5b9170d8a4df413ffeeb4a0e43e79823262defe",
-    "5-aggressive-impossible": "fe38eae1015fc176b5178a1952c871f5d62e196a31b6f8416c01dbcd6726b545",
+    "0-balanced-realistic": "3ab7f2980b56cdef1fd0b7c1f7b8c459600afe6947a531f3c9cf97cd8ddfd8ef",
+    "3-aggressive-realistic": "9e75ecc01eee5246443649de54c9b16d9d39633ba5e9cadc6f20abe6c21758f1",
+    "7-cautious-realistic": "788fd1aa259cdf714506f59ebb011d4212ab2d3da431efa63123fac6aef43718",
+    "1-balanced-easy": "fa343fc763c8aa7eba24c2a21b5ff770fc55a7302c31f45804e76c9427c29cea",
+    "5-aggressive-impossible": "2783b2a2879b45db6edb64f5dc309cc7cbff77b295282676ecccc347c93039b3",
 }
 
 
