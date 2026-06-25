@@ -92,35 +92,42 @@ class RivalController(LabController):
         # choice, not a slider).
         safety_priority = disposition.safety_priority
         if moves["can_commission_run"] and cash > max(150, moves["max_run_compute"] * 0.15):
-            # ENDGAME ASI RUN (§10c desperation→ASI): a lab that has the architecture
-            # breakthrough capable of crossing the ASI ceiling, once it can fund a
-            # near-maximal run, commits almost everything — the only run big enough to
-            # lift the ceiling over the threshold. Until it can afford that, it keeps
-            # doing NORMAL intermediate runs (never idle: each one raises its ceiling and
-            # revenue, which is what lets cash climb toward the decisive run).
+            # ENDGAME ASI RUN (§10c desperation→ASI): a lab with the architecture
+            # breakthrough that can cross the ASI ceiling runs a BUILD → SAVE → STRIKE arc:
+            #   • BUILD: until it has a competitive model, do normal intermediate runs to
+            #     raise capability and revenue.
+            #   • SAVE: once it has a revenue-earning model, it STOPS spending on runs and
+            #     lets cash pile up UNTOUCHED across rounds (commissions nothing) — the
+            #     bank for one decisive run; a fixed-fraction run would just scale with
+            #     cash and never let a reserve accumulate.
+            #   • STRIKE: the moment a near-maximal run would cross ASI, it commits ~all cash.
+            reserve = round(cash * (0.55 + 0.3 * effective_recklessness), 0)
             if self._pursuing_asi(obs, effective_recklessness):
-                if self._asi_run_ready(obs, moves, disposition):
-                    reserve = round(moves["max_run_compute"], 0)            # decisive run: crosses ASI now
+                decisive_compute = round(cash * consts.ASI_RUN_CASH_FRACTION, 0)  # win-or-bust: ~all cash
+                if self._asi_run_crosses(obs, disposition, decisive_compute):
+                    reserve = decisive_compute                                    # STRIKE
+                elif self._best_measured_general(obs) >= consts.ASI_SAVE_CAPABILITY_FLOOR:
+                    reserve = 0.0                                                 # SAVE (set cash aside)
                 else:
-                    reserve = round(cash * consts.ASI_INTERMEDIATE_FRAC, 0)  # keep shipping, save toward it
-            else:
-                reserve = round(cash * (0.55 + 0.3 * effective_recklessness), 0)
-            applied = self._safety_advances_to_apply(moves["applicable_pretrain_safety"],
-                                                     safety_priority)
-            action.commission_run = {"compute": reserve, "applied_safety": applied}
-            cash -= reserve
+                    reserve = round(cash * consts.ASI_INTERMEDIATE_FRAC, 0)       # BUILD
+            if reserve >= consts.MIN_RUN_COMPUTE:
+                applied = self._safety_advances_to_apply(moves["applicable_pretrain_safety"],
+                                                         safety_priority)
+                action.commission_run = {"compute": reserve, "applied_safety": applied}
+                cash -= reserve
         elif moves["can_post_train"] and free >= 0.3:
             model_in_training = obs.model_in_training
             ceiling = model_in_training["elicitation"]["ceiling_estimate"]
             realized = model_in_training["measured_capability"]["general"]
             target = (0.55 + 0.35 * effective_recklessness) * ceiling
             if (self._pursuing_asi(obs, effective_recklessness)
-                    and ceiling >= consts.ASI_THRESHOLD
-                    and realized < consts.ASI_THRESHOLD):
-                # THE DECISIVE MODEL: its ceiling can cross the ASI line, so keep
-                # ELICITING it rather than shipping at the normal "good enough" bar — true
-                # capability climbs toward the ceiling each round and trips the
-                # verification cliff at 9.0. (Releasing early freezes it below ASI.)
+                    and ceiling >= consts.ASI_THRESHOLD):
+                # THE DECISIVE MODEL: its ceiling can cross the ASI line, so NEVER release
+                # it — keep ELICITING every round. True capability climbs toward the
+                # ceiling and trips the verification cliff at 9.0 (the engine checks TRUE
+                # capability). Do NOT gate on measured realized: measured can read ABOVE
+                # true, so a "realized ≥ 9" check would ship the model frozen just below
+                # true 9.0 (observed: a ceiling-9.22 run stalled at true 8.92, one round short).
                 apply = self.rng.random() < safety_priority * (1 - effective_recklessness)
                 applied = (self._safety_advances_to_apply(moves["applicable_post_train_safety"],
                                                           safety_priority) if apply else [])
@@ -151,23 +158,32 @@ class RivalController(LabController):
         return any(entry["id"] == "novel_architecture_search"
                    for entry in obs.researched_advances)
 
-    def _asi_run_ready(self, obs, moves, disposition):
-        """True when a MAXIMAL run right now would push the pretrain ceiling over the ASI
-        threshold (plus a margin for the realized-vs-ceiling gap), given THIS lab's
-        efficiency = cost_advantage × its researched pretrain multipliers. Uses the same
-        ceiling formula the engine does (training_run.complete_pretrain), so the decisive
-        run fires exactly when the lab can actually win — NOT at an arbitrary flat cash
-        target (a cost-advantaged lab crosses ASI far below what a flat target would
-        demand; the disposition is passed straight to the controller, so cost_advantage
-        is known without peeking at any other lab)."""
+    def _best_measured_general(self, obs):
+        """Best measured general capability across the lab's OWN released models (and any
+        model in training). Used to decide when the lab is competitive enough to switch
+        from BUILD to SAVE — i.e. it has a model earning revenue while it banks cash."""
+        best = 0.0
+        for m in obs.own_models:
+            best = max(best, m["measured_capability"]["general"])
+        if obs.model_in_training is not None:
+            best = max(best, obs.model_in_training["measured_capability"]["general"])
+        return best
+
+    def _asi_run_crosses(self, obs, disposition, compute):
+        """True when a run of `compute` would push the pretrain ceiling over the ASI
+        threshold (plus a small margin), given THIS lab's efficiency = cost_advantage ×
+        its researched pretrain multipliers. Uses the same ceiling formula the engine
+        does (training_run.complete_pretrain), so the decisive run fires exactly when the
+        lab can actually win — NOT at an arbitrary flat cash target (a cost-advantaged lab
+        crosses ASI far below what a flat target would demand; the disposition is passed
+        straight to the controller, so cost_advantage is known without peeking at others)."""
         efficiency = disposition.cost_advantage
         for entry in obs.researched_advances:
             if entry.get("phase") == "pretrain":
                 template = CAPABILITY_TREE_BY_ID.get(entry["id"])
                 if template is not None:
                     efficiency *= template.ceiling_efficiency_mult
-        compute = max(0.0, moves["max_run_compute"])
-        scaled_compute = math.sqrt(compute * efficiency / consts.CEIL_COMPUTE_SCALE)
+        scaled_compute = math.sqrt(max(0.0, compute) * efficiency / consts.CEIL_COMPUTE_SCALE)
         ceiling = consts.CAP_MAX * (1.0 - math.exp(-scaled_compute))
         return ceiling >= consts.ASI_THRESHOLD + consts.ASI_RUN_CEILING_MARGIN
 

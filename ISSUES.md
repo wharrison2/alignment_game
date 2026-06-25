@@ -1730,37 +1730,62 @@ Change (`rival_controller.py` + constants): a lab that has researched `novel_arc
 `obs.researched_advances` + cash each turn), deterministic, no new RNG draws. Golden master unchanged
 (capped 30-turn scripted games never reach the endgame, so the path isn't exercised).
 
-**v1 FROZE rivals — replaced.** First version made a pursuing lab HOLD (commission nothing) until
-cash ≥ target. But rivals unlock novel_architecture_search cheaply via AI-assist at LOW true capability
-(~4), so they froze there: stopped shipping, hoarded toward $13B they reached too slowly, ended frozen
-at cap ~4 with piles of unspent cash. Proven by toggling: with the hold disabled the same rivals
-climbed to ~7.8. **Fix (per designer "make them do another intermediate run"):** a pursuing lab now
-keeps shipping — it commissions a NORMAL run sized at `ASI_INTERMEDIATE_FRAC` (0.50) of cash each cycle
-(smaller than the 0.55–0.85 default, so cash net-climbs), and only once cash ≥ `ASI_RUN_TARGET_CASH`
-does it commit a near-maximal decisive run. No freeze; rivals stay competitive (~8).
+**Final shape: BUILD → SAVE → STRIKE.** (Earlier iterations froze rivals at low capability, or used a
+fixed-fraction "intermediate run" that scaled with cash and so never let a reserve accumulate.) A
+pursuing lab (reck ≥ `ASI_PUSH_RECKLESSNESS` 0.30, has novel_architecture_search) now:
+  • **BUILD** — while its best model is below `ASI_SAVE_CAPABILITY_FLOOR` (6.5 measured general), do
+    normal intermediate runs (`ASI_INTERMEDIATE_FRAC` 0.50 of cash) to raise capability + revenue;
+  • **SAVE** — once it has a competitive (revenue-earning) model, STOP spending on runs and let cash
+    pile up UNTOUCHED across rounds (commissions nothing — a fixed *fraction* would just scale with
+    cash and never bank a reserve; true saving needs bounded spend);
+  • **STRIKE** — the moment a ~all-cash run would cross ASI, commit it.
+This is what the designer asked for ("actually save — set aside money across rounds they don't touch")
+and it works: e.g. a cost_advantage-1.25 rival builds, banks, then strikes an $8.7B run → ceiling 9.08
+→ ASI. Cautious labs (reck < 0.30) don't pursue — they bank cash and ship safe models instead, a
+deliberate strategy difference, not a freeze.
 
-**Flat $13B target was WRONG — replaced with principled firing.** The min cash to cross ASI is NOT a
-constant: it scales with the lab's efficiency = `cost_advantage × Π(pretrain mults)`. With-novel that
-is `cost_advantage × 10.57`, so the min cash ranges from ~$7.8B (cost_advantage 1.5) through ~$11.7B
-(1.0) to ~$14.6B (0.8). A flat $13B both (i) blocked cost-advantaged labs — the natural ASI contenders,
-which cross at ~$9B — from firing, and (ii) was unreachable for cost-disadvantaged ones. Now the
-controller computes its OWN ceiling from `disposition.cost_advantage` (passed straight to `decide`, so
-no peeking at other labs) × the researched pretrain mults (from `obs.researched_advances` + the
-catalog), and fires the decisive max run the moment that run would reach a ceiling ≥
-`ASI_THRESHOLD + ASI_RUN_CEILING_MARGIN` (0.10). No flat cash constant (`ASI_RUN_TARGET_CASH` removed).
+**Flat $13B target was WRONG — replaced with principled firing.** The compute to cross ASI is NOT a
+constant: it solves `10·(1−e^(−√(compute·eff/20000))) = 9.0` ⇒ `compute = 5.302·20000/eff`, with
+eff = `cost_advantage × Π(pretrain mults)` = `cost_advantage × 10.57` (verified: engine prints
+ceiling_efficiency 10.57 for the full clean tree at cost_advantage 1.0). So the min COMPUTE is
+~$10.0B (cost_advantage 1.0), ~$8.4B (1.2), ~$7.7B (1.3), ~$12.5B (0.8). **And `max_run_compute =
+cash×0.9` is only a legal-moves HINT — commission validation (actions.py:199,267) permits compute up
+to ~full cash.** So the PLAYER reaches ASI at ~$10B cash (cost_advantage 1.0), not the ~$11.7B I first
+quoted (that wrongly divided by 0.9 and added a needless realized-margin — realized elicits right up
+to the ceiling = threshold). Empirically: $10B → ceiling 9.00 → realized → 9.0; $11B → 9.10.
 
-**Second bug fixed — the decisive model was shipped too early.** The rival releases a model once
-measured realized ≥ `(0.55+0.35·reck)·ceiling` (~72% of ceiling), which freezes true capability at
-~0.88·ceiling — below 9.0 even for a ceiling-9.2 run. Fix: a pursuing lab holding a model whose
-ceiling ≥ ASI keeps ELICITING it (never ships at the normal bar) so true capability climbs across 9.0
-and trips the verification cliff (the cliff checks the in-training model, turn_pipeline:438).
+The decisive-run logic now computes the lab's OWN ceiling from `disposition.cost_advantage` (passed
+straight to `decide`, so no peeking at other labs) × researched pretrain mults, and fires a
+**win-or-bust run committing `ASI_RUN_CASH_FRACTION` (0.95) of cash** the moment that run would reach a
+ceiling ≥ `ASI_THRESHOLD + ASI_RUN_CEILING_MARGIN` (0.05). No flat cash constant (`ASI_RUN_TARGET_CASH`
+removed). This drops the rivals' effective ASI cash threshold from ~$12.2B (old 0.9 cap + 0.10 margin)
+to ~$11B — matching the player's ~$10B far more closely.
 
-**Status:** ASI now reached by a rival in ~4/10 realistic seeds (was ~1/5), and the cost-ADVANTAGED
-labs reliably win the race — a sensible asymmetry (the most efficient lab gets there first). The seeds
-where no rival crosses are ones whose labs are near/below cost_advantage 1.0 and never amass the ~$11.7B
-their efficiency demands. Pushing the hit-rate higher (if desired) wants either a `novel_architecture_search`
-bump (×3.0→~×3.5 lowers every lab's threshold; non-delegation tree still plateaus ~7) or a richer
-mid-game economy — ideally chosen via a Monte-Carlo pass (cli.strategy_report), not single seeds.
+**Second bug fixed — the decisive model was shipped frozen just below ASI.** The rival releases a model
+once measured realized ≥ `(0.55+0.35·reck)·ceiling`. A pursuing lab holding a model whose ceiling ≥ ASI
+must instead keep ELICITING it (never ship). FIRST attempt gated that on `measured_realized < ASI`, but
+MEASURED capability can read ABOVE true — so the model shipped frozen at true ~8.9 from a ceiling-9.22
+run (one round short). FINAL: a pursuing lab NEVER releases a ceiling-≥ASI model; it elicits every round
+until TRUE capability trips the verification cliff (the engine checks true, including the in-training
+model, turn_pipeline:438).
+
+**Status:** ASI now reached by a rival in ~5/10 realistic seeds (was ~1/5). The cost-ADVANTAGED + reck-
+≥0.30 labs reliably save and strike (e.g. seed21 rival, cost_advantage 1.25, ASI by turn 73). Seeds
+with no rival ASI are ones where the leader is either CAUTIOUS (reck < 0.30 → never makes the gamble,
+banks cash + ships safe models) or near/below cost_advantage 1.0 (never amasses the ~$11B its efficiency
+demands). Pushing the hit-rate higher (if desired) wants a `novel_architecture_search` bump
+(×3.0→~×3.5 lowers every lab's threshold; non-delegation tree still plateaus ~7) and/or lowering
+`ASI_PUSH_RECKLESSNESS` so more labs gamble — ideally chosen via a Monte-Carlo pass (cli.strategy_report).
+
+**Follow-up — eased the gate partway (designer call).** Before/after comparison (old commit d26cfc0
+vs the committed gate) showed ASI went from routine (full-tree eff 12.85 / scale 14000 → ~$5.8B, 7/10
+seeds) to rare (eff 10.57 / scale 20000 → ~$10B; the committed-but-pre-controller-fix build hit only
+2/10). To take the edge off without undoing the gate, raised `novel_architecture_search` ×3.0→**×3.2**,
+bringing the full-tree pretrain efficiency to **~11.28** (the non-delegation tree stays 3.52, so the
+"can't reach ASI without delegation" gate is intact — non-deleg still needs ~$30B). ASI compute
+(cost_advantage 1.0) eases $10.0B→**$9.4B**. The increase rides entirely on the delegation-gated
+multiplier, so it lowers the ASI cost without lifting the non-delegation plateau. (Old eff 12.85 was
+deliberately not restored — that made ASI a routine, non-gated outcome.)
 
 **Still pending (Stage 3 / Group C):** elaborate the `novel_architecture_search` risk —
 whether AI-discovered architectures should be mechanically harder to probe/interpret (would

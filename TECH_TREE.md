@@ -37,7 +37,7 @@ and `prereqs`.
 *Each raises the compute→ceiling efficiency. They make the base model stronger.*
 *(Balance numbers below are drafts — [TUNE].)*
 
-> **ASI gate.** This tree is deliberately weak as a group: the human-reachable pretrain advances multiply compute→ceiling efficiency to only ~3.5×, and with `CEIL_COMPUTE_SCALE = 20000` the realized-capability ceiling **plateaus around ~8 (below the 9.0 ASI threshold) even at the largest realistic compute spend (~$20B)**. Crossing into ASI requires `novel_architecture_search` (×3.0), which is gated behind the delegation chain (`recursive_self_improvement`). So you cannot reach ASI on the regular tree + cash alone — you must let the AI run its own research loop.
+> **ASI gate.** This tree is deliberately weak as a group: the human-reachable pretrain advances multiply compute→ceiling efficiency to only ~3.5×, and with `CEIL_COMPUTE_SCALE = 20000` the realized-capability ceiling **plateaus around ~8 (below the 9.0 ASI threshold) even at the largest realistic compute spend (~$20B)**. Crossing into ASI requires `novel_architecture_search` (×3.2 — bringing the full pretrain efficiency product to ~11.3), which is gated behind the delegation chain (`recursive_self_improvement`). So you cannot reach ASI on the regular tree + cash alone — you must let the AI run its own research loop.
 
 ### Generative pretraining — `generative_pretraining`
 > Train a single large model to predict the next token across a huge sweep of text. Instead of building a separate system per task, you get one general model that has absorbed broad knowledge and skills it can be pointed at almost anything. This is the foundation everything else builds on.
@@ -86,7 +86,7 @@ and `prereqs`.
 **Risk:** Architectures no human designed or fully understands, raising the ceiling past anything built so far.
 
 - **Cost:** 2.0 yr · cash 240 · budget 42% · prereqs: `recursive_self_improvement` *(a delegated, beyond-frontier project — the self-improving model does the search)*
-- **Effects:** `ceiling_efficiency_mult 3.0` *(the decisive multiplier that lifts the ceiling over the ASI threshold)*, `coding_ceiling_bonus 0.10`
+- **Effects:** `ceiling_efficiency_mult 3.2` *(the decisive multiplier that lifts the ceiling over the ASI threshold; full-tree product ~11.3)*, `coding_ceiling_bonus 0.10`
 
 ---
 
@@ -188,7 +188,7 @@ and `prereqs`.
 | `mixture_of_experts` | pretrain | 0.75 | 60 | 35% | larger_datasets | ceil×1.35, code+0.05 |
 | `compute_optimal_scaling` | pretrain | 0.5 | 50 | 30% | larger_datasets | ceil×1.25 |
 | `synthetic_data` | pretrain | 0.75 | 80 | 35% | compute_optimal_scaling | ceil×1.45, contam 1.5, synth-path |
-| `novel_architecture_search` | pretrain | 2.0 | 240 | 42% | recursive_self_improvement | ceil×3.0, code+0.10 |
+| `novel_architecture_search` | pretrain | 2.0 | 240 | 42% | recursive_self_improvement | ceil×3.2, code+0.10 |
 | `rlhf` | post | 0.5 | 30 | 30% | — | elic+0.30, deception ON, rev×1.15 |
 | `chain_of_thought` | post | 0.5 | 40 | 30% | rlhf | elic+0.18, code+0.12, evalaware+0.03, assist+0.07 |
 | `tool_use` | post | 0.5 | 50 | 30% | rlhf | elic+0.08, sev×1.6*, rev×1.3, assist+0.07 |

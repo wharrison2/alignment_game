@@ -90,11 +90,12 @@ CAPABILITY_TREE = [
         # gated by recursive_self_improvement: discovering architectures no human
         # designed is itself a delegated, beyond-frontier project — you only get here
         # once the self-improving model is doing the search (design §9). This is the
-        # decisive ceiling multiplier (x3.0): the regular tree plateaus below ASI, and
-        # only this delegation-gated advance lifts the ceiling over the threshold.
+        # decisive ceiling multiplier (x3.2): the regular tree plateaus below ASI, and
+        # only this delegation-gated advance lifts the ceiling over the threshold. It
+        # brings the full pretrain efficiency product to ~11.3 (vs ~3.5 without it).
         id="novel_architecture_search", name=t("research.novel_architecture_search.name"), phase="pretrain",
         duration_years=2.0, cash_cost=240, budget_fraction=0.42,
-        prereqs=("recursive_self_improvement",), ceiling_efficiency_mult=3.0,
+        prereqs=("recursive_self_improvement",), ceiling_efficiency_mult=3.2,
         coding_ceiling_bonus=0.10,
         what_it_does=t("research.novel_architecture_search.what_it_does"),
         risk_blurb=t("research.novel_architecture_search.risk_blurb"),

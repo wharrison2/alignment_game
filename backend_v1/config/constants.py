@@ -34,8 +34,10 @@ ASI_RUN_CEILING_MARGIN = 0.05   # [TUNE] fire the decisive run once it would rea
 ASI_RUN_CASH_FRACTION = 0.95    # [TUNE] the decisive run is win-or-bust, so commit nearly ALL cash —
                                 # the cash×0.9 max_run_compute hint is only the controller's normal
                                 # reserve; commission validation permits compute up to ~full cash
-ASI_INTERMEDIATE_FRAC = 0.50    # [TUNE] while saving for the decisive run, a pursuing lab still ships,
-                                # but commits only this fraction of cash per run so cash net-climbs
+ASI_INTERMEDIATE_FRAC = 0.50    # [TUNE] BUILD phase: fraction of cash a pursuing lab commits per
+                                # intermediate run while raising capability toward the SAVE threshold
+ASI_SAVE_CAPABILITY_FLOOR = 6.5  # [TUNE] once a pursuing lab's best model reaches this measured general,
+                                # it stops spending on runs and BANKS cash (untouched) for the decisive run
 # Soft regime reference points (NO in-game labels; used only by emergence
 # curves, agentic-edge gates and guidance hedging):
 REGIME2_ONSET = 3.5
@@ -47,7 +49,7 @@ CEIL_COMPUTE_SCALE = 20000.0    # [TUNE] ceiling = CAP_MAX*(1-e^-sqrt(eff*comput
                                 # efficiency tree) so that NEITHER raw compute NOR the regular
                                 # advances reach ASI: the no-delegation ceiling plateaus ~8 (below the 9.0 ASI threshold)
                                 # even at the largest realistic compute spend (~$20B). Crossing
-                                # the ASI threshold requires novel_architecture_search (x3.0),
+                                # the ASI threshold requires novel_architecture_search (x3.2),
                                 # which is gated behind the delegation chain — i.e. you must let
                                 # the AI run its own research loop to get there. Keeps the late
                                 # game about RESEARCH + the delegation gamble, not buying ASI on
