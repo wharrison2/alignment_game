@@ -61,14 +61,9 @@ def run_turn(state, actions):
 
     # ── 2. tick research processes ──────────────────────────────────
     for lab in state.labs:
-        speed_bonus = sum(
-            CAPABILITY_TREE_BY_ID[nid].research_speed_bonus
-            for nid in lab.researched_advances
-            if nid in CAPABILITY_TREE_BY_ID
-        )
         done = []
         for proc in lab.in_progress:
-            if proc.tick(dt, speed_bonus, rng.normal()):
+            if proc.tick(dt, rng.normal()):
                 done.append(proc)
         for proc in done:
             lab.in_progress.remove(proc)
@@ -316,15 +311,20 @@ def _apply_training_action(state, lab, action, policy_news):
 
     if action.release and lab.model_in_training is not None:
         model = lab.model_in_training
-        lab.model_in_training = None
         audit = state.world.policies.get("audit_requirement")
         interp = state.world.policies.get("interp_mandate")
+        # Interp mandate is a hard block: if a complying lab lacks clean mechanistic
+        # evidence on this model, the release is refused and the model stays in
+        # training (untouched — don't detach-then-restore). legal_moves.release_gate
+        # warns the player about this BEFORE they submit (§7c).
         if interp is not None and interp.active and _complies(lab, "interp_mandate", rng):
-            if not regulation.interp_mandate_check(lab, model, consts):
-                lab.model_in_training = model
+            if not regulation.interp_mandate_check(lab, model, consts, turn, dt):
                 policy_news.append(t("release.interp_mandate_blocked",
                                      {"lab": lab.name, "model": model.id}))
                 return
+        # Past the hard block, the model is leaving training: either delayed one turn
+        # for a government audit, or released now.
+        lab.model_in_training = None
         if audit is not None and audit.active and _complies(lab, "audit_requirement", rng):
             lab.cash = max(0.0, lab.cash - consts.AUDIT_CASH_COST)
             lab.audit_pending_release = model    # one-turn delay

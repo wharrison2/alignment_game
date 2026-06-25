@@ -65,7 +65,7 @@ def _play_player_observations(seed):
     rival_ctrl = RivalController(Rng(seed + 1))
     scripted_ctrl = RivalController(Rng(seed + 2))
     scripted_disp = Disposition(recklessness=SCRIPTED_RECKLESSNESS)
-    opening = Action(start_projects=[{"project_id": "scaling_laws", "ai_assist": 0.0}],
+    opening = Action(start_projects=[{"project_id": "generative_pretraining", "ai_assist": 0.0}],
                      commission_run={"compute": 300})
 
     player_observations = []

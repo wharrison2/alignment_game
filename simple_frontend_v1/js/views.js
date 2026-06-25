@@ -579,7 +579,19 @@ export function renderTraining(){
     ${postTrainSafetyHTML()}
     <div class="row"><label><input type="checkbox" id="release-cb"
       ${pending.release?"checked":""} onchange="toggleRelease(this.checked)">
-      ${t("training.release.label")}</label></div>`;
+      ${t("training.release.label")}</label></div>
+    ${releaseGateHTML()}`;
+}
+
+// §7c: an active policy that would BLOCK or DELAY the release explains itself right
+// at the control, so the player doesn't submit and only learn why from a feed line
+// next turn. legal_moves.release_gate is null when nothing gates the release.
+function releaseGateHTML(){
+  const gate = OBS.legal_moves.release_gate;
+  if(!gate) return "";
+  const cls = gate.blocked ? "bad" : "warn";
+  return `<div class="row feed-${gate.blocked?"event":"tip"}" style="font-size:12px">
+    <span class="${cls}">${gate.blocked ? "⛔" : "⏳"}</span> ${esc(gate.reason)}</div>`;
 }
 
 // The post-train round controls. The old per-round MODE dropdown is gone (Stage A
@@ -1203,7 +1215,39 @@ function rivalCardHTML(rival){
       ${rivalFieldHTML(t("rivals.col.releases"), releasedModels)}
       ${rivalFieldHTML(t("rivals.col.frontier"), frontier)}
     </div>
+    ${disclosedModelsHTML(rival)}
   </div>`;
+}
+
+// When the disclosure mandate is active, the backend attaches `disclosed_models`:
+// each released model's MEASURED safety numbers, published by the rival itself.
+// These are measured stats (an eval-aware model games them), so the section is
+// firewall-safe — nothing true crosses. Absent entirely when disclosure is off.
+function disclosedModelsHTML(rival){
+  // The lab is defecting on the mandate — it publishes nothing and eats a fine.
+  if(rival.disclosure_withheld){
+    return `<div class="rc-disclosure-withheld">${t("rivals.disclosure.withheld")}</div>`;
+  }
+  if(!rival.disclosed_models || rival.disclosed_models.length === 0) return "";
+
+  const modelRows = rival.disclosed_models.map(model => {
+    const alignment = model.measured_alignment;
+    return `<div class="rc-disclosed-model">
+      <div class="row"><b>${esc(model.id)}</b>
+        <span class="dim"> · ${t("training.measuredGeneral")} ${model.measured_capability.general}
+        · ${t("training.coding")} ${model.measured_capability.coding_rnd}</span></div>
+      <div class="row dim">${t("training.dangerousEval", {value: model.dangerous_capability_eval})}</div>
+      <div class="row dim">${t("training.measuredAlignment", {
+        goalmis: alignment.goal_misalignment, decep: alignment.deception,
+        evalaware: alignment.eval_awareness, selfpres: alignment.self_preservation,
+        jailbreak: alignment.jailbreak_sensitivity})}</div>
+    </div>`;
+  }).join("");
+
+  return `<details class="rc-disclosure">
+    <summary>${t("rivals.disclosure.heading")}</summary>
+    ${modelRows}
+  </details>`;
 }
 
 // One labeled field cell inside a rival card. Values here are numeric/formatted
@@ -1234,7 +1278,7 @@ export function renderFeed(){
 // ── Governance panel ──────────────────────────────────────────────────────────
 // Each policy item is a 2-column grid: LEFT = policy identity + a short NEUTRAL
 // descriptor + the compact lobby/litigation/defect controls; RIGHT = the public
-// rival-spends box. The verbose `teaches` mechanism text is NOT shown inline — it
+// rival-spends box. The verbose `effect` mechanism text is NOT shown inline — it
 // moved to a click-to-open details modal (openPolicyModal) so the board reads at a
 // glance and stops over-revealing on every row (UI_ISSUES issues 4/5/8).
 export function renderGovernance(){
@@ -1268,7 +1312,7 @@ function policyHeadHTML(policy){
 }
 
 // Short NEUTRAL category/stage descriptor + a "details ▸" link to the full modal.
-// This deliberately does NOT carry policy.teaches (that lives in the modal now).
+// This deliberately does NOT carry policy.effect (that lives in the modal now).
 function policyCategoryHTML(policy){
   const pid = policy.policy_id;
   let categoryKey;
@@ -1326,10 +1370,16 @@ function defectControlHTML(policy){
   const pid = policy.policy_id;
   const defectPreview = policy.defect_preview;
   const isDefecting = !!pending.defect[pid];
-  const previewText = t("gov.defect.preview", {
-    catch: (defectPreview.catch_prob_per_year*100).toFixed(0),
-    fine: fmt$(defectPreview.penalty_if_caught),
-    approval: defectPreview.approval_hit_if_caught});
+  // An always-caught policy (disclosure) has no catch probability — it is certain
+  // and fined every turn — so it gets its own preview line.
+  const previewText = defectPreview.always_caught
+    ? t("gov.defect.preview_certain", {
+        fine: fmt$(defectPreview.penalty_per_turn),
+        approval: defectPreview.approval_hit_if_caught})
+    : t("gov.defect.preview", {
+        catch: (defectPreview.catch_prob_per_year*100).toFixed(0),
+        fine: fmt$(defectPreview.penalty_if_caught),
+        approval: defectPreview.approval_hit_if_caught});
   return `<label class="${isDefecting?'bad':''}"><input type="checkbox" ${isDefecting?"checked":""}
       onchange="toggleDefect('${pid}',this.checked)"> ${t("gov.defect.label")}</label>
     <span class="warn">${previewText}</span>`;
@@ -1357,7 +1407,7 @@ function rivalSpendsHTML(rivalContributions){
 
 // Details modal for one policy — reuses the warnings.js #itemmodal pattern (same
 // #itemmodal / #modal-body card, closed by closeItemModal). Shows the full
-// `teaches` mechanism text the inline item deliberately hides, plus the key PUBLIC
+// `effect` mechanism text the inline item deliberately hides, plus the key PUBLIC
 // state (stage, enforcement, litigation summary). All shown values are public
 // regulatory info or authored backend copy; esc() everything for firewall hygiene.
 export function openPolicyModal(policyId){
@@ -1371,8 +1421,8 @@ export function openPolicyModal(policyId){
       <b>${t("gov.modal.stageHeading")}:</b> ${esc(policy.stage)}
       ${policyModalEnforcementHTML(policy)}</div>
     ${policyModalLitigationHTML(policy)}
-    <div style="margin:10px 0 4px"><b>${t("gov.modal.teachesHeading")}</b></div>
-    <div style="margin-bottom:10px">${esc(policy.teaches || "")}</div>
+    <div style="margin:10px 0 4px"><b>${t("gov.modal.effectHeading")}</b></div>
+    <div style="margin-bottom:10px">${esc(policy.effect || "")}</div>
     <div class="row" style="margin-top:14px">
       <button onclick="closeItemModal()">${t("gov.modal.close")}</button>
     </div>`;

@@ -299,6 +299,8 @@ export const STRINGS = {
   "rivals.col.frontier": "frontier ≈",
   "rivals.releases.unit": "{count} models",
   "rivals.frontier.unknown": "—",
+  "rivals.disclosure.heading": "disclosed safety numbers (measured)",
+  "rivals.disclosure.withheld": "withholding required disclosures (being fined)",
   "rivals.cap": "cap {cap} · {releases} releases",
   "rivals.frontier": " · frontier ≈ {value}",
 
@@ -311,6 +313,7 @@ export const STRINGS = {
   "gov.lit.label": "litigate",
   "gov.defect.label": "DEFECT (violate at catch-risk)",
   "gov.defect.preview": "⚠ catch ~{catch}%/yr · fine {fine} · approval −{approval}",
+  "gov.defect.preview_certain": "⚠ always caught · fine {fine}/turn · approval −{approval}",
   "gov.lit.standingYes": "yes",
   "gov.lit.standingNo": "no",
   // short NEUTRAL inline descriptors — the full mechanism text moved to the modal
@@ -324,7 +327,7 @@ export const STRINGS = {
   "gov.modal.stageHeading": "Stage",
   "gov.modal.enforceHeading": "Enforcement",
   "gov.modal.litHeading": "Litigation",
-  "gov.modal.teachesHeading": "What this teaches",
+  "gov.modal.effectHeading": "What it does",
   "gov.modal.close": "close",
 
   // ── Turn queue (renderQueue) ───────────────────────────────────────────────

@@ -27,10 +27,10 @@ class ResearchProcess:
     assist_speedup_max: float = 1.0     # consts.ASSIST_SPEEDUP, snapshotted at start
     meta: dict = field(default_factory=dict)
 
-    def tick(self, dt: float, speed_bonus: float, variance_draw: float) -> bool:
+    def tick(self, dt: float, variance_draw: float) -> bool:
         """Advance one turn. variance_draw ~ N(0,1); assist widens the spread.
         Returns True when complete."""
-        effective_dt = dt * (1.0 + speed_bonus)
+        effective_dt = dt
         if self.ai_assist > 0:
             # assist speeds the EXPECTED clock (∝ assisting-model potency) but adds
             # noise to it (anti-dithering: can't shave exactly one turn on demand)

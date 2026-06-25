@@ -19,18 +19,39 @@ START_YEAR = 2021.0
 CAP_MAX = 10.0
 ASI_THRESHOLD = 9.0             # [TUNE] true general capability that triggers the verification cliff
 POST_ASI_WINDOW_YEARS = 0.5     # [TUNE] verification-cliff window length
+# Rival endgame ASI push (controllers/rival_controller.py): once a reckless lab has
+# unlocked novel_architecture_search (the only advance whose ceiling multiplier clears
+# the ASI threshold), it keeps shipping intermediate models while saving toward the one
+# decisive near-maximal run — and fires that run the moment a maximal run would actually
+# cross ASI given its own efficiency (NOT at a flat cash target; a cost-advantaged lab
+# crosses well below what a flat target would demand).
+ASI_PUSH_RECKLESSNESS = 0.30    # [TUNE] min effective recklessness to commit to the ASI push
+                                # (low: reaching novel_architecture_search is already the endgame
+                                # commitment; only the most safety-cautious labs hold back)
+ASI_RUN_CEILING_MARGIN = 0.05   # [TUNE] fire the decisive run once it would reach a ceiling this far
+                                # ABOVE ASI_THRESHOLD (small headroom; the pursuing lab then fully
+                                # elicits the model, so realized closes right up to the ceiling)
+ASI_RUN_CASH_FRACTION = 0.95    # [TUNE] the decisive run is win-or-bust, so commit nearly ALL cash —
+                                # the cash×0.9 max_run_compute hint is only the controller's normal
+                                # reserve; commission validation permits compute up to ~full cash
+ASI_INTERMEDIATE_FRAC = 0.50    # [TUNE] while saving for the decisive run, a pursuing lab still ships,
+                                # but commits only this fraction of cash per run so cash net-climbs
 # Soft regime reference points (NO in-game labels; used only by emergence
 # curves, agentic-edge gates and guidance hedging):
 REGIME2_ONSET = 3.5
 REGIME3_ONSET = 6.5
 
 # ── Pretrain ceiling (8b phase 1) ───────────────────────────────────────
-CEIL_COMPUTE_SCALE = 14000.0    # [TUNE] ceiling = CAP_MAX*(1-e^-sqrt(eff*compute/scale)).
-                                # Tuned so raw compute alone can't reach ASI — you need
-                                # the (long, assist-requiring) efficiency tree's ~35x
-                                # multiplier. Keeps the late game about RESEARCH rather
-                                # than saving for ever-bigger runs, without letting a
-                                # cash-rich reckless rival buy ASI early on compute alone.
+CEIL_COMPUTE_SCALE = 20000.0    # [TUNE] ceiling = CAP_MAX*(1-e^-sqrt(eff*compute/scale)).
+                                # Tuned (with the deliberately weak ~3.5x human-reachable
+                                # efficiency tree) so that NEITHER raw compute NOR the regular
+                                # advances reach ASI: the no-delegation ceiling plateaus ~8 (below the 9.0 ASI threshold)
+                                # even at the largest realistic compute spend (~$20B). Crossing
+                                # the ASI threshold requires novel_architecture_search (x3.0),
+                                # which is gated behind the delegation chain — i.e. you must let
+                                # the AI run its own research loop to get there. Keeps the late
+                                # game about RESEARCH + the delegation gamble, not buying ASI on
+                                # compute alone.
 # The two capability axes are coupled at the ceiling: a run's coding-R&D ceiling is
 # a fixed fraction of its general ceiling (not a separate compute/research mechanic),
 # so a broadly capable base is proportionally capable at coding too.
@@ -179,9 +200,15 @@ COMPOSITE_W_DECEPTION = 0.15
 CONTAM_PER_ASSIST = 1.0         # node contamination = assist * researcher goal_mis * this
 SYNTH_DATA_INTRINSIC = 0.5      # synthetic data contaminates ∝ generator goal_mis even unassisted
 CONTAM_TO_AXES = {              # how a training run's summed contamination feeds axes
+    # contamination = research done by a misaligned model carrying its traits into the
+    # next one. goal-misalignment is the source term (turn_pipeline), so it reproduces
+    # strongest; self_preservation is fed too — a goal-directed model makes its successor
+    # better at resisting being trained out of that goal (delegation amplifies all of
+    # these via its higher contamination_tier). Weights [TUNE].
     "goal_misalignment": 0.5,
-    "deception": 0.35,
-    "eval_awareness": 0.15,
+    "deception": 0.3,
+    "self_preservation": 0.15,
+    "eval_awareness": 0.05,
 }
 
 # ── Work budget / projects (9b) ─────────────────────────────────────────
@@ -351,12 +378,22 @@ POLICY_THRESHOLDS = {           # INTRODUCTION thresholds: score crosses => on t
     "interp_mandate": 60.0,     # also requires a public deception incident first
     "compute_cap": 97.0,        # near-impossible to enact — deliberately (the lesson)
 }
+# [COPY-MIRRORED] The values below are also spelled out, by hand, in the player-facing
+# policy.*.effect strings in backend_v1/content/copy.py (those strings are authored at
+# import with no consts handle, so they can't interpolate — they HARDCODE these numbers).
+# If you retune any value tagged [COPY], update the matching policy.*.effect string to
+# match, or the in-game description will lie. (The at-action release.gate.* strings DO
+# interpolate from these consts and stay correct automatically.)
 AUDIT_DELAY_YEARS = 0.25
-AUDIT_CASH_COST = 60.0
-AUDIT_MEASURED_BAR = 0.45       # blocks release if measured misalignment composite above this
-LIABILITY_COST_PER_SEVERITY = 90.0
-COMPUTE_CAP_LIMIT = 6000.0      # $M per run if (ever) enacted
-INTERP_MANDATE_BAR = 0.4
+AUDIT_CASH_COST = 60.0          # [COPY] policy.audit_requirement.effect ("$60M fee")
+AUDIT_MEASURED_BAR = 0.45       # [COPY] policy.audit_requirement.effect; blocks release if measured misalignment composite above this
+LIABILITY_COST_PER_SEVERITY = 90.0   # [COPY] policy.incident_liability.effect ("up to $90M")
+COMPUTE_CAP_LIMIT = 6000.0      # [COPY] policy.compute_cap.effect ("$6,000M"); $M per run if (ever) enacted
+INTERP_MANDATE_BAR = 0.4        # [COPY] policy.interp_mandate.effect ("concern below 0.4")
+# Only mechanistic evidence from within this window certifies a release: stale
+# evidence ages out, so an old bad probe doesn't block a model you've since improved
+# forever, and you can't ship on an ancient clean reading either. 0.5yr = 2 quarters.
+INTERP_MANDATE_RECENCY_YEARS = 0.5   # [COPY] policy.interp_mandate.effect ("within the last 2 quarters")
 DEFECTION_PENALTY = 250.0
 DEFECTION_APPROVAL_HIT = 6.0
 

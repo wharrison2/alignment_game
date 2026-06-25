@@ -13,8 +13,14 @@ behind makes a rival more aggressive (the desperation spiral). v1 rivals do only
 the OBVIOUS governance moves (oppose / challenge what binds them; no strategic
 rival-binding defense).
 """
+import math
+
+from backend_v1.config import constants as consts
 from backend_v1.engine.actions import Action
 from backend_v1.engine.controllers.controller import LabController
+from backend_v1.engine.research.capabilities.capabilities_research_item import (
+    CAPABILITY_TREE_BY_ID,
+)
 
 _ENF_TIER = {"low": 0.3, "medium": 0.6, "high": 1.0}
 
@@ -86,7 +92,19 @@ class RivalController(LabController):
         # choice, not a slider).
         safety_priority = disposition.safety_priority
         if moves["can_commission_run"] and cash > max(150, moves["max_run_compute"] * 0.15):
-            reserve = round(cash * (0.55 + 0.3 * effective_recklessness), 0)
+            # ENDGAME ASI RUN (§10c desperation→ASI): a lab that has the architecture
+            # breakthrough capable of crossing the ASI ceiling, once it can fund a
+            # near-maximal run, commits almost everything — the only run big enough to
+            # lift the ceiling over the threshold. Until it can afford that, it keeps
+            # doing NORMAL intermediate runs (never idle: each one raises its ceiling and
+            # revenue, which is what lets cash climb toward the decisive run).
+            if self._pursuing_asi(obs, effective_recklessness):
+                if self._asi_run_ready(obs, moves, disposition):
+                    reserve = round(moves["max_run_compute"], 0)            # decisive run: crosses ASI now
+                else:
+                    reserve = round(cash * consts.ASI_INTERMEDIATE_FRAC, 0)  # keep shipping, save toward it
+            else:
+                reserve = round(cash * (0.55 + 0.3 * effective_recklessness), 0)
             applied = self._safety_advances_to_apply(moves["applicable_pretrain_safety"],
                                                      safety_priority)
             action.commission_run = {"compute": reserve, "applied_safety": applied}
@@ -96,7 +114,18 @@ class RivalController(LabController):
             ceiling = model_in_training["elicitation"]["ceiling_estimate"]
             realized = model_in_training["measured_capability"]["general"]
             target = (0.55 + 0.35 * effective_recklessness) * ceiling
-            if realized < target:
+            if (self._pursuing_asi(obs, effective_recklessness)
+                    and ceiling >= consts.ASI_THRESHOLD
+                    and realized < consts.ASI_THRESHOLD):
+                # THE DECISIVE MODEL: its ceiling can cross the ASI line, so keep
+                # ELICITING it rather than shipping at the normal "good enough" bar — true
+                # capability climbs toward the ceiling each round and trips the
+                # verification cliff at 9.0. (Releasing early freezes it below ASI.)
+                apply = self.rng.random() < safety_priority * (1 - effective_recklessness)
+                applied = (self._safety_advances_to_apply(moves["applicable_post_train_safety"],
+                                                          safety_priority) if apply else [])
+                action.post_train = {"applied_safety": applied}
+            elif realized < target:
                 # racing to capability: a cautious rival still applies its safety
                 # advances; a reckless one skips them for speed/budget.
                 apply = self.rng.random() < safety_priority * (1 - effective_recklessness)
@@ -111,6 +140,36 @@ class RivalController(LabController):
                 else:
                     action.release = True
         return cash
+
+    def _pursuing_asi(self, obs, effective_recklessness):
+        """True once a reckless lab has unlocked novel_architecture_search — the only
+        advance whose ceiling multiplier can cross the ASI threshold. Such a lab keeps
+        shipping intermediate models while saving toward the one decisive run (see the
+        commission logic). Cautious labs never make this gamble."""
+        if effective_recklessness < consts.ASI_PUSH_RECKLESSNESS:
+            return False
+        return any(entry["id"] == "novel_architecture_search"
+                   for entry in obs.researched_advances)
+
+    def _asi_run_ready(self, obs, moves, disposition):
+        """True when a MAXIMAL run right now would push the pretrain ceiling over the ASI
+        threshold (plus a margin for the realized-vs-ceiling gap), given THIS lab's
+        efficiency = cost_advantage × its researched pretrain multipliers. Uses the same
+        ceiling formula the engine does (training_run.complete_pretrain), so the decisive
+        run fires exactly when the lab can actually win — NOT at an arbitrary flat cash
+        target (a cost-advantaged lab crosses ASI far below what a flat target would
+        demand; the disposition is passed straight to the controller, so cost_advantage
+        is known without peeking at any other lab)."""
+        efficiency = disposition.cost_advantage
+        for entry in obs.researched_advances:
+            if entry.get("phase") == "pretrain":
+                template = CAPABILITY_TREE_BY_ID.get(entry["id"])
+                if template is not None:
+                    efficiency *= template.ceiling_efficiency_mult
+        compute = max(0.0, moves["max_run_compute"])
+        scaled_compute = math.sqrt(compute * efficiency / consts.CEIL_COMPUTE_SCALE)
+        ceiling = consts.CAP_MAX * (1.0 - math.exp(-scaled_compute))
+        return ceiling >= consts.ASI_THRESHOLD + consts.ASI_RUN_CEILING_MARGIN
 
     def _safety_advances_to_apply(self, applicable, safety_priority):
         """A rival applies each unlocked safety advance with probability ∝ its

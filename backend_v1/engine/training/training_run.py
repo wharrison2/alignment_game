@@ -329,10 +329,11 @@ def post_train_round(model: Model, lab, turn: int, rng, consts, applied_safety_i
     # 7. AGENTIC INFLUENCE EDGES (§5) — gated by capability, via the coupling matrix.
     coupling.apply_influence_edges(model, general_capability, consts, turn)
 
-    # 8. post-train node contamination feeds axes (a dirty RLHF node shapes badly)
+    # 8. post-train / delegation node contamination feeds axes (a dirty RLHF node, or
+    #    research delegated to a misaligned model, shapes the next model badly)
     post_contam = sum(item.contamination for nid, item in lab.researched_advances.items()
                       if nid in CAPABILITY_TREE_BY_ID
-                      and CAPABILITY_TREE_BY_ID[nid].phase == "post_train")
+                      and CAPABILITY_TREE_BY_ID[nid].phase in ("post_train", "delegation"))
     if post_contam > 0:
         for axis, w in consts.CONTAM_TO_AXES.items():
             alignment_vec.set(axis, alignment_vec.get(axis) + 0.06 * w * post_contam)

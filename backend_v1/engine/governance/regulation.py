@@ -108,14 +108,104 @@ def audit_theater_effect(world, consts):
     world.wtr = max(0.0, world.wtr - 1.5)
 
 
-def interp_mandate_check(lab, model, consts) -> bool:
-    """Release requires recent mechanistic evidence below the bar. Hard to fake."""
-    mech = [f for f in lab.findings
-            if f.get("mechanistic") and f.get("model_id") == model.id]
-    if not mech:
-        return False   # no interp evidence at all -> blocked
-    worst = max(f["concern"] for f in mech)
-    return worst < consts.INTERP_MANDATE_BAR
+def interp_mandate_check(lab, model, consts, turn, dt) -> bool:
+    """Release requires a RECENT clean mechanistic reading on THIS model. Hard to fake.
+
+    Only evidence from within INTERP_MANDATE_RECENCY_YEARS counts: a stale bad probe
+    ages out so a model you've since improved isn't blocked forever, and a stale
+    clean reading won't certify a model you've kept training. Within the window we
+    go with the MOST RECENT reading (you re-probe after improving the model and that
+    fresh reading is what the regulator trusts) — not the worst-ever, which is what
+    let old bad evidence veto every release. Mechanistic evidence is hard to fake, so
+    a model that genuinely reads above the bar can't be re-probed clean."""
+    recency_window_years = consts.INTERP_MANDATE_RECENCY_YEARS
+    recent_mech = [f for f in lab.findings
+                   if f.get("mechanistic")
+                   and f.get("model_id") == model.id
+                   and (turn - f["turn"]) * dt <= recency_window_years]
+    if not recent_mech:
+        return False   # no recent interp evidence -> blocked
+
+    # The most recent assessment is the latest turn's reading(s); if more than one
+    # probe landed that turn, the worst of that batch is the conservative reading.
+    latest_turn = max(f["turn"] for f in recent_mech)
+    latest_readings = [f for f in recent_mech if f["turn"] == latest_turn]
+    worst_recent_concern = max(f["concern"] for f in latest_readings)
+    return worst_recent_concern < consts.INTERP_MANDATE_BAR
+
+
+def release_gate_status(lab, world, consts, turn, dt):
+    """Predict — for the player's UI, BEFORE they submit — whether releasing the
+    model in training would be blocked or delayed by an active release-gating
+    policy. §7c: explain the gate at the point of action instead of only surfacing
+    the reason in the feed AFTER the turn resolves (the bug this fixes).
+
+    Mirrors the release branch of turn_pipeline._apply_training_action for the
+    COMPLYING path (the default, warned path; a player who defects on the mandate
+    bypasses the check at release time and is risked by enforcement_phase instead).
+    Reads only the player's OWN findings — their own instruments produced them — and
+    public policy/constant state, so it crosses the observation firewall safely.
+
+    Returns None when there is nothing to gate (no model in training, or no active
+    release-gating policy bites)."""
+    model = lab.model_in_training
+    if model is None:
+        return None
+
+    # Interp mandate: a clean recent mechanistic finding on THIS model is required.
+    # Evidence on a previously-released or parent model does NOT count (model_id
+    # match), nor does evidence older than the recency window (see interp_mandate_check).
+    interp = world.policies.get("interp_mandate")
+    if interp is not None and interp.active:
+        if not interp_mandate_check(lab, model, consts, turn, dt):
+            recency_quarters = round(consts.INTERP_MANDATE_RECENCY_YEARS / dt)
+            return {
+                "blocked": True,
+                "policy_id": "interp_mandate",
+                "reason": t("release.gate.interp_mandate",
+                            {"bar": consts.INTERP_MANDATE_BAR,
+                             "quarters": recency_quarters}),
+            }
+
+    # Audit requirement: release is not blocked, just DELAYED one turn for a
+    # government pre-deployment audit (and costs cash). Surface it so the one-turn
+    # gap between "release" and the model going live isn't a surprise.
+    audit = world.policies.get("audit_requirement")
+    if audit is not None and audit.active:
+        return {
+            "blocked": False,
+            "policy_id": "audit_requirement",
+            "reason": t("release.gate.audit_requirement",
+                        {"cost": round(consts.AUDIT_CASH_COST)}),
+        }
+
+    return None
+
+
+def _record_defection_caught(sb, lab, pdef, enf, penalty, turn, consts):
+    """Build, apply, and return the public + TRUE-log event for a lab caught
+    violating an active policy. `penalty` is the cash fine the caller has already
+    scaled by enforcement and lab size (and clamped by any litigation penalty-cap);
+    the approval hit scales with enforcement. Shared by the probabilistic catch and
+    the always-caught (disclosure) path so the two can't drift apart."""
+    approval_hit = enf * consts.DEFECTION_APPROVAL_HIT
+    public_text = t("gov.defection_caught.public",
+                    {"lab": lab.name, "policy": pdef.name,
+                     "penalty": f"{penalty:.0f}"})
+    true_text = t_true("gov.defection_caught.true",
+                  {"policy_id": pdef.id, "enf": f"{enf:.2f}",
+                   "compliance": f"{lab.disposition.compliance:.2f}"})
+    ev = FiredEvent(
+        "defection_caught", "societal", "ordinary", turn, lab.id, None,
+        0.3, -5.0,
+        public_text,
+        true_text,
+        effects=[("modify_cash", {"amount": -penalty}),
+                 ("add_impact", {"amount": -5.0}),
+                 ("modify_approval", {"amount": -approval_hit}),
+                 ("modify_wtr", {"amount": 2.0})])
+    apply_effects(sb, ev)
+    return ev
 
 
 def enforcement_phase(ctx):
@@ -146,11 +236,36 @@ def enforcement_phase(ctx):
             if not pdef.covers(lab):
                 continue
 
-            # decide/refresh defection state this turn
+            # decide/refresh defection state this turn (player: explicit choice;
+            # rival: defects ∝ (1 − compliance))
             if lab.is_player:
                 defecting_now = pdef.id in lab.active_defections
             else:
                 defecting_now = rng.random() > lab.disposition.compliance
+
+            # ── always-caught policy (disclosure): withholding is itself public ──
+            # The catch is CERTAIN (no detection roll), and the fine lands every turn
+            # the lab keeps withholding. We record a rival's choice in active_defections
+            # so the observation can hide that lab's published numbers (the player reads
+            # it as "withholding"); the player's own choice already lives there.
+            if pdef.defection_always_caught:
+                if not lab.is_player:
+                    if defecting_now:
+                        lab.active_defections.add(pdef.id)
+                    else:
+                        lab.active_defections.discard(pdef.id)
+                if defecting_now:
+                    size_scale = 1.0 + max(0.0, lab.market_cap) / 4000.0
+                    # DEFECTION_PENALTY read as a per-YEAR fine here (the catch is
+                    # certain, so there is no catch-rate to carry the time scaling);
+                    # realized this turn as rate × dt to keep §0b time-discipline.
+                    penalty = enf * consts.DEFECTION_PENALTY * size_scale * dt
+                    if st.penalty_cap is not None:
+                        penalty = min(penalty,
+                                      st.penalty_cap * consts.DEFECTION_PENALTY * size_scale * dt)
+                    fired.append(_record_defection_caught(
+                        sb, lab, pdef, enf, penalty, turn, consts))
+                continue
 
             if defecting_now:
                 lab.defection_caught_pending.add(pdef.id)
@@ -169,23 +284,7 @@ def enforcement_phase(ctx):
                 if st.penalty_cap is not None:
                     penalty = min(penalty, st.penalty_cap * consts.DEFECTION_PENALTY * size_scale)
 
-                approval_hit = enf * consts.DEFECTION_APPROVAL_HIT
-                public_text = t("gov.defection_caught.public",
-                                {"lab": lab.name, "policy": pdef.name,
-                                 "penalty": f"{penalty:.0f}"})
-                true_text = t_true("gov.defection_caught.true",
-                              {"policy_id": pdef.id, "enf": f"{enf:.2f}",
-                               "compliance": f"{lab.disposition.compliance:.2f}"})
-                ev = FiredEvent(
-                    "defection_caught", "societal", "ordinary", turn, lab.id, None,
-                    0.3, -5.0,
-                    public_text,
-                    true_text,
-                    effects=[("modify_cash", {"amount": -penalty}),
-                             ("add_impact", {"amount": -5.0}),
-                             ("modify_approval", {"amount": -approval_hit}),
-                             ("modify_wtr", {"amount": 2.0})])
-                apply_effects(sb, ev)
-                fired.append(ev)
+                fired.append(_record_defection_caught(
+                    sb, lab, pdef, enf, penalty, turn, consts))
 
     return fired

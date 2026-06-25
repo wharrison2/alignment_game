@@ -1574,3 +1574,357 @@ unchanged. Full suite green; firewall unaffected.
   actions; `rivals.frontier.unknown` keeps "—" as an unknown-value placeholder glyph.
 - The hidden TRUE-log narration in content/true_log_copy.py (the post-mortem `*.true`
   reveal) was not part of this pass.
+
+## Pretrain tech-tree revision (tech_tree.md review, Stage 1)
+
+Driven by a designer review captured in `tech_tree.md`. Reworked the PRETRAIN branch of
+the capability tree so each node names a real, well-understood advance rather than a
+generic "spend more" framing.
+
+**Changes (`capabilities_research_item.py` + `content/copy.py`):**
+- **Added `generative_pretraining`** as the new ROOT pretrain advance (no prereqs; it is
+  now the turn-1 opening move). Designer call: foundational and specific.
+- **Renamed `scaling_laws` → `larger_datasets`** — "larger training runs" was judged to be
+  a consequence of spending on compute, not a research advance; reframed as acquiring/cleaning
+  more data. Copy rewritten.
+- **Replaced `better_architecture` → `mixture_of_experts`** — a concrete post-GPT architecture
+  advance (sparse experts + router) instead of generic "architecture improvements".
+- **Replaced `data_efficiency` → `compute_optimal_scaling`** — Chinchilla-style right-sizing of
+  model-vs-data, the canonical data-efficiency result.
+- **Prereq rewire:** `larger_datasets`←`generative_pretraining`; `mixture_of_experts` and
+  `compute_optimal_scaling`←`larger_datasets`; `synthetic_data`←`compute_optimal_scaling`.
+
+**Liberty taken — IDs renamed (reverses the earlier note at "What I changed (capability tech
+tree)" above, which kept IDs stable on purpose).** Designer explicitly chose to rename the
+internal ids. Every reference was updated: `cli/strategies.py` (EFFICIENCY/RUSH orders),
+and the turn-1 opening move (`scaling_laws`→`generative_pretraining`) in
+`tests/test_golden_master.py`, `tests/test_observation_firewall.py`, `cli/run_game.py`,
+`cli/agent_session.py`, `cli/strategy_report.py`. Golden master re-recorded (expected
+action-stream change, firewall test still green).
+
+**Balance numbers are DRAFTS ([TUNE], per §0 calibration — likely optimistic).** The old
+single `scaling_laws` (ceil×1.7) was split into `generative_pretraining` (×1.3) ×
+`larger_datasets` (×1.3) ≈ ×1.69, holding the early-pretrain ceiling roughly constant but
+making the opening two cheap steps instead of one (mild slowdown to review). MoE and
+compute-optimal kept the old ×1.5/+0.05 and ×1.4 effects of the items they replace.
+
+**Still pending from the same review (later stages, not yet done):** kill `research_speed_bonus`
+/ rework `dev_tooling`; fold `ai_rnd_assist` into the assist slider and redistribute its
+potency; reconsider `automated_researcher` / `recursive_self_improvement` as delegation tiers
+and raise their contamination; elaborate the `novel_architecture_search` risk (harder-to-probe
+architectures).
+
+## Assist / delegation revision (tech_tree.md review, Stage 2 / Group B)
+
+Same designer review, second batch of decisions.
+
+**B1 — removed `research_speed_bonus` entirely.** Designer call: AI tooling does not speed up
+research that isn't using AI assist. The field unconditionally sped ALL in-progress research
+(`turn_pipeline` + `ResearchProcess.tick`). Deleted the dataclass field, the `speed_bonus`
+parameter on `tick()`, and the per-lab sum in `turn_pipeline`. `dev_tooling` (whose only
+mechanical effect was the speed bonus) now grants `assist_potency_bonus=0.15` instead —
+tooling makes the AI-assist slider more potent, which only helps when you're assisting.
+
+**B2 — deleted the `ai_rnd_assist` advance; AI assist is the player's own per-project slider,
+not a separate capability.** Redistributed its `assist_potency_bonus 0.6` so net late-game
+potency is ~unchanged and back-loaded: `chain_of_thought` / `tool_use` / `long_context` each
++0.07, `multi_agent` +0.30. Its `elicitation_bonus 0.06` folded into `multi_agent` (0.13→0.19).
+`multi_agent` prereqs rewired `(ai_rnd_assist, long_context)` → `(chain_of_thought, tool_use,
+long_context)`. Removed its copy keys and its entries in `cli/strategies.py` build orders.
+
+**B3 — reclassified `automated_researcher` and `recursive_self_improvement` to a new
+`delegation` phase** (they are operating modes — delegating the research loop / self-improvement
+— not a post-train training recipe). `contamination_tier` raised to 1.5 and 2.0 respectively so
+delegating to a misaligned model poisons the advances it produces. `training_run.py`'s post-train
+contamination feed now includes the `delegation` phase so that contamination reaches the axes.
+**Liberty/flag:** their `elicitation_bonus` / `eval_awareness_feed` were KEPT (the elicitation
+sum in `training_run` is not phase-filtered, so they still apply) to avoid a silent late-game
+capability drop; if the designer wants these to be potency-and-contamination-only, zero those
+fields. The frontend renders `phase` as a plain display tag, so `delegation` shows with no UI
+change; `assist_potency` (rules.py) and the research-offering path (actions.py `cap_avail`) are
+phase-agnostic, so nothing else needed plumbing.
+
+Balance numbers remain DRAFTS ([TUNE]). Golden master re-recorded (expected action-stream
+change: build orders + trajectories moved; firewall still green).
+
+### Delegation contamination refinement (follow-up to B3)
+
+Designer follow-up on what delegation should mechanically *do*.
+
+- **`self_preservation` added to `CONTAM_TO_AXES`** (constants.py). Previously contamination fed
+  goal_misalignment / deception / eval_awareness only — it did NOT touch self-preservation. This
+  was a real gap (AI assist did not reproduce self-preservation despite the designer expecting it
+  to). New split: `goal_misalignment 0.5, deception 0.3, self_preservation 0.15, eval_awareness 0.05`
+  (kept summing to 1.0 so total contamination magnitude is unchanged — just redistributed; [TUNE]).
+  This is a GLOBAL change: ALL AI-assisted research now reproduces the assisting model's
+  self-preservation tendency into the next model, per "a goal-directed model makes its successor
+  better at resisting being trained out of that goal." Delegation amplifies all axes (incl.
+  self-preservation) more strongly via its higher `contamination_tier`, with no special-casing.
+- **Delegation items are now pure potency + contamination:** removed `elicitation_bonus` (0.08/0.18)
+  AND `eval_awareness_feed` (0.04/0.06) from `automated_researcher` and `recursive_self_improvement`.
+  They keep only `assist_potency_bonus`, `contamination_tier`, and the (unused) `severity_multiplier`.
+- **No separate delegation class.** Kept `phase="delegation"` on `ResearchItem`; a distinct class +
+  catalog would force dual lookups across actions/training/rules/revenue/turn_pipeline and hurt
+  legibility for no mechanical gain (the contamination behavior is data + the one phase-aware feed).
+
+Note the side effect: removing delegation's elicitation drops late-game realized-capability somewhat
+for labs that go deep — intended (delegation is about delegating work, not a training step), flag for
+balance review. Golden master re-recorded.
+
+### Delegation dependency cleanup (follow-up)
+
+Designer check: should delegation unlocks gate the rest of the tree? Resolution — delegation
+should not gate *non-delegated capability* progress, BUT AI-discovered architectures are
+themselves an inherently delegated, beyond-frontier project, so it is correct for them to sit
+behind delegation. Rewired the endgame into a single linear chain:
+`multi_agent → automated_researcher → recursive_self_improvement → novel_architecture_search`.
+- `novel_architecture_search` prereq `automated_researcher` → `recursive_self_improvement`.
+- `recursive_self_improvement` prereq `(automated_researcher, novel_architecture_search)` →
+  `(automated_researcher,)` — dropping novel_architecture_search to break the cycle the rewire
+  would otherwise create, and keeping the delegation ladder (RSI requires automated_researcher).
+- `cli/strategies.py` EFFICIENCY/RUSH orders reordered so RSI precedes novel_architecture_search.
+Net: the only delegation→non-delegation dependency is novel_architecture_search←RSI, which is
+intended. Golden master re-recorded.
+
+### ASI gate: ASI now requires the delegation route (balance retune)
+
+Designer goal: you should NOT be able to reach ASI (true general capability ≥ ASI_THRESHOLD 9.0)
+on the regular advance tree + compute alone — only via the delegation / recursive-self-improvement
+loop. Since the game is uncapped in turns and realized capability ≈ ceiling, the gate is a
+CEILING gate. `ceiling = CAP_MAX·(1 − e^(−√(compute·efficiency/CEIL_COMPUTE_SCALE)))`.
+
+Changes (all symmetric — world rules, not a player buff):
+- **Weakened the human-reachable pretrain efficiency tree** from ~6.4× to ~3.5× (gen_pretraining
+  1.3→1.2, larger_datasets 1.3→1.2, mixture_of_experts 1.5→1.35, compute_optimal_scaling 1.4→1.25,
+  synthetic_data 1.8→1.45).
+- **Raised `CEIL_COMPUTE_SCALE` 14000→20000** (compute→capability weaker for everyone).
+  Net: the no-delegation ceiling plateaus ~7–8 across realistic compute and only crosses 9.0 at an
+  absurd ~$40B+ compute.
+- **`novel_architecture_search` → the decisive ×3.0** (was ×2.0); it is gated behind
+  `recursive_self_improvement`, so the delegation chain is the only way over the ASI line. With it,
+  ceiling reaches 9.0+ at ~$11–13B compute.
+- **Lengthened the late path** (multi_agent 1.0→1.25, automated_researcher 1.5→2.0,
+  recursive_self_improvement 1.75→2.5, novel_architecture_search 1.5→2.0) so unassisted human-pace
+  research can't keep up and the AI-assist speedup becomes necessary to stay in the race.
+
+All numbers are DRAFTS ([TUNE]). A FIRST pass set the cut harder (eff ~2.6×, SCALE 24000, novel ×3.5,
+even longer durations) — backed off to the above because it made ASI effectively unreachable AND
+dragged the whole capability economy down.
+
+**Verification caveat (important):** the scripted `RivalController` used by the golden master and CLI
+commissions only a small EARLY pretrain run and rarely re-commissions, so its ceiling plateaus
+around ~5–6 regardless of tuning — it canNOT validate "delegation can still reach ASI." The gate
+math is verified analytically (above), but reachability by an OPTIMIZING player (who dumps cash into
+a large run after researching novel_architecture_search) needs a real Monte-Carlo / playtest with a
+compute-escalating controller. Flag for the designer before trusting the win path.
+
+### Rival endgame stockpiling (RivalController)
+
+Goal: let rivals credibly race to ASI. Before this, the controller committed a fixed FRACTION
+(0.55–0.85) of cash to a run whenever the pipeline was free, so it ran a sawtooth (build → dump
+~83% → rebuild) and never amassed the ~$13B a single ASI-scale run needs under the current gate.
+
+Change (`rival_controller.py` + constants): a lab that has researched `novel_architecture_search`
+(the only advance whose ceiling multiplier can cross ASI) and is reckless enough
+(`ASI_PUSH_RECKLESSNESS = 0.30`) shifts its run-sizing toward an ASI push. Stateless (derived from
+`obs.researched_advances` + cash each turn), deterministic, no new RNG draws. Golden master unchanged
+(capped 30-turn scripted games never reach the endgame, so the path isn't exercised).
+
+**v1 FROZE rivals — replaced.** First version made a pursuing lab HOLD (commission nothing) until
+cash ≥ target. But rivals unlock novel_architecture_search cheaply via AI-assist at LOW true capability
+(~4), so they froze there: stopped shipping, hoarded toward $13B they reached too slowly, ended frozen
+at cap ~4 with piles of unspent cash. Proven by toggling: with the hold disabled the same rivals
+climbed to ~7.8. **Fix (per designer "make them do another intermediate run"):** a pursuing lab now
+keeps shipping — it commissions a NORMAL run sized at `ASI_INTERMEDIATE_FRAC` (0.50) of cash each cycle
+(smaller than the 0.55–0.85 default, so cash net-climbs), and only once cash ≥ `ASI_RUN_TARGET_CASH`
+does it commit a near-maximal decisive run. No freeze; rivals stay competitive (~8).
+
+**Flat $13B target was WRONG — replaced with principled firing.** The min cash to cross ASI is NOT a
+constant: it scales with the lab's efficiency = `cost_advantage × Π(pretrain mults)`. With-novel that
+is `cost_advantage × 10.57`, so the min cash ranges from ~$7.8B (cost_advantage 1.5) through ~$11.7B
+(1.0) to ~$14.6B (0.8). A flat $13B both (i) blocked cost-advantaged labs — the natural ASI contenders,
+which cross at ~$9B — from firing, and (ii) was unreachable for cost-disadvantaged ones. Now the
+controller computes its OWN ceiling from `disposition.cost_advantage` (passed straight to `decide`, so
+no peeking at other labs) × the researched pretrain mults (from `obs.researched_advances` + the
+catalog), and fires the decisive max run the moment that run would reach a ceiling ≥
+`ASI_THRESHOLD + ASI_RUN_CEILING_MARGIN` (0.10). No flat cash constant (`ASI_RUN_TARGET_CASH` removed).
+
+**Second bug fixed — the decisive model was shipped too early.** The rival releases a model once
+measured realized ≥ `(0.55+0.35·reck)·ceiling` (~72% of ceiling), which freezes true capability at
+~0.88·ceiling — below 9.0 even for a ceiling-9.2 run. Fix: a pursuing lab holding a model whose
+ceiling ≥ ASI keeps ELICITING it (never ships at the normal bar) so true capability climbs across 9.0
+and trips the verification cliff (the cliff checks the in-training model, turn_pipeline:438).
+
+**Status:** ASI now reached by a rival in ~4/10 realistic seeds (was ~1/5), and the cost-ADVANTAGED
+labs reliably win the race — a sensible asymmetry (the most efficient lab gets there first). The seeds
+where no rival crosses are ones whose labs are near/below cost_advantage 1.0 and never amass the ~$11.7B
+their efficiency demands. Pushing the hit-rate higher (if desired) wants either a `novel_architecture_search`
+bump (×3.0→~×3.5 lowers every lab's threshold; non-delegation tree still plateaus ~7) or a richer
+mid-game economy — ideally chosen via a Monte-Carlo pass (cli.strategy_report), not single seeds.
+
+**Still pending (Stage 3 / Group C):** elaborate the `novel_architecture_search` risk —
+whether AI-discovered architectures should be mechanically harder to probe/interpret (would
+need a new interpretability-effectiveness knob) or copy-only.
+
+## Regulation copy → "what it does" + disclosure given a real effect
+
+**Copy.** Rewrote the six `policy.*` description strings from a "what this teaches"
+lecture into plain statements of what each regulation mechanically does (copy.py),
+renamed the now-misleading `teaches` field/key to `effect` (policies.py, actions.py
+policy board, frontend `policy.effect` + modal heading "What it does"), and made the
+compute-cap copy state its actual value (`$6,000M`, from `COMPUTE_CAP_LIMIT`).
+
+**Liberty taken — disclosure now has a mechanical effect.** Before this, the
+`disclosure` policy was enactable/defectable but applied NO engine effect (its copy
+described a non-existent mechanic). I gave it one consistent with the thesis: while
+disclosure is active, each rival's released models' MEASURED safety numbers are
+published in the intel tab (`observation_builder._rival_public_entry` →
+`disclosed_models`, rendered by `views.disclosedModelsHTML`). Design intent: these
+are measured stats (an eval-aware model games them), so the disclosed figures can
+read clean while true alignment is bad — but they replace the player's noisy
+per-release capability *guess* with the rival's own official numbers, i.e. disclosure
+is real intel that is nonetheless only as honest as the measurement.
+
+Decisions inside that liberty, flagged for the designer:
+- Disclosed numbers carry NO extra rival-estimate noise (unlike
+  `frontier_capability_estimate`): disclosure = the rival publishes its official
+  measured stats, so the player sees `measured_*` directly. The "unreliability" is
+  the eval-gaming already baked into measured vs true, not observation noise.
+- Discloses ALL released models per lab, not just the frontier one.
+- Global on/off (mirrors `PolicyDef.covers` v1). No defection path wired for
+  disclosure specifically — a non-complying lab simply isn't modeled yet; the
+  policy is marked `defectable=True` but enforcement only bites the policies that
+  have an enforcement hook. Flag if disclosure should be dodgeable.
+- Firewall: `disclosed_models` reuses `_model_view` (measured-only); verified no
+  forbidden key crosses in a disclosure-forced multi-turn run. Golden master
+  unchanged (observation-only addition, no RNG/trajectory change).
+
+---
+
+## Task: release blocked by interp mandate with no message (UX fix)
+
+**Symptom.** Player with the interp-evidence mandate (`interp_mandate`) active tries
+to release a model; release silently does nothing and no reason appears at the
+control. Investigation: the engine WAS blocking correctly AND emitting
+`release.interp_mandate_blocked` — but only as a `policy_news` feed line that lands
+AFTER the turn resolves, far from the release checkbox. So "no message" = the
+explanation was buried in the feed, not absent.
+
+**Fix (UX, no balance change).**
+- Added `regulation.release_gate_status(lab, world, consts)` — a PREDICTIVE,
+  player-facing mirror of the turn-pipeline release branch (complying path). Returns
+  `{blocked, policy_id, reason}` or `None`. Surfaced via `legal_moves.release_gate`
+  and rendered at the release control (`views.releaseGateHTML`, §7c). Reads only the
+  player's OWN findings + public policy/constant state → firewall-safe (firewall
+  test green; it's observation-only so golden master unchanged).
+- Reordered the turn-pipeline release branch so the model is detached from training
+  only AFTER passing the interp hard-block (was detach-then-restore). Behaviourally
+  identical, RNG-draw order preserved (golden master unchanged), just legible.
+- New copy keys `release.gate.interp_mandate`, `release.gate.audit_requirement`.
+- Recency window (FIXED, designer-requested follow-up): `interp_mandate_check` used
+  to take the WORST concern across ALL mechanistic findings on a model, so a single
+  old bad probe vetoed every future release forever even after the model was improved
+  — and the copy already (falsely) promised "recent" evidence. Now the check counts
+  only findings from within `INTERP_MANDATE_RECENCY_YEARS` (= 0.5yr = 2 quarters at
+  dt=0.25) and goes with the MOST RECENT reading (latest turn; worst of that turn's
+  batch as a conservative tie-break), not the worst-ever. So you certify a release by
+  re-probing AFTER you've improved the model. Mechanistic evidence is hard to fake
+  (low noise), so a genuinely-bad model still can't be re-probed clean.
+  - Threaded `turn` (+ existing `dt`) into `interp_mandate_check`, `release_gate_status`,
+    and `legal_moves` (all call sites updated). New constant `INTERP_MANDATE_RECENCY_YEARS`.
+  - `INTERP_MANDATE_RECENCY_YEARS = 0.5` is a [TUNE] value I picked to match the
+    requested "2 quarters"; flag for the designer if the window should differ.
+  - Golden master: 5-aggressive-impossible moved (the only scripted game where
+    interp_mandate both activates and a release's gating outcome flips under the
+    recency rule). No RNG used by the check → call order unchanged. Re-recorded with
+    the reason noted above EXPECTED, per §8.
+
+**Flag for the designer (scope, not fixed).** Of the player's three active mandates,
+only `interp_mandate` gates release. `disclosure` (transparency) and
+`open_weights_restriction` (open weights) have NO release-gating code path at all —
+they affect other systems. If either is intended to condition release (e.g. open
+weights forcing a leak-risk acknowledgement, or disclosure requiring published
+stats before ship), that gate doesn't exist yet. `release_gate_status` is the
+natural place to add it.
+
+### Disclosure made defectable (follow-up, designer-confirmed)
+
+Designer confirmed disclosure should be DEFECTABLE with a **100% catch rate** and a
+**fine scaled by enforcement level**. Implemented:
+
+- New data flag `PolicyDef.defection_always_caught` (True only for disclosure).
+  `enforcement_phase` special-cases it: the lab's defection decision is made the
+  same way (player: explicit `defect`; rival: ∝ 1−compliance), but the catch is
+  CERTAIN — no `roll_rate` detection draw — and the fine lands EVERY turn it keeps
+  withholding. The probabilistic catch + event-building was extracted into
+  `_record_defection_caught` so both paths share one FiredEvent shape.
+- **Fine = `DEFECTION_PENALTY × enforcement × size_scale × dt`.** Liberty: I read
+  `DEFECTION_PENALTY` (250, a per-CATCH lump for the probabilistic policies) as a
+  per-YEAR rate here and scaled by `dt`, because the certain catch has no catch-rate
+  to carry §0b time-scaling. Net effect: certain ~250/yr at full enforcement vs the
+  probabilistic policies' ~0.85×250 EXPECTED/yr — comparable, but deterministic.
+  Flag for tuning if the per-turn fine reads too gentle/harsh.
+- **Observation:** a rival currently withholding is surfaced as
+  `disclosure_withheld: True` (not silently dropped) — the player sees "withholding
+  required disclosures (being fined)" instead of that lab's numbers. Rival defection
+  intent is stored in `lab.active_defections` (previously player-only) so the
+  observation can read it; harmless to existing logic (every other reader of
+  `active_defections` is `is_player`-gated).
+- **Defect preview:** `_policy_board` now takes `dt` and, for an always-caught
+  policy, emits `{always_caught, penalty_per_turn, approval_hit_if_caught}`; the
+  frontend renders a distinct "⚠ always caught · fine X/turn" warning line.
+- **Known edge:** if disclosure is active but FROZEN by a litigation injunction/stay,
+  `enforcement_phase` skips the policy entirely, so a rival's `active_defections`
+  disclosure flag isn't refreshed and the intel tab may show a stale withhold/disclose
+  state for the duration of the freeze. Cosmetic; left as-is.
+- **Feed noise:** because the fine fires every turn of withholding, a long defection
+  produces one `defection_caught` feed/log entry per turn. Faithful to "fined every
+  turn" but potentially spammy — flag if it should coalesce.
+- Golden master: only `5-aggressive-impossible` moved (the one scripted game where
+  disclosure activates; 7 new per-turn fines + the skipped catch roll shift RNG
+  order). Re-recorded with rationale in the test comment. Firewall green
+  (`disclosed_models` reuses `_model_view`; verified no forbidden key crosses).
+
+### Interp mandate made defectable too (designer-confirmed)
+
+Designer asked that the mechanistic-evidence mandate work like disclosure. Set
+`interp_mandate` `defectable=True` + `defection_always_caught=True`. Rationale:
+releasing a model without the mandated mechanistic clearance on file is itself
+public, so the catch is certain. Reuses the same enforcement path and per-turn
+enforcement-scaled fine as disclosure (no new code — just the two flags). The
+release-gate bypass already worked: a defecting lab's `_complies(...)` returns
+False, so `turn_pipeline` skips the interp gate at release time, and
+`enforcement_phase` now fines it. Golden master UNCHANGED — interp_mandate never
+activates in the scripted matrix (needs the `deception_incident_public`
+prerequisite + threshold 60), so no enforcement-loop entry and no RNG-order shift.
+
+### Note: "what it does" not rendering was a STALE SERVER, not a bug
+
+The policy modal heading updated ("What it does") but the description was blank
+because the running dev server process predated the `teaches`→`effect` rename — it
+was still emitting the old `teaches` key while the freshly-fetched frontend read
+`effect`. Backend→`to_dict`→frontend chain verified correct end to end; fix was a
+server restart (the static JS is re-fetched by the browser, but the long-running
+Python process holds the old imported modules). No code change.
+
+### Make numerical bars explicit in policy copy (designer-confirmed principle)
+
+Designer: when a player-facing description references a numerical bar, state the
+value (and scale) so the player isn't guessing. Applied to the `policy.*.effect`
+strings:
+- incident_liability: fine "up to $90M, scaled by severity (0–1)" (LIABILITY_COST_PER_SEVERITY).
+- audit_requirement: "$60M fee" (AUDIT_CASH_COST) + "passes unless measured
+  misalignment composite is 0.45 or higher (0–1)" (AUDIT_MEASURED_BAR).
+- open_weights_restriction: "to about 40% of normal" (the ×0.4 leak-rate factor).
+- interp_mandate: "recent (within the last 2 quarters)" (INTERP_MANDATE_RECENCY_YEARS
+  = 0.5) + "concern below 0.4 (0–1)" (INTERP_MANDATE_BAR).
+- compute_cap already stated "$6,000M" (COMPUTE_CAP_LIMIT).
+
+**Drift risk (flagged):** these are authored strings that HARDCODE constant values
+(same pattern as the existing compute_cap copy). They are not parametrized from
+constants — PolicyDef.effect is built at import via t() with no params, and
+policies.py holds no consts handle. If a designer retunes any of LIABILITY_COST_PER_
+SEVERITY / AUDIT_CASH_COST / AUDIT_MEASURED_BAR / INTERP_MANDATE_BAR /
+INTERP_MANDATE_RECENCY_YEARS / COMPUTE_CAP_LIMIT or the open-weights ×0.4 factor,
+the copy must be updated by hand to match. (The at-action release.gate.* strings DO
+interpolate {bar}/{cost}/{quarters} from consts and stay correct automatically.)

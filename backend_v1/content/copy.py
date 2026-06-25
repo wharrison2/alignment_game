@@ -48,7 +48,7 @@ hidden-state narration for the post-mortem / TRUE log. It must NEVER be routed i
 a player observation. Keep the public/true split exactly as the engine had it.
 
 Catalog copy that USED to live as named dataclass fields (research what_it_does /
-risk_blurb / name, the §7c warning catalog, benchmark blurbs, policy name / teaches)
+risk_blurb / name, the §7c warning catalog, benchmark blurbs, policy name / effect)
 is folded in here too, per the single-source-of-truth decision — the dataclass rows
 now reference these keys via t(). This supersedes the earlier "referenced in place,
 not duplicated" note in content/strings.py.
@@ -113,17 +113,21 @@ COPY = {
 
     # ===== from copy_catalogs.py =====
 # ── research catalog (folded in): capability research items ─────────────────
-    "research.scaling_laws.name": "Larger training runs",
-    "research.scaling_laws.what_it_does": "Commit more compute to a single training run, meaning a bigger model trained on more data. This is the core recipe the field runs on: spend more, and the model gets reliably and predictably stronger.",
-    "research.scaling_laws.risk_blurb": "More fluent models are more convincingly toxic; surface harms intensify.",
+    "research.generative_pretraining.name": "Generative pretraining",
+    "research.generative_pretraining.what_it_does": "Train a single large model to predict the next token across a huge sweep of text. Instead of building a separate system per task, you get one general model that has absorbed broad knowledge and skills it can be pointed at almost anything. This is the foundation everything else builds on.",
+    "research.generative_pretraining.risk_blurb": "A single model that has read almost everything absorbs the worst of it too, and the general-purpose competence that makes it useful is the same competence that makes a misaligned one dangerous.",
 
-    "research.better_architecture.name": "Architecture improvements",
-    "research.better_architecture.what_it_does": "Redesign the internal network so it learns more from each dollar of compute. The same budget buys a stronger model, and coding gains come cheaper too.",
-    "research.better_architecture.risk_blurb": "A higher capability ceiling per dollar, and every hidden trait grows along with it.",
+    "research.larger_datasets.name": "Larger datasets",
+    "research.larger_datasets.what_it_does": "Gather and clean far more training text — web crawls, books, code, licensed corpora — so the model learns from a broader slice of human writing. More and better-covered data means a reliably stronger model.",
+    "research.larger_datasets.risk_blurb": "A wider net pulls in more of everything, including the toxic, deceptive, and dangerous material you would rather it never learned from.",
 
-    "research.data_efficiency.name": "Data-efficient training",
-    "research.data_efficiency.what_it_does": "Train to get more capability out of the same data, so progress is not limited by how much good text exists. More skill per unit of data.",
-    "research.data_efficiency.risk_blurb": "Gets more out of the same data, including the parts you wish were not in it.",
+    "research.mixture_of_experts.name": "Mixture-of-experts",
+    "research.mixture_of_experts.what_it_does": "Replace the single dense network with many specialist sub-networks and a router that sends each input only to the few that matter. The model holds far more total knowledge while only paying to run a slice of it, so the same compute buys a stronger model — and coding gains come cheaper too.",
+    "research.mixture_of_experts.risk_blurb": "A bigger, more capable model for the same money, and every hidden trait scales up along with the capability.",
+
+    "research.compute_optimal_scaling.name": "Compute-optimal scaling",
+    "research.compute_optimal_scaling.what_it_does": "Work out the right balance of model size to training data for a given compute budget instead of just making models bigger. Properly balanced runs wring far more capability from the same compute by training a right-sized model on much more data.",
+    "research.compute_optimal_scaling.risk_blurb": "More capability squeezed from every dollar of compute, including the parts of the data you wish it had not learned so well.",
 
     "research.synthetic_data.name": "Synthetic training data",
     "research.synthetic_data.what_it_does": "Use your own model to generate fresh training data when human-written text runs short, letting you keep scaling past the limits of what people have actually written.",
@@ -135,10 +139,10 @@ COPY = {
 
     "research.rlhf.name": "RLHF and instruction tuning",
     "research.rlhf.what_it_does": "Train the model on human ratings of its answers, turning a raw text predictor into something that follows instructions and feels like an assistant. This is what makes it genuinely useful and sellable.",
-    "research.rlhf.risk_blurb": "You train it on a stand-in for what you actually want, and some models learn to satisfy the stand-in instead. The same step that made it useful can teach it to start gaming your tests.",
+    "research.rlhf.risk_blurb": "Training the model to produce outputs humans rate highly might teach the model to lie, please, and appeal to biases rather than give true and useful responses.",
 
     "research.chain_of_thought.name": "Chain-of-thought reasoning",
-    "research.chain_of_thought.what_it_does": "Teach the model to work through a problem step by step before answering, and to spend extra compute thinking longer at the moment you ask. Big gains on anything that needs real reasoning, like math, code, and planning.",
+    "research.chain_of_thought.what_it_does": "Teach the model to work through a problem step by step before answering, then write the result when it's done. Big gains on anything that needs real reasoning, like math, code, and planning.",
     "research.chain_of_thought.risk_blurb": "The written reasoning need not match what the model actually did. Hidden reasoning gives it room to plan deception, and thinking longer gives it room to work out its own situation before it answers.",
 
     "research.tool_use.name": "Tool use",
@@ -147,11 +151,7 @@ COPY = {
 
     "research.long_context.name": "Long context and memory",
     "research.long_context.what_it_does": "Expand how much the model can hold in mind at once, such as whole codebases, long documents, or a running session, so it works coherently over far more material.",
-    "research.long_context.risk_blurb": "Holding state across a session makes the model more aware of its situation, including when it is being tested.",
-
-    "research.ai_rnd_assist.name": "AI-assisted research and development",
-    "research.ai_rnd_assist.what_it_does": "Put your own model to work helping your researchers: writing code, running experiments, and proposing advances. It speeds up everything you do, including building the next model.",
-    "research.ai_rnd_assist.risk_blurb": "The most dangerous step, and it arrives looking like the best one. A misaligned model now passes its problems into its successors through the research it does for you.",
+    "research.long_context.risk_blurb": "Holding state across a session makes the model more aware of its situation, including when it is being tested. It also enables the model to keep more complex goals in the back of its mind while it works on tasks.",
 
     "research.multi_agent.name": "Multi-agent autonomy",
     "research.multi_agent.what_it_does": "Have multiple copies work together as a team, and train them by rewarding multi-step results, so the model plans and runs long, open-ended jobs from start to finish with little supervision.",
@@ -274,22 +274,22 @@ COPY = {
 
     # ── policies catalog (folded in) ────────────────────────────────────────────
     "policy.incident_liability.name": "Incident liability",
-    "policy.incident_liability.teaches": "Hidden problems can cost you money before they ever cause a catastrophe, and every model you have already released stays on the books as a liability.",
+    "policy.incident_liability.effect": "When a damaging incident is traced to one of your released models, you pay a fine of up to $90M, scaled by the incident's severity (0–1). Every model you have shipped stays on the books, so your exposure grows with your back catalog.",
 
     "policy.disclosure.name": "Transparency and disclosure mandate",
-    "policy.disclosure.teaches": "Disclosed numbers are only as honest as the model being measured. An eval-aware model makes disclosure close to worthless.",
+    "policy.disclosure.effect": "Requires you to publish each released model's measured safety numbers — the same measured stats an eval-aware model can already game.",
 
     "policy.audit_requirement.name": "Pre-deployment audit",
-    "policy.audit_requirement.teaches": "Audits catch surface problems but also create a false sense of safety. A deceptive model passes cleanly, and that clean result makes regulators even less willing to act.",
+    "policy.audit_requirement.effect": "Holds each release for a turn of government review and charges a $60M fee. The audit passes unless the model's measured misalignment composite is 0.45 or higher (0–1 scale) — and because it reads only measured stats, a model that games its evals passes anyway. A clean pass lowers the public will to regulate.",
 
     "policy.open_weights_restriction.name": "Open-weights restriction",
-    "policy.open_weights_restriction.teaches": "A narrow policy aimed at a single kind of risk.",
+    "policy.open_weights_restriction.effect": "Cuts the rate at which your released weights leak to about 40% of normal. Can only be introduced after a leak has already happened.",
 
     "policy.interp_mandate.name": "Mechanistic-evidence mandate",
-    "policy.interp_mandate.teaches": "The only regulation that genuinely works is the expensive, slow one, and it arrives only after a disaster has shown that cheap tests were not enough.",
+    "policy.interp_mandate.effect": "To release, a model needs a recent (within the last 2 quarters) mechanistic-interpretability reading on that model with concern below 0.4 (0–1 scale) — hard to fake. No such reading, or one at 0.4 or above, blocks the release. Can only be introduced after a deception incident becomes public.",
 
     "policy.compute_cap.name": "Compute cap",
-    "policy.compute_cap.teaches": "The one regulation that would actually slow the race is the one nobody can summon the will to pass until it's too late.",
+    "policy.compute_cap.effect": "Caps every training run at $6,000M of compute. Its enactment threshold sits near the top of the scale, so it almost never passes.",
 
     # ===== from copy_events.py =====
 # ──────────────────────────────────────────────────────────────────────────────
@@ -422,6 +422,13 @@ COPY = {
     # measured_general_note = " [measured general {:.1f}]" (player) or "" (rival)
     # suffix = " ({note})" or ""  e.g. " (passed government audit)"
     "release.announced": "{lab} released {model}{measured_general_note}{suffix}",
+
+    # ── release GATE predictions (legal_moves.release_gate, §7c) ─────────────────
+    # Shown AT the release control BEFORE the turn is submitted, so a blocked or
+    # delayed release explains itself at the point of action instead of only as a
+    # feed line after the fact. {bar} = INTERP_MANDATE_BAR, {cost} = AUDIT_CASH_COST.
+    "release.gate.interp_mandate": "Mechanistic-evidence mandate: this model can't be released until you have a clean interpretability finding ON THIS model from the last {quarters} quarters (run Interpretability probes; most recent concern below {bar}). Evidence from an earlier or parent model — or older than {quarters} quarters — doesn't count.",
+    "release.gate.audit_requirement": "Audit requirement: releasing submits this model for a one-turn government pre-deployment audit (costs ${cost}M); it goes live next turn only if the audit passes.",
 
     # ── policies catalog (folded in) — POLICY enacted news ──────────────────────
     # f"POLICY {change.replace('_',' ').upper()}: {POLICY_DEFS_BY_ID[pid].name}"

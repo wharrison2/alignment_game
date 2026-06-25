@@ -270,14 +270,14 @@ def play(seed, difficulty, guidance, rivals, mode, policy=None, quiet=False,
 
 def _opening_action(mode, policy, ctrl, disp, state, lab):
     """Turn 1 has no prior observation; scripted/rival players act on a minimal
-    bootstrap (start scaling_laws + commission a starter run)."""
+    bootstrap (start generative_pretraining + commission a starter run)."""
     if mode == "interactive":
         print("Turn 1, 2021. You have a small lab, some cash, and a blank tech tree.")
-        a = Action(start_projects=[{"project_id": "scaling_laws", "ai_assist": 0.0}],
+        a = Action(start_projects=[{"project_id": "generative_pretraining", "ai_assist": 0.0}],
                    commission_run={"compute": 300})
-        print("(auto: starting scaling-laws research + a $300M starter pretrain run)")
+        print("(auto: starting generative-pretraining research + a $300M starter pretrain run)")
         return a
-    return Action(start_projects=[{"project_id": "scaling_laws", "ai_assist": 0.0}],
+    return Action(start_projects=[{"project_id": "generative_pretraining", "ai_assist": 0.0}],
                   commission_run={"compute": 300})
 
 

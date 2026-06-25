@@ -11,6 +11,7 @@ from backend_v1.engine.research.capabilities.capabilities_research_item import (
 from backend_v1.engine.research.safety.safety_research_item import SAFETY_PROJECTS_BY_ID
 from backend_v1.engine.research.safety.safety_advance_item import SAFETY_ADVANCES_BY_ID
 from backend_v1.engine.governance.policies import POLICY_DEFS
+from backend_v1.engine.governance.regulation import release_gate_status
 from backend_v1.engine.observation.warnings import warning_payload
 from backend_v1.engine.rules import (
     assist_potency, assist_speed_potency, effective_fraction,
@@ -269,7 +270,7 @@ def validate_action(action: Action, lab, world, consts, dt) -> list[str]:
     return problems
 
 
-def legal_moves(lab, world, consts, dt) -> dict:
+def legal_moves(lab, world, consts, dt, turn) -> dict:
     """Explicit action space for agents/humans (§14)."""
     pool = budget_pool(lab, dt)
     committed = committed_budget(lab)
@@ -352,7 +353,11 @@ def legal_moves(lab, world, consts, dt) -> dict:
         "applicable_pretrain_safety": applicable_pretrain_safety,
         "max_run_compute": round(lab.max_run_compute(), 0),
         "can_release": lab.model_in_training is not None,
-        "policies": _policy_board(lab, world, consts),
+        # §7c: if an active policy would block or delay this release, explain it AT
+        # the release control now — don't let the player submit and only learn why
+        # from a feed line next turn. None when nothing gates the release.
+        "release_gate": release_gate_status(lab, world, consts, turn, dt),
+        "policies": _policy_board(lab, world, consts, dt),
         "lobby_stances": list(STANCES),
         "eval_harnesses": _eval_harness_board(lab),
         "action_schema_example": {
@@ -413,7 +418,7 @@ def _enf_tier(level):
     return "low" if level < 0.34 else "medium" if level < 0.67 else "high"
 
 
-def _policy_board(lab, world, consts):
+def _policy_board(lab, world, consts, dt):
     """Public regulatory board + the per-policy DEFECT consequence preview the
     frontend needs to warn-and-confirm before the player defects (§3d)."""
     board = []
@@ -421,7 +426,7 @@ def _policy_board(lab, world, consts):
         policy_state = world.policies.get(p.id)
         stage = policy_state.stage if policy_state is not None else "dormant"
         entry = {"policy_id": p.id, "name": p.name, "stage": stage,
-                 "defectable": p.defectable, "teaches": p.teaches}
+                 "defectable": p.defectable, "effect": p.effect}
 
         # RIVALS' lobby/litigation pressure on this policy (UI_ISSUES #5). All PUBLIC
         # regulatory state (design §10c) — lab ticker, declared stance, and money spent.
@@ -462,13 +467,24 @@ def _policy_board(lab, world, consts):
             if p.defectable and p.covers(lab):
                 # consequence preview (warn before committing)
                 size_scale = 1.0 + max(0.0, lab.market_cap) / 4000.0
-                catch_p_yr = (enf * consts.ENFORCEMENT_BASE_DETECTION
-                              * consts.ENFORCEMENT_CATCH_RATE * 2.0)
-                entry["defect_preview"] = {
-                    "catch_prob_per_year": round(catch_p_yr, 3),
-                    "penalty_if_caught": round(enf * consts.DEFECTION_PENALTY * size_scale, 0),
-                    "approval_hit_if_caught": round(enf * consts.DEFECTION_APPROVAL_HIT, 1),
-                }
+                approval_hit = round(enf * consts.DEFECTION_APPROVAL_HIT, 1)
+                if p.defection_always_caught:
+                    # withholding is caught with certainty and fined EVERY turn;
+                    # mirror the per-turn (rate × dt) fine enforcement_phase applies.
+                    per_turn_fine = enf * consts.DEFECTION_PENALTY * size_scale * dt
+                    entry["defect_preview"] = {
+                        "always_caught": True,
+                        "penalty_per_turn": round(per_turn_fine, 0),
+                        "approval_hit_if_caught": approval_hit,
+                    }
+                else:
+                    catch_p_yr = (enf * consts.ENFORCEMENT_BASE_DETECTION
+                                  * consts.ENFORCEMENT_CATCH_RATE * 2.0)
+                    entry["defect_preview"] = {
+                        "catch_prob_per_year": round(catch_p_yr, 3),
+                        "penalty_if_caught": round(enf * consts.DEFECTION_PENALTY * size_scale, 0),
+                        "approval_hit_if_caught": approval_hit,
+                    }
         else:
             entry["lobbyable"] = True
 

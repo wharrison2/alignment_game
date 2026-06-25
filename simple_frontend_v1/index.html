@@ -218,6 +218,12 @@
   .rival-card .rc-field .rc-flabel{font-size:9px;text-transform:uppercase;
                                    letter-spacing:.05em;color:var(--dim)}
   .rival-card .rc-field .rc-fvalue{font-size:13px;font-variant-numeric:tabular-nums}
+  .rival-card .rc-disclosure summary{font-size:9px;text-transform:uppercase;
+                                     letter-spacing:.05em;color:var(--dim);cursor:pointer}
+  .rival-card .rc-disclosed-model{margin:4px 0 0;padding-top:4px;
+                                  border-top:1px solid var(--line);font-size:11px}
+  .rival-card .rc-disclosure-withheld{font-size:10px;color:var(--warn);
+                                      font-style:italic}
   #itemmodal{position:fixed;inset:0;background:rgba(31,35,40,.45);display:none;
              align-items:center;justify-content:center;padding:24px;z-index:30}
   #itemmodal.show{display:flex}
@@ -246,7 +252,7 @@
      market view; the policies list scrolls INTERNALLY while the safe-harbor row
      stays pinned beneath it. Each policy item is a 2-column grid: LEFT holds the
      policy name + stage tag + compact controls; RIGHT holds the rival-spends box.
-     The verbose `teaches` mechanism text moved OFF the item onto a details modal
+     The verbose `effect` mechanism text moved OFF the item onto a details modal
      (openPolicyModal), so the inline item shows only a short neutral descriptor. */
   .view[data-view="governance"]{height:100%}
   .gov-panel{height:100%;display:flex;flex-direction:column;margin-bottom:0}

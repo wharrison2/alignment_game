@@ -35,7 +35,7 @@ def play_one(strategy_name, seed, difficulty, guidance, trace=False):
             if lab.is_player:
                 if observations is None:
                     actions[lab.id] = Action(
-                        start_projects=[{"project_id": "scaling_laws", "ai_assist": 0}],
+                        start_projects=[{"project_id": "generative_pretraining", "ai_assist": 0}],
                         commission_run={"compute": 300})
                 else:
                     player_obs_dict = observations[lab.id].to_dict()

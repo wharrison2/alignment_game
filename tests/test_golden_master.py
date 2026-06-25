@@ -38,7 +38,7 @@ MAX_TURNS = 30
 # duplicated here so the test does not depend on the CLI module).
 POLICY_RECKLESSNESS = {"aggressive": 0.95, "balanced": 0.5, "cautious": 0.12}
 
-_OPENING = Action(start_projects=[{"project_id": "scaling_laws", "ai_assist": 0.0}],
+_OPENING = Action(start_projects=[{"project_id": "generative_pretraining", "ai_assist": 0.0}],
                   commission_run={"compute": 300})
 
 # Baselines captured with --record on the reconciled (legibility + structural
@@ -150,12 +150,57 @@ _OPENING = Action(start_projects=[{"project_id": "scaling_laws", "ai_assist": 0.
 # (it is the one edited string that lands in the TRUE-state log; a buyout only fires
 # in that scripted game). All other digests are unchanged. Pure copy reword, no
 # mechanics/RNG change; intentional, determinism holds (stable across PYTHONHASHSEED).
+# Re-recorded for the "pretrain tree revision" change (ISSUES.md): generative_pretraining
+# was added as the root pretrain advance (now the turn-1 opening move), scaling_laws was
+# split/renamed to larger_datasets, better_architecture->mixture_of_experts,
+# data_efficiency->compute_optimal_scaling, with reworked prereqs and ceiling mults. The
+# scripted controller opens with generative_pretraining and picks capability projects from
+# the changed catalog, so its action stream and the TRUE trajectory move — an expected
+# action-stream change, NOT an RNG/firewall regression (CLAUDE.md §8).
+# Re-recorded AGAIN for the "assist/delegation revision" change (ISSUES.md): research_speed_bonus
+# removed (dev_tooling now grants assist_potency instead); ai_rnd_assist deleted and its potency
+# redistributed onto chain_of_thought/tool_use/long_context (+0.07 each) and multi_agent (+0.30,
+# +0.06 elicitation), with multi_agent's prereqs rewired; automated_researcher and
+# recursive_self_improvement reclassified to a "delegation" phase with raised contamination_tier.
+# These change the scripted action stream (build orders) and the TRUE trajectory — expected
+# action-stream change, NOT an RNG/firewall regression (CLAUDE.md §8).
+# Re-recorded for the "delegation contamination refinement" change (ISSUES.md): self_preservation
+# added to CONTAM_TO_AXES (so all AI-assisted research reproduces it; weights redistributed but
+# sum held at 1.0), and the delegation advances (automated_researcher, recursive_self_improvement)
+# stripped of elicitation_bonus + eval_awareness_feed (now pure potency + contamination). These
+# shift every deep-tree TRUE trajectory; no new RNG draws, determinism holds; firewall green.
+# Re-recorded for the "delegation dependency cleanup" change (ISSUES.md): the endgame was rewired
+# into a linear chain multi_agent→automated_researcher→recursive_self_improvement→
+# novel_architecture_search (novel-arch now gated by RSI; RSI no longer requires novel-arch), and
+# the cli/strategies build orders reordered to match. Changes the scripted action stream and the
+# deep-tree TRUE trajectory — expected action-stream change, NOT an RNG/firewall regression (§8).
+# Re-recorded for the "ASI gate" retune (ISSUES.md): the human-reachable pretrain efficiency tree
+# was weakened (~6.4x → ~3.5x) and CEIL_COMPUTE_SCALE raised 14000→20000 so the no-delegation
+# ceiling plateaus below the ASI threshold at realistic compute; novel_architecture_search bumped
+# to the decisive ×3.0 (delegation-gated); and the late path lengthened (multi_agent/automated_
+# researcher/recursive_self_improvement/novel-arch durations up). Shifts every TRUE capability
+# trajectory; deterministic, firewall green — expected balance retune, not a regression (§8).
+# Re-recorded for the "disclosure defection" change (ISSUES.md): the disclosure mandate became a
+# real, defectable policy. Withholding is caught with CERTAINTY (no detection roll) and fined every
+# turn (DEFECTION_PENALTY × enforcement × size × dt), via a new enforcement_phase branch. Only ONE
+# digest moved, 5-aggressive-impossible — the only scripted game where WTR rises enough for
+# disclosure to activate; there a rival's stochastic withholding now SKIPS the per-policy catch roll
+# (shifting RNG order) and emits per-turn defection_caught events into the TRUE log (7 of them).
+# The other four games never activate disclosure, so their digests are unchanged. Expected behavior
+# change, determinism holds, firewall green — NOT an RNG/firewall regression (CLAUDE.md §8).
+# Re-recorded again for the "interp-mandate recency window" change (ISSUES.md): interp_mandate_check
+# now counts only mechanistic evidence from the last INTERP_MANDATE_RECENCY_YEARS (2 quarters) and
+# goes with the MOST RECENT reading, not the worst-ever — so an old bad probe no longer vetoes a
+# release forever. Only 5-aggressive-impossible moved: it is the only scripted game where interp_mandate
+# both activates AND a release's gating outcome flips under the recency rule, shifting the TRUE
+# trajectory. The check uses no RNG (call order unchanged), so this is a pure gating-outcome change.
+# The other four games never bind on interp_mandate, so their digests are unchanged.
 EXPECTED = {
-    "0-balanced-realistic": "f34af7109dbb38dbc17e8effc8d223ae7448d6d1910f0f3fff2fd7159e4aef06",
-    "3-aggressive-realistic": "7cf440f3eb78f090d525b5f1366708f5e1bd6aa236bcd4394638413e939b7a19",
-    "7-cautious-realistic": "b5582c9103c49564a87a6a1d7a8a5a0e9a754371efdd0df65b4c51f6f68ae74b",
-    "1-balanced-easy": "849aedacef22ef2b563af7cdfe03b44e81f4709679f28e6986d5e7639d8f32b0",
-    "5-aggressive-impossible": "d793623cc286ae5fab6be60d05a22b3f9f149f7aa7136896f16d7e2959b1c33f",
+    "0-balanced-realistic": "fefc9177d9e7a6325ae43d1f8e9043f63c1130a69f64743eff1bd507dfcc8520",
+    "3-aggressive-realistic": "282b2a2e000ce53f75567baa93d08353fe6e9be0fdb71a2ec45297297eaaf334",
+    "7-cautious-realistic": "d4a0b5f4ed2cdb5a61b5d62c8f5b8ba994f2098e2d4ba2f2c8104b737fc3f751",
+    "1-balanced-easy": "2d27a8f8d1caaf0beb351e5bc5b9170d8a4df413ffeeb4a0e43e79823262defe",
+    "5-aggressive-impossible": "fe38eae1015fc176b5178a1952c871f5d62e196a31b6f8416c01dbcd6726b545",
 }
 
 

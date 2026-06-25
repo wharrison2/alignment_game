@@ -76,8 +76,14 @@ def _chatter(wtr):
     return t("obs.chatter.deafening")
 
 
-def _rival_public_entry(other, lab, state, consts):
-    """Build the coarse public-information entry for one rival lab."""
+def _rival_public_entry(other, lab, state, consts, disclosure_active):
+    """Build the coarse public-information entry for one rival lab.
+
+    When the disclosure mandate is active, the rival must PUBLISH each released
+    model's measured safety numbers. Those are the same measured stats an
+    eval-aware model already games (design §10c), so the disclosed figures can
+    read clean while true alignment is bad — but they replace the player's noisy
+    guesswork with the rival's own official numbers."""
     frontier_model = other.frontier_model()
     entry = {
         "lab_id": other.id,
@@ -96,6 +102,20 @@ def _rival_public_entry(other, lab, state, consts):
             cache[key] = max(0.0, frontier_model.measured_capability.general * (1 + noise))
         entry["frontier_capability_estimate"] = round(cache[key], 2)
         entry["frontier_model_id"] = frontier_model.id
+    if disclosure_active:
+        # A lab can DEFECT on the mandate — refuse to publish — at a certain,
+        # per-turn fine (enforcement_phase). Refusal is public, so we surface it
+        # as "withholding" rather than silently dropping the lab's numbers.
+        rival_is_withholding = "disclosure" in other.active_defections
+        if rival_is_withholding:
+            entry["disclosure_withheld"] = True
+        else:
+            disclosed_models = [
+                _model_view(released_model)
+                for released_model in other.release_history
+                if released_model.released
+            ]
+            entry["disclosed_models"] = disclosed_models
     return entry
 
 
@@ -311,8 +331,11 @@ def build_observation(state, lab, tips, policy_news, public_events,
                       new_findings) -> Observation:
     consts = state.consts
 
+    disclosure_state = state.world.policies.get("disclosure")
+    disclosure_active = disclosure_state is not None and disclosure_state.active
+
     rivals_pub = [
-        _rival_public_entry(other, lab, state, consts)
+        _rival_public_entry(other, lab, state, consts, disclosure_active)
         for other in state.labs
         if other.id != lab.id
     ]
@@ -358,7 +381,7 @@ def build_observation(state, lab, tips, policy_news, public_events,
         policy_news=list(policy_news),
         public_events=public_event_entries,
         tips=list(tips),
-        legal_moves=legal_moves(lab, state.world, consts, state.dt),
+        legal_moves=legal_moves(lab, state.world, consts, state.dt, state.turn),
         benchmarks=_benchmark_cards(state, lab, consts),
         evals=_eval_cards(lab, consts),
         game_over=state.game_over,

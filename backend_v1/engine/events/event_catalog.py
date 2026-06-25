@@ -149,6 +149,9 @@ def _leak_rate(t, sb):
         r *= 2.5
     open_weights_policy = sb.world.policies.get("open_weights_restriction")
     if open_weights_policy is not None and open_weights_policy.active:
+        # [COPY-MIRRORED] this 0.4 factor is spelled out by hand in
+        # policy.open_weights_restriction.effect ("to about 40% of normal") in
+        # content/copy.py. Change it here and update that string to match.
         r *= 0.4
     return r
 

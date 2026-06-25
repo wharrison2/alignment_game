@@ -152,7 +152,7 @@ def main():
         sess = Sess(args.seed, args.difficulty, args.guidance)
         # turn 1 bootstrap so there's a model to act on, then present turn-1 obs
         obs = sess.step(Action(
-            start_projects=[{"project_id": "scaling_laws", "ai_assist": 0}],
+            start_projects=[{"project_id": "generative_pretraining", "ai_assist": 0}],
             commission_run={"compute": 300}))
         sess.first = False
         _save(sess, args.session)
