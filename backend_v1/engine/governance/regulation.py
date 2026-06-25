@@ -188,6 +188,7 @@ def _record_defection_caught(sb, lab, pdef, enf, penalty, turn, consts):
     scaled by enforcement and lab size (and clamped by any litigation penalty-cap);
     the approval hit scales with enforcement. Shared by the probabilistic catch and
     the always-caught (disclosure) path so the two can't drift apart."""
+    lab.fines_paid += penalty   # investors discount a lab bleeding fines (§9b dominance lever)
     approval_hit = enf * consts.DEFECTION_APPROVAL_HIT
     public_text = t("gov.defection_caught.public",
                     {"lab": lab.name, "policy": pdef.name,

@@ -104,6 +104,19 @@ def lab_score(lab, world, consts):
     score = (consts.SCORE_W_BEST * best / consts.CAP_MAX
              + consts.SCORE_W_REVSHARE * rev_share
              + consts.SCORE_W_GROWTH * lab.investment_momentum)
+    # Fines discount (ISSUES.md "fines->valuation"): investors flee a lab bleeding money
+    # to regulatory penalties. Fines accrue ONLY to labs that DEFECT on active rules
+    # (reckless rivals racing past audits/caps); the compliant clean player is never fined,
+    # so this is a clean DOMINANCE lever that rewards a clean+compliant record and the
+    # player's own governance lobbying (regs they pass -> rivals fined -> rivals devalued).
+    # Judged against the lab's own EARNINGS (annual revenue), not its inflated market cap:
+    # a lab fined several times its yearly revenue is a regulatory pariah investors flee,
+    # even if its headline valuation is large. (Against market cap a big reckless leader's
+    # fines look negligible; against revenue they bite — which is the dominance lever.)
+    fines_scale = max(consts.FINES_VALUATION_REF, lab.revenue_rate * consts.FINES_VALUATION_REVENUE_YEARS)
+    fines_ratio = lab.fines_paid / fines_scale
+    fines_factor = max(consts.FINES_VALUATION_FLOOR, 1.0 - consts.FINES_VALUATION_K * fines_ratio)
+    score *= fines_factor
     return max(0.0, score)
 
 

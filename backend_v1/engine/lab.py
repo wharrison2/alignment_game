@@ -80,6 +80,10 @@ class Lab:
     impact_positives: float = 0.0           # tracked separately for the loss screen
     # governance
     reputation: float = 50.0                # light per-lab reputation (weak lever)
+    fines_paid: float = 0.0                  # cumulative regulatory fines ($M) — investors
+                                             # discount a lab bleeding money to penalties
+                                             # (only reckless DEFECTORS are fined; the
+                                             # compliant clean player never is -> dominance lever)
     lobby_stances: dict = field(default_factory=dict)  # policy_id -> last stance (display)
     active_defections: set = field(default_factory=set)  # policy_ids the player chose to defect on
     defection_caught_pending: set = field(default_factory=set)  # policy_ids defecting, awaiting catch roll

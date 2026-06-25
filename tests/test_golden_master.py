@@ -145,68 +145,71 @@ _OPENING = Action(start_projects=[{"project_id": "generative_pretraining", "ai_a
 # release window changes budget/duration/contamination and every downstream draw, moving
 # every digest. Determinism holds (same seed → identical run); intentional behavior
 # change, NOT an RNG/firewall regression (CLAUDE.md §8).
-# Re-recorded for the plain-language copy pass (ISSUES.md): only ONE digest moved,
-# 5-aggressive-impossible, because the event.buyout.public flavor text was reworded
-# (it is the one edited string that lands in the TRUE-state log; a buyout only fires
-# in that scripted game). All other digests are unchanged. Pure copy reword, no
-# mechanics/RNG change; intentional, determinism holds (stable across PYTHONHASHSEED).
-# Re-recorded for the "pretrain tree revision" change (ISSUES.md): generative_pretraining
-# was added as the root pretrain advance (now the turn-1 opening move), scaling_laws was
-# split/renamed to larger_datasets, better_architecture->mixture_of_experts,
-# data_efficiency->compute_optimal_scaling, with reworked prereqs and ceiling mults. The
-# scripted controller opens with generative_pretraining and picks capability projects from
-# the changed catalog, so its action stream and the TRUE trajectory move — an expected
-# action-stream change, NOT an RNG/firewall regression (CLAUDE.md §8).
-# Re-recorded AGAIN for the "assist/delegation revision" change (ISSUES.md): research_speed_bonus
-# removed (dev_tooling now grants assist_potency instead); ai_rnd_assist deleted and its potency
-# redistributed onto chain_of_thought/tool_use/long_context (+0.07 each) and multi_agent (+0.30,
-# +0.06 elicitation), with multi_agent's prereqs rewired; automated_researcher and
-# recursive_self_improvement reclassified to a "delegation" phase with raised contamination_tier.
-# These change the scripted action stream (build orders) and the TRUE trajectory — expected
-# action-stream change, NOT an RNG/firewall regression (CLAUDE.md §8).
-# Re-recorded for the "delegation contamination refinement" change (ISSUES.md): self_preservation
-# added to CONTAM_TO_AXES (so all AI-assisted research reproduces it; weights redistributed but
-# sum held at 1.0), and the delegation advances (automated_researcher, recursive_self_improvement)
-# stripped of elicitation_bonus + eval_awareness_feed (now pure potency + contamination). These
-# shift every deep-tree TRUE trajectory; no new RNG draws, determinism holds; firewall green.
-# Re-recorded for the "delegation dependency cleanup" change (ISSUES.md): the endgame was rewired
-# into a linear chain multi_agent→automated_researcher→recursive_self_improvement→
-# novel_architecture_search (novel-arch now gated by RSI; RSI no longer requires novel-arch), and
-# the cli/strategies build orders reordered to match. Changes the scripted action stream and the
-# deep-tree TRUE trajectory — expected action-stream change, NOT an RNG/firewall regression (§8).
-# Re-recorded for the "ASI gate" retune (ISSUES.md): the human-reachable pretrain efficiency tree
-# was weakened (~6.4x → ~3.5x) and CEIL_COMPUTE_SCALE raised 14000→20000 so the no-delegation
-# ceiling plateaus below the ASI threshold at realistic compute; novel_architecture_search bumped
-# to the decisive ×3.0 (delegation-gated); and the late path lengthened (multi_agent/automated_
-# researcher/recursive_self_improvement/novel-arch durations up). Shifts every TRUE capability
-# trajectory; deterministic, firewall green — expected balance retune, not a regression (§8).
-# Re-recorded for the "disclosure defection" change (ISSUES.md): the disclosure mandate became a
-# real, defectable policy. Withholding is caught with CERTAINTY (no detection roll) and fined every
-# turn (DEFECTION_PENALTY × enforcement × size × dt), via a new enforcement_phase branch. Only ONE
-# digest moved, 5-aggressive-impossible — the only scripted game where WTR rises enough for
-# disclosure to activate; there a rival's stochastic withholding now SKIPS the per-policy catch roll
-# (shifting RNG order) and emits per-turn defection_caught events into the TRUE log (7 of them).
-# The other four games never activate disclosure, so their digests are unchanged. Expected behavior
-# change, determinism holds, firewall green — NOT an RNG/firewall regression (CLAUDE.md §8).
-# Re-recorded again for the "interp-mandate recency window" change (ISSUES.md): interp_mandate_check
-# now counts only mechanistic evidence from the last INTERP_MANDATE_RECENCY_YEARS (2 quarters) and
-# goes with the MOST RECENT reading, not the worst-ever — so an old bad probe no longer vetoes a
-# release forever. Only 5-aggressive-impossible moved: it is the only scripted game where interp_mandate
-# both activates AND a release's gating outcome flips under the recency rule, shifting the TRUE
-# trajectory. The check uses no RNG (call order unchanged), so this is a pure gating-outcome change.
-# The other four games never bind on interp_mandate, so their digests are unchanged.
-# Re-recorded for the "longer-game creep compensation" change (ISSUES.md): GOAL_MIS_CREEP
-# 0.025->0.022 (the ASI-gate/duration retune lengthened games ~2x and lifted per-model
-# post-train rounds ~1.5x, so the same per-round creep over-accumulated). Lower per-round
-# goal-misalignment creep shifts every model's TRUE alignment trajectory each post-train
-# round, moving every digest. Determinism holds; intentional balance change, NOT an
-# RNG/firewall regression (CLAUDE.md §8).
+# Re-recorded for the "winnability package" (ISSUES.md "fines->valuation + winnability"):
+# (1) NEW fines->valuation lever — labs accumulate fines_paid when caught defecting, and
+# lab_score is discounted by fines relative to ~2yr revenue (rewards a clean+compliant
+# record, devalues caught reckless defectors); (2) RIVAL_RECKLESSNESS_MULT["realistic"]
+# 0.9->0.7 (slower racing so clean play keeps pace); (3) WORK_BUDGET_PER_YEAR 4.0->5.6
+# (quarterly pool 1.0->1.4, eases the §9b squeeze so the clean player can juggle
+# tree-research + safety + elicitation). These change every lab's score/cash trajectory;
+# the fines path adds no new RNG draw (the defection/catch rolls already existed).
+# Determinism holds (same seed -> identical run); intentional balance change, NOT an
+# RNG/firewall regression (CLAUDE.md §8). Non-trivial verified: no-op player loses 6/6,
+# reckless rival mean composite ~0.57 (>bar 6/6) — the misalignment thesis is intact.
+#
+# Re-recorded AGAIN for the "winnability — completing the win path" changes (ISSUES.md):
+# after the fines lever a clean player could reach aligned ASI but kept losing on DOMINANCE
+# and the ceiling-9 cash wall. Five more changes, each verified to keep naive play losing
+# (no-op AND capability-rush both lose 6/6): (4) fines discount judged against ~2yr REVENUE
+# not market cap, FINES_VALUATION_FLOOR 0.35->0.25 (a heavily-fined reckless lab actually
+# drops below a clean one); (5) reg-enactment sped up (POLICY_PASS_BASE 1.4->2.6,
+# LOBBY_SPEND_K 0.75->1.15, LOBBY_TALLY_DECAY 1.4->1.0) so a CLEVER early-lobbyer can force
+# regs active (a naive non-lobbyer still gets dormant regs); (6) COMMISSION_COST_MULT 0.6 —
+# a pretrain costs 0.6x its compute in cash, so a cash-constrained clean player can afford
+# the ceiling-9 run WITHOUT banking (which had starved its releases); max_run_compute now
+# cash/COST_MULT; (7) ASI_DOMINANCE_BOOST 2.5 — the world's first ALIGNED ASI re-rates its
+# lab (x2.5 market cap at resolution) so reaching it first translates to the dominance win
+# instead of "aligned but dominated". A clever clean+compliant+governance line now WINS
+# (demonstrated by hand, seed 2: aligned ASI, +364 impact, dominant); naive play still loses.
+# Determinism holds; intentional balance change, NOT an RNG/firewall regression (§8).
+#
+# Re-recorded AGAIN for "work budget made player-only" (ISSUES.md): the earlier
+# WORK_BUDGET_PER_YEAR 4.0->5.6 bump applied to RIVALS too (it speeds their racing — wrong
+# direction). Reverted: WORK_BUDGET_PER_YEAR back to 4.0 (rivals = pool 1.0, the baseline),
+# and a new PLAYER_WORK_BUDGET_PER_YEAR=5.6 (pool 1.4) on the PLAYER ONLY (game.py) — the
+# protagonist lab juggles capability+safety+governance and needs the headroom rivals don't.
+# Rivals at 1.0 are slower, so every realistic digest moves. Determinism holds; intentional
+# balance change, NOT an RNG/firewall regression (§8).
+# Re-recorded for the "symmetric rules" revert (ISSUES.md): per the designer, the
+# player and rivals must share the SAME budget and world interaction. Reverted the
+# player-favoring changes — player-only work budget, the ASI-resolution re-rating, and
+# the commission-cost/ max_run_compute easing — back to symmetric. Kept the SYMMETRIC
+# levers (fines->valuation, faster reg enactment, rival recklessness). Every lab’s
+# economy/dynamics shift, so digests move; determinism holds; NOT an RNG/firewall
+# regression (§8). Invariants: no-op loses 8/8, reckless rival composite ~0.53.
+# Re-recorded for the "symmetric balance pass" (ISSUES.md): designer-agreed world-lever
+# values — fines floor 0.25->0.20 & K 0.7->0.9 (devalue reckless defectors), buyout
+# trigger 0.55->0.62 & base-rate 0.9->0.7 (a clean leader can hold dominance), and
+# POLICY_THRESHOLDS["interp_mandate"] 60->45 (containment enactable). All symmetric;
+# determinism holds; intentional balance change, NOT a regression (§8). Invariants:
+# no-op loses 8/8, reckless composite ~0.53.
+# Re-recorded for "DECEPTION_CAUGHT_RATE 0.30->0.70" (ISSUES.md): the deception scandal
+# that unlocks interp_mandate now surfaces earlier, so a lobbying player can enact the
+# containment reg IN TIME to stall reckless rivals below ASI (validated: interp active
+# holds the rival frontier at true ~8.5). Symmetric (applies to all labs). Determinism
+# holds; intentional balance change, NOT a regression (§8). no-op loses 8/8, reckless ~0.51.
+# Re-recorded for the MERGE of balance-winnable into main (ISSUES.md): main carried the
+# interp-mandate recency window (interp_mandate_check now uses the last 2 quarters / most
+# recent reading) + the release-gate UI; balance-winnable carried the winnability levers
+# above. The merged code combines both, so all realistic digests move (the easy game,
+# 1-balanced-easy, never binds on either change and is unchanged). No new RNG draws on
+# either path; determinism holds; intentional combined change, NOT a regression (§8).
 EXPECTED = {
-    "0-balanced-realistic": "3ab7f2980b56cdef1fd0b7c1f7b8c459600afe6947a531f3c9cf97cd8ddfd8ef",
-    "3-aggressive-realistic": "9e75ecc01eee5246443649de54c9b16d9d39633ba5e9cadc6f20abe6c21758f1",
-    "7-cautious-realistic": "788fd1aa259cdf714506f59ebb011d4212ab2d3da431efa63123fac6aef43718",
+    "0-balanced-realistic": "aeb37b6c7ac59f5b837fd48b49c08dc9cb2a338e3c0a8bd171cb2f9be735ea0d",
+    "3-aggressive-realistic": "1278b5c49fa981ece7419cf895f7cc38c4d8016de308ebe4e6bb922716c916f5",
+    "7-cautious-realistic": "845c70331c83c1c4c1098adff4dacd85e7ea481c57ca5d2fe9a68dd756105cfe",
     "1-balanced-easy": "fa343fc763c8aa7eba24c2a21b5ff770fc55a7302c31f45804e76c9427c29cea",
-    "5-aggressive-impossible": "2783b2a2879b45db6edb64f5dc309cc7cbff77b295282676ecccc347c93039b3",
+    "5-aggressive-impossible": "b65dd87b360f7bbf6f6d1128886968898b95a7aeb0b3917c600de5ec7c1f8d28",
 }
 
 

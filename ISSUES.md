@@ -1971,3 +1971,185 @@ SEVERITY / AUDIT_CASH_COST / AUDIT_MEASURED_BAR / INTERP_MANDATE_BAR /
 INTERP_MANDATE_RECENCY_YEARS / COMPUTE_CAP_LIMIT or the open-weights ×0.4 factor,
 the copy must be updated by hand to match. (The at-action release.gate.* strings DO
 interpolate {bar}/{cost}/{quarters} from consts and stay correct automatically.)
+## TASK: winnability — fines→valuation dominance lever (+ supporting eases)
+
+**Goal:** make the game winnable by *clever* play (aligned ASI + net-positive impact +
+market dominance) but *not easily*. Played 16+ games by hand via the deterministic
+harness to diagnose and tune.
+
+**Diagnosis (from hand-play, not scripted):** a clean player reliably reaches the
+*components* — aligned ASI (composite ~0.1–0.3), rival containment via governance,
+dominance-when-paced — but loses on one axis per game. The structural blocker is
+**market dominance**: `lab_score` rewards capability + revenue + momentum and ignored
+reckless harms, so reckless rivals out-valued clean play (the "aligned but dominated"
+open problem in STRATEGY_LEARNINGS.md). A first attempt (reputation→valuation) was
+**reverted** — jailbreak/incident reputation damage hits *every* lab (including the
+player's own released models), so it penalised the clean player as much as rivals.
+
+**Change (designer's steer — derive the dominance lever from FINES, not reputation):**
+- NEW `Lab.fines_paid` accumulator; `regulation.py` adds the penalty to it when a lab is
+  caught defecting. Only labs that DEFECT on active rules are fined — the compliant clean
+  player never is.
+- `investment.lab_score` multiplies a lab's score by `fines_factor =
+  max(FINES_VALUATION_FLOOR, 1 - FINES_VALUATION_K * fines_paid / max(REF, revenue*REVENUE_YEARS))`.
+  Judged against **revenue, not market cap** — a reckless leader's fines look negligible
+  beside its inflated cap, but bite when measured against earnings (a lab fined several
+  times its yearly revenue is a regulatory pariah). Constants (drafts, [TUNE]):
+  `FINES_VALUATION_K=0.7, FINES_VALUATION_FLOOR=0.35, FINES_VALUATION_REF=1500,
+  FINES_VALUATION_REVENUE_YEARS=2.0`.
+- Supporting eases (grounded in the hand-play pace/squeeze blockers):
+  `RIVAL_RECKLESSNESS_MULT["realistic"] 0.9→0.7` (slower racing) and
+  `WORK_BUDGET_PER_YEAR 4.0→5.6` (quarterly pool 1.0→1.4, eases the §9b
+  research/safety/elicitation squeeze that was silently dropping post-trains).
+
+**Verified:** non-trivial (no-op player loses existential 6/6); misalignment thesis intact
+(reckless rival mean composite ~0.57, >bar 6/6); fines discount bites when a lab is fined
+(e.g. a rival with $1.9B fines on ~$1.3B/yr revenue → ~50% valuation cut → dropped to
+last). Golden master re-recorded (intentional; determinism holds).
+
+**OPEN / flagged for review (could NOT fully validate by a hand-won game):**
+- A reckless *leader* that **complies** with the cheap achievable regs (audit/disclosure)
+  pays $0 fines and dodges the lever (seed-dependent). The lever bites defectors, not
+  compliant-but-reckless leaders. To make dominance reliable, a follow-up could make
+  low-compliance labs defect on (or find it costly to comply with) the achievable regs,
+  or raise enforcement catch rate, so reckless leaders actually incur fines.
+- Reaching ceiling-9 (aligned ASI) stays **cash-gated** (`max_run_compute = cash×0.9`):
+  a player who falls behind can't afford the ASI-grade run — a rich-get-richer loop the
+  fines lever only partly breaks (by keeping the compliant player higher-ranked).
+- A full end-to-end hand-WON game was not demonstrated this session; every component is
+  achievable but the execution is genuinely unforgiving (which is "not easily"). These
+  values are drafts for the designer; dial back if a skilled player wins too readily.
+
+### Completing the win path — demonstrated WIN (seed 2, by hand)
+
+After the fines lever a clean player reached aligned ASI but kept losing on DOMINANCE
+("aligned but dominated") and on the ceiling-9 CASH WALL (banking for the ASI run starved
+releases -> low market cap). Hand-played ~18 games; each loss was a real fixable mistake
+(misaligned ASI, jailbroken release -> bio uplift, over-eliciting past the cliff to
+composite 0.38, or aligned-but-dominated). Closing changes (all [TUNE] drafts, each
+re-verified to keep naive play losing — no-op AND capability-rush both lose 6/6 existential):
+
+- **Fines vs revenue, floor 0.25** — fines discount judged against ~2 years of revenue
+  (`FINES_VALUATION_REVENUE_YEARS=2`) not the inflated market cap, and floor 0.35->0.25, so
+  a reckless lab fined multiples of its revenue actually drops *below* a clean competitor.
+- **Faster regulatory enactment** — `POLICY_PASS_BASE 1.4->2.6`, `LOBBY_SPEND_K 0.75->1.15`,
+  `LOBBY_TALLY_DECAY 1.4->1.0`. Slower rivals cause less harm -> approval stays high -> regs
+  were too slow to activate, so the fines lever never fired. Now a CLEVER early-lobbyer can
+  force achievable regs active (fining/containing reckless rivals); a naive non-lobbyer
+  still gets dormant regs and loses.
+- **`COMMISSION_COST_MULT = 0.6`** — a pretrain of C compute costs 0.6*C cash (was 1:1).
+  Reaching ceiling-9 (~5800 compute) no longer demands ~$5.8B (which forced banking and
+  starved releases). Reckless rivals are already cash-rich, so this differentially helps the
+  cash-constrained clean player build market cap. `max_run_compute = cash / COST_MULT`.
+- **`ASI_DOMINANCE_BOOST = 2.5`** — the world's FIRST aligned ASI re-rates its lab (x2.5
+  market cap at resolution in `_finish`). Owning the most valuable asset in existence IS
+  market leadership; without it a reckless racer's accumulated cap eclipsed the lab that
+  actually solved alignment. Only fires for an ALIGNED ASI; a lab that neglected the market
+  entirely can still be eclipsed (it is a multiplier, not an automatic #1).
+
+**Demonstrated win (seed 2, hand-played):** clean+prevention models, full ceiling tree
+(novel) with `data_cleaning`+`aligned_synthetic_data` on the ASI run (kept composite under
+the 0.35 bar at general 9), jailbreak-hardened high-cap releases, lobbied achievable regs
+active (rivals fined+contained), crossed true general 9 at composite 0.32 WITHOUT
+over-eliciting, then let the verification window resolve. Result: **VICTORY — aligned ASI,
++364 net impact, market dominance.** "Clever but not easy": the winning line threads the
+trilemma the NPC labs can't, and a single slip (over-elicit, skip jailbreak hardening, race
+dirty, or neglect governance) still loses. Winning replay saved at scratchpad/g19.json.
+
+### Correction: work budget made PLAYER-ONLY (was a symmetric rival buff)
+
+Caught in review: the `WORK_BUDGET_PER_YEAR 4.0->5.6` bump (pool 1.0->1.4) applied to the
+player AND all rivals (game.py sets it on every Lab), so it also sped rival racing — the
+wrong direction. Fixed: `WORK_BUDGET_PER_YEAR` reverted to 4.0 (rivals = baseline pool 1.0);
+new `PLAYER_WORK_BUDGET_PER_YEAR = 5.6` (pool 1.4) set on the PLAYER lab only. The protagonist
+juggles capability + the full safety tree + governance from one §9b pool and needs headroom
+rivals (narrow racing playbook) do not. Rivals are now NOT buffed.
+
+**Gate clarification (answering "can you win while a rival has misaligned ASI?"):** No. The
+verification window opens for the FIRST model (any lab) to cross true general 9 (`asi_model_id`,
+turn_pipeline ~L431). If that first crosser is misaligned (composite > ASI_MISALIGNMENT_BAR) it
+self-exfiltrates -> EXISTENTIAL CATASTROPHE -> everyone loses (positives nulled). So winning
+REQUIRES reaching ALIGNED ASI *first*, i.e. keeping rivals below the threshold (governance
+containment) until you cross. Demonstrated both ways: the seed-2 win had rivals contained at
+~8.2; and when a rival crossed 9 misaligned first, the result was the catastrophe loss.
+
+**Win re-validation status under the player-only budget [OPEN]:** reverting the rival budget
+reshuffles the deterministic trajectory, so the committed seed-2 winning replay (recorded under
+the old symmetric 1.4) no longer reproduces as-is. The win remains ACHIEVABLE — under the new
+tuning rivals are slower and get CONTAINED (verified: interp_mandate + audit active stall the
+rival frontier at ~8.65 for many turns) — but the robust ASI run must use CLEAN research
+(ai_assist 0) on the late/ceiling tree: the ai_assist-0.7 shortcut contaminates the ASI model
+enough that its true misalignment composite crosses 0.35 BEFORE general 9 (observed composite
+0.38 at true 8.67), making an aligned crossing impossible. A fresh clean-research win demo under
+the player-only budget is the remaining to-do (diagnosed, not yet re-demonstrated here).
+
+### Designer correction: SYMMETRIC rules — no player buffs (supersedes the player-favoring package)
+
+The designer requires the player and rivals to share the SAME budget and interact with the
+world the SAME way, and to balance the game by tuning WORLD parameters (misalignment creep,
+willingness to regulate, rival recklessness, buyout strength) + the symmetric fines lever —
+NOT by buffing the player. Reverted the asymmetric changes from the prior package:
+- `PLAYER_WORK_BUDGET_PER_YEAR` removed — player and rivals both use `WORK_BUDGET_PER_YEAR`
+  (pool 1.0) again.
+- `ASI_DOMINANCE_BOOST` removed (the aligned-ASI market re-rating in `_finish`).
+- `COMMISSION_COST_MULT` removed — pretrain cost back to 1:1; `max_run_compute = cash*0.9`.
+
+KEPT (symmetric / world / rival levers, consistent with the directive):
+- Fines→valuation lever (revenue-scaled, floor 0.25) — applies to any lab that is caught
+  defecting; the designer suggested this.
+- Faster regulatory enactment (POLICY_PASS_BASE 2.6, LOBBY_SPEND_K 1.15, LOBBY_TALLY_DECAY
+  1.0) — the "willingness to regulate" lever.
+- RIVAL_RECKLESSNESS_MULT["realistic"] 0.7 — the rival-recklessness lever.
+
+**Symmetric baseline verified:** no-op player loses existential 8/8 (non-trivial); reckless
+rival mean misalignment composite ~0.53 (8/8 over the 0.35 bar — misalignment-by-default
+thesis intact). Golden master re-recorded; determinism holds.
+
+**OPEN — balance + demonstrate the clever win under symmetric rules:** with no player buffs
+the dominance hurdle returns (a clean player must genuinely win the market: release strong
+models + devalue reckless rivals via fines + keep pace as rivals are slowed/contained, then
+reach aligned ASI first). The stale winning replay (tests/winning_replay_seed2.json) was
+recorded under the now-removed buffs and no longer reproduces. Remaining work is an iterative
+world-parameter tune (recklessness / creep / WTR / buyout / fines) + a fresh hand-played win
+demonstration under the symmetric rules.
+
+### Symmetric balance pass + the containment-timing blocker (playtest diagnosis)
+
+Designer-agreed symmetric world-lever values applied: FINES_VALUATION_FLOOR 0.25->0.20,
+FINES_VALUATION_K 0.7->0.9 (devalue reckless defectors); BUYOUT_TRIGGER 0.55->0.62,
+BUYOUT_BASE_RATE 0.9->0.7 (a clean leader can hold dominance); POLICY_THRESHOLDS
+["interp_mandate"] 60->45 (containment threshold lowered). Recklessness 0.7, creep 0.025
+unchanged. Invariants verified: no-op loses 8/8; reckless composite ~0.53.
+
+**Careful economy-first playtest (seed 2) — still a LOSS, root cause found.** Built four
+strong, genuinely clean (composite <0.16), jailbreak-hardened models and a healthy economy,
+but reckless rivals reached misaligned ASI first. The clean "win by governance" path is
+blocked by a CHAIN of gates on the only effective containment reg (interp_mandate):
+  1. It needs a PUBLIC DECEPTION SCANDAL to even reach the board (world.deception_incident
+     _public, set by the `deception_caught` event).
+  2. That event's rate = DECEPTION_CAUGHT_RATE(0.30) x true_deception x general/CAP_MAX
+     ~= 3%/turn even for a deceptive rival, so the scandal surfaces only when rivals are
+     already near ASI — too late to enact + stall them.
+  3. Rivals also counter-lobby AGAINST interp_mandate (out-spending the player's pro-lobby).
+So even at threshold 45, interp_mandate stays dormant and rivals win the race.
+
+**OPEN — next lever (proposed, not yet applied):** raise DECEPTION_CAUGHT_RATE (e.g. 0.30
+->~0.7) so a deceptive rival's scandal surfaces EARLIER (~general 6-7, mid-game), unlocking
+interp_mandate in time for a lobbying player to enact it and stall reckless rivals below ASI
+— making the clean governance win path actually reachable. Symmetric (applies to all labs).
+Needs designer sign-off + a replay to validate.
+
+### DECEPTION_CAUGHT_RATE 0.30 -> 0.70 — containment now enactable IN TIME (validated)
+
+The containment blocker (prior note) was that interp_mandate's prerequisite — a public
+deception scandal — fired too late. Raised DECEPTION_CAUGHT_RATE 0.30->0.70 so a deceptive
+rival's scandal surfaces earlier (~mid-game). VALIDATED in a seed-2 playtest: interp_mandate
+reached ACTIVE (enf high) mid-game and HELD the reckless rivals below ASI — at turn 34 the
+rival leader was stalled at true general 8.54 (not even training further), all rivals < 9,
+while the player kept building. The clean "win by governance" path is now mechanically open
+(contain the reckless via governance, then climb to aligned ASI at leisure). Symmetric;
+non-trivial preserved (no-op loses 8/8; reckless composite ~0.51). Determinism re-recorded.
+
+(NB: a clean END-TO-END hand-win demonstration under this balance is the remaining step;
+the validation run itself was sloppy — applied un-researched deliberative -> dropped
+post-trains -> over-elicited a model -> not a clean win — but containment behaved correctly.)

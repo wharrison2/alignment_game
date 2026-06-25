@@ -322,7 +322,7 @@ JAILBREAK_DISCOVERY_RATE = 0.9  # * true jailbreak_sensitivity, per released mod
 JAILBREAK_INCIDENT_RATE = 0.55  # once techniques discovered, per year * sensitivity
 WEIGHTS_LEAK_RATE = 0.04        # per lab per year [TUNE]; leaked weights: guardrails void
 EXFIL_RATE_K = 0.9              # self-exfiltration ~ goal_mis * self_pres * gate(general)
-DECEPTION_CAUGHT_RATE = 0.30    # * deception * (general/10): caught in the wild -> free TRUE finding
+DECEPTION_CAUGHT_RATE = 0.70    # * deception * (general/10): caught in the wild -> free TRUE finding
 SHUTDOWN_RESIST_RATE = 0.25     # * self_preservation * gate
 SURFACE_HARM_RATE = 1.3         # regime-1 reputational events * surface badness, fades w/ capability
 BENEFICIAL_RATE = 0.50          # * (best deployed general/10)^2 — kept sparse per 0
@@ -354,17 +354,17 @@ GOV_EVAL_NOISE = 0.18           # government sees measured stats, worse than the
 # by stance. sqrt = diminishing returns within a turn; log-cap = incumbents have a
 # per-dollar edge but not a stranglehold. The per-policy tally is a HYBRID DECAYING
 # accumulator: each turn's influence adds, the standing tally decays.
-LOBBY_SPEND_K = 0.75            # [TUNE] $M -> influence points (vs WTR's 0..100)
+LOBBY_SPEND_K = 1.15            # [TUNE] $M -> influence points (vs WTR's 0..100)
 LOBBY_LOG_K = 0.30             # [TUNE] market-cap per-dollar edge (logarithmic)
 LOBBY_REFERENCE_CAP = 2000.0   # [TUNE] cap at which the log multiplier is ~1.0
-LOBBY_TALLY_DECAY = 1.4        # [TUNE] per-year decay of the standing lobby tally
+LOBBY_TALLY_DECAY = 1.0        # [TUNE] per-year decay of the standing lobby tally
 LOBBY_MIN_CAP_MULT = 0.2       # floor on the log multiplier (small labs still move some)
 
 # ── Policy lifecycle (§10c, 4 stages) ───────────────────────────────────
 # Once INTRODUCED (WTR crossed the intro threshold — the real, reactive-and-late
 # gate), a policy should walk to active in a few turns, not stall forever. WTR's
 # slow rise keeps regulation late; the pipeline latency on top should be modest.
-POLICY_PASS_BASE = 1.4         # introduced->passed per-year BASE rate once on the board
+POLICY_PASS_BASE = 2.6         # introduced->passed per-year BASE rate once on the board
 POLICY_PASS_RATE_K = 0.05      # + per year per (score - intro_thr) above the line
 POLICY_SIGN_RATE = 2.2         # passed->signed per-year baseline (momentum: usually quick)
 POLICY_ACTIVATE_RATE = 3.0     # signed->active per-year baseline
@@ -382,7 +382,7 @@ POLICY_THRESHOLDS = {           # INTRODUCTION thresholds: score crosses => on t
     "disclosure": 30.0,
     "audit_requirement": 38.0,
     "open_weights_restriction": 42.0,
-    "interp_mandate": 60.0,     # also requires a public deception incident first
+    "interp_mandate": 45.0,     # also requires a public deception incident first
     "compute_cap": 97.0,        # near-impossible to enact — deliberately (the lesson)
 }
 # [COPY-MIRRORED] The values below are also spelled out, by hand, in the player-facing
@@ -453,10 +453,10 @@ RIVAL_DISPOSITIONS = [
 # A crushed rival is acquired, recapitalized, renamed, and relaunched as a
 # hungry entrant, so a dominant player can never permanently clear the board and
 # coast to a pressure-free win. All [TUNE]; see engine/events/buyouts.py.
-BUYOUT_TRIGGER_CONCENTRATION = 0.55  # leader's market-cap share before acquirers circle
+BUYOUT_TRIGGER_CONCENTRATION = 0.62  # leader's market-cap share before acquirers circle
 BUYOUT_TARGET_CAP_FRACTION = 0.20    # a target sits below this fraction of the leader's cap
 BUYOUT_TARGET_VIABLE_CASH = 250.0    # ...and below this cash (can't fund a serious run)
-BUYOUT_BASE_RATE_PER_YEAR = 0.9      # per-year hazard once the field is concentrated...
+BUYOUT_BASE_RATE_PER_YEAR = 0.7      # per-year hazard once the field is concentrated...
 BUYOUT_CONCENTRATION_GAIN = 2.0      # ...rising the more monopolistic the leader is
 BUYOUT_COOLDOWN_TURNS = 6            # minimum turns between buyouts (acquisitions take time)
 BUYOUT_CAPITAL_FRACTION = 0.45       # war chest = this fraction of the leader's cash...
@@ -507,3 +507,15 @@ DIFFICULTY_SCALED = [
     "SCORE_RELEASE_DECAY", "RISING_TARGET_BASE", "ENFORCEMENT_CATCH_RATE",
     "BENEFICIAL_RATE", "BUYOUT_BASE_RATE_PER_YEAR",
 ]
+
+# Fines->valuation discount (investment.lab_score): investors devalue a lab bleeding
+# money to regulatory penalties. fines_factor = max(FLOOR, 1 - K * fines_paid/max(REF, cap)).
+# Only DEFECTORS (reckless rivals) are fined, so this rewards a clean+compliant record
+# and the player governance lobbying (ISSUES.md "fines->valuation").
+FINES_VALUATION_K = 0.9
+FINES_VALUATION_FLOOR = 0.20
+FINES_VALUATION_REF = 1500.0
+FINES_VALUATION_REVENUE_YEARS = 2.0  # fines judged against ~2 years of revenue
+
+# (commission cost is 1:1 with compute; max_run_compute = cash*0.9 — see lab.py)
+
