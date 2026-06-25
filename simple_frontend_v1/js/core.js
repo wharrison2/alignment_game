@@ -32,8 +32,10 @@ export async function api(path, body){
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
-export const COLORS = {player:"#4fb3ff", rival1:"#ff6868", rival2:"#ffb347",
-                       rival3:"#9a7bff", rival4:"#6fd087", rival5:"#ff8ad0"};
+// Desaturated lab palette: hues kept distinct but saturation roughly halved so the
+// legend/lines read as muted tones on the warm-paper theme rather than neon.
+export const COLORS = {player:"#7badd3", rival1:"#d98e8e", rival2:"#d1ab75",
+                       rival3:"#ac9cde", rival4:"#87b893", rival5:"#e2a7ca"};
 
 export const ENF_COLOR = {low:"dim", medium:"warn", high:"bad"};
 
