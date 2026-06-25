@@ -9,7 +9,7 @@ Difficulty (config/difficulty.py) scales a subset of these; see DIFFICULTY_SCALE
 
 # ── Time ────────────────────────────────────────────────────────────────
 DT_YEARS = 0.25                 # turn length; quarter. Change to 1/12 for months.
-START_YEAR = 2021.0
+START_YEAR = 2019.0
 # No turn cap: the game runs until an ASI verification-cliff resolution or an
 # existential event. (A cap can still be imposed per-game via new_game(max_turns=...),
 # used by batch tooling.)
