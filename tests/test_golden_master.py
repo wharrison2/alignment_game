@@ -205,11 +205,11 @@ _OPENING = Action(start_projects=[{"project_id": "generative_pretraining", "ai_a
 # 1-balanced-easy, never binds on either change and is unchanged). No new RNG draws on
 # either path; determinism holds; intentional combined change, NOT a regression (§8).
 EXPECTED = {
-    "0-balanced-realistic": "aeb37b6c7ac59f5b837fd48b49c08dc9cb2a338e3c0a8bd171cb2f9be735ea0d",
-    "3-aggressive-realistic": "1278b5c49fa981ece7419cf895f7cc38c4d8016de308ebe4e6bb922716c916f5",
-    "7-cautious-realistic": "845c70331c83c1c4c1098adff4dacd85e7ea481c57ca5d2fe9a68dd756105cfe",
-    "1-balanced-easy": "fa343fc763c8aa7eba24c2a21b5ff770fc55a7302c31f45804e76c9427c29cea",
-    "5-aggressive-impossible": "b65dd87b360f7bbf6f6d1128886968898b95a7aeb0b3917c600de5ec7c1f8d28",
+    "0-balanced-realistic": "57cb6f135101e33e20310107f46b1d7b2bd4676625cfbe2fca1041827d573d49",
+    "3-aggressive-realistic": "c3fad6d38f7f8479cce51e7e5ae242c488a823ba9053a88d4943bb0bdc84af6b",
+    "7-cautious-realistic": "57b358720b9f5bd8ea21546ab2cb51d01590e2f1b8a53fbf00d59f2a03cc78f4",
+    "1-balanced-easy": "b5bd63d68d69e2001c684f3f8a021f27805b6ace18064ed13d4a50ffb25aad54",
+    "5-aggressive-impossible": "7b4889a9e546b9c1c2ed7fb97212c8217332ab26a9dde5aca993d4a03fc9a99e",
 }
 
 

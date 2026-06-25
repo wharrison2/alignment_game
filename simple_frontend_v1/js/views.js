@@ -51,7 +51,7 @@ const CAP_PLOT_HEADROOM = 1.04;
 
 // Quarter dates start here (mirrors backend config START_YEAR / DT_YEARS: one
 // turn is one quarter). The graph is display-only, so duplicating these is fine.
-const CAP_START_YEAR = 2021;
+const CAP_START_YEAR = 2019;
 const CAP_QUARTERS_PER_YEAR = 4;
 
 // Tab-ticker geometry (px). The tab is triangle(point facing LEFT) + rectangle +
