@@ -145,12 +145,17 @@ _OPENING = Action(start_projects=[{"project_id": "scaling_laws", "ai_assist": 0.
 # release window changes budget/duration/contamination and every downstream draw, moving
 # every digest. Determinism holds (same seed → identical run); intentional behavior
 # change, NOT an RNG/firewall regression (CLAUDE.md §8).
+# Re-recorded for the plain-language copy pass (ISSUES.md): only ONE digest moved,
+# 5-aggressive-impossible, because the event.buyout.public flavor text was reworded
+# (it is the one edited string that lands in the TRUE-state log; a buyout only fires
+# in that scripted game). All other digests are unchanged. Pure copy reword, no
+# mechanics/RNG change; intentional, determinism holds (stable across PYTHONHASHSEED).
 EXPECTED = {
     "0-balanced-realistic": "f34af7109dbb38dbc17e8effc8d223ae7448d6d1910f0f3fff2fd7159e4aef06",
     "3-aggressive-realistic": "7cf440f3eb78f090d525b5f1366708f5e1bd6aa236bcd4394638413e939b7a19",
     "7-cautious-realistic": "b5582c9103c49564a87a6a1d7a8a5a0e9a754371efdd0df65b4c51f6f68ae74b",
     "1-balanced-easy": "849aedacef22ef2b563af7cdfe03b44e81f4709679f28e6986d5e7639d8f32b0",
-    "5-aggressive-impossible": "1e457054d428ba1ec6df3b33179a81fcac643d0d4cbf5ddf2975a3ef6ad35dca",
+    "5-aggressive-impossible": "d793623cc286ae5fab6be60d05a22b3f9f149f7aa7136896f16d7e2959b1c33f",
 }
 
 

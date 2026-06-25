@@ -1536,3 +1536,41 @@ therefore dropped out of the budget preview entirely. Centralized all three list
   typed `oninput` number fields; clamping mid-keystroke is worse UX than letting the
   cash chip go red and having the backend reject at end-turn. Only the discrete
   "carry out / queue" buttons are hard-blocked. Noted as a deliberate scope line.
+
+---
+
+## Plain-language copy pass (names and descriptions)
+
+Reworked the player-facing copy in backend_v1/content/copy.py and the prose in
+simple_frontend_v1/js/strings.js so a newcomer can understand it, per the agreed voice.
+
+**Voice applied.** Titles stay true to the thing and may keep real jargon (e.g.
+"Representation engineering", "Mechanistic interpretability probes"), but lost their
+slashes ("RLHF / instruction tuning" -> "RLHF and instruction tuning";
+"Jailbreak hardening / adversarial training" -> "Jailbreak hardening"). Descriptions are
+plain sentences: no ALL-CAPS emphasis, no em dashes, no clipped punchy fragments, no
+slashes. Load-bearing terms are kept but defined once at a natural anchor (eval-awareness
+and sandbagging in `safety.noise_injection.blurb`, elicitation in
+`warning.elicitation_pressure.why`, contamination in `warning.high_ai_assist.why`, the
+patching trap in `warning.behavioral_patch.why`) and used plainly elsewhere. Derived
+compound jargon ("concealment discount", "EFFECTIVENESS-gated", "disposition axes") is
+unpacked into plain words.
+
+**Determinism.** Only ONE golden-master digest moved (5-aggressive-impossible): the
+`event.buyout.public` flavor text is the single reworded string that lands in the
+TRUE-state log, and a buyout only fires in that scripted game. Re-recorded; pure copy
+reword, no mechanics/RNG change, stable across PYTHONHASHSEED. All other digests
+unchanged. Full suite green; firewall unaffected.
+
+**Deliberately left (flagged for a follow-up if wanted):**
+- `policy.enacted_news` still reads "POLICY {change}:" because `{change}` is upper-cased
+  at the call site (`turn_pipeline._apply_action`); de-capping needs a one-line engine
+  tweak (drop `.upper()`), not just a copy edit.
+- `postmortem.detail.existential_catastrophe` interpolates " — YOURS" as a param built in
+  turn_pipeline (an em dash in engine code, not in the template).
+- The ALL-CAPS action-button labels in strings.js (`actionbar.endTurn` "END TURN",
+  `training.release.label` "RELEASE this model", `gov.defect.label`/`queue.defect` DEFECT,
+  `queue.release` RELEASE) were left as deliberate UI emphasis for dangerous/primary
+  actions; `rivals.frontier.unknown` keeps "—" as an unknown-value placeholder glyph.
+- The hidden TRUE-log narration in content/true_log_copy.py (the post-mortem `*.true`
+  reveal) was not part of this pass.
