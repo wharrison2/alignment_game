@@ -10,6 +10,10 @@ grows — when you add a mechanism the doc doesn't mention, add it here.
 Audited 2026-06-18 against `design_doc.md`. Locations are paths under `backend_v1/`
 (or `cli/`) and may drift — grep the symbol if a line moved.
 
+**Planned (not yet in code):** a Kahoot-style multiplayer mode — see
+`MULTIPLAYER_DESIGN.md`. When it lands, move its subsystems (shared game / seat
+registry, turn barrier, lobby/admin panel) into this catalog.
+
 ---
 
 ## Core orchestration

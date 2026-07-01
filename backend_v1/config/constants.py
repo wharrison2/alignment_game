@@ -229,6 +229,10 @@ ASSIST_SPEEDUP = 2.2            # duration speedup coefficient; effective speed 
 ASSIST_SPEED_POTENCY_CAP = 3.0  # a very capable + assist-advance-equipped model can
                                 #   reach ~3× research potency -> dramatic speedup
 ASSIST_VARIANCE = 0.35          # assist widens duration variance (anti-dithering)
+# Full delegation (unlocked by automated_researcher) uses ai_assist=1.0 for speed/budget
+# but applies an extra contamination multiplier — the model isn't just helping, it IS
+# the researcher, so its hidden traits propagate more aggressively into every advance.
+DELEGATE_CONTAM_MULTIPLIER = 2.5  # [TUNE] extra contamination vs ai_assist=1 non-delegating
 RERESEARCH_SPEEDUP = 0.35       # flat (resolved decision)
 
 # ── Interventions (specific remediations on the model in training) ──────

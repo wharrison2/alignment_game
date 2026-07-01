@@ -7,7 +7,7 @@ import {
 import {
   switchView, drawCaps, renderTraining, togglePostTrain, togglePostTrainSafety,
   toggleRelease, renderPretrain, queueRun, clearRun, renderReleased, renderBenchmarks,
-  renderTruth, renderProjects, previewAssist, queueProject, unqueueProject,
+  renderTruth, renderProjects, previewAssist, toggleDelegate, queueProject, unqueueProject,
   renderInProgress, renderWorry, renderRivals, renderAlignmentEvidence,
   renderFeed, renderGovernance,
   setLobbyStance, setLobbySpend, setLitField, clearLit, toggleDefect, openPolicyModal,
@@ -261,7 +261,7 @@ setRender(render);
 setOnGameOver(showPostmortem);
 Object.assign(window, {
   switchView, showNewGame, endTurn, togglePostTrain, togglePostTrainSafety,
-  toggleRelease, queueRun, clearRun, previewAssist, queueProject, unqueueProject,
+  toggleRelease, queueRun, clearRun, previewAssist, toggleDelegate, queueProject, unqueueProject,
   setLobbyStance, setLobbySpend, setLitField, clearLit, toggleDefect, unqueue,
   openPolicyModal,
   newGame, closeOverlay, openProjectModal, carryOutProject, closeItemModal,

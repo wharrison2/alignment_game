@@ -240,7 +240,13 @@ def _apply_research_action(state, lab, action):
 
     for spec in action.start_projects:
         pid = spec.get("project_id")
-        assist = max(0.0, min(1.0, float(spec.get("ai_assist", 0.0))))
+        # Delegation is a qualitatively distinct mode unlocked by automated_researcher:
+        # the model takes over the research loop entirely. It implies ai_assist=1.0 for
+        # budget/speed purposes, but carries higher contamination (DELEGATE_CONTAM_MULTIPLIER
+        # applied at completion). Silently downgrades to normal assist if not yet unlocked.
+        is_delegate = bool(spec.get("delegate", False)) \
+            and "automated_researcher" in lab.researched_advances
+        assist = 1.0 if is_delegate else max(0.0, min(1.0, float(spec.get("ai_assist", 0.0))))
         template, kind = project_template(pid)
         if template is None:
             continue
@@ -274,7 +280,7 @@ def _apply_research_action(state, lab, action):
             process_id=f"{lab.id}-P{turn}-{pid}", kind=kind, template_id=pid,
             lab_id=lab.id, ai_assist=assist_in_effect, started_turn=turn,
             duration_years_remaining=duration, budget_fraction_effective=frac,
-            is_reresearch=is_re,
+            is_reresearch=is_re, is_delegate=is_delegate,
             assisting_model_id=assistant.id if assistant else None,
             assisting_model_goal_mis=(assistant.alignment_vec.goal_misalignment
                                       if assistant else 0.0),
@@ -381,6 +387,10 @@ def _complete_process(state, lab, proc, new_findings):
         prev = lab.researched_advances.get(proc.template_id)
         contamination = (proc.ai_assist * proc.assisting_model_goal_mis
                          * consts.CONTAM_PER_ASSIST * template.contamination_tier)
+        if proc.is_delegate:
+            # full handoff: the model isn't assisting, it IS the researcher — its traits
+            # propagate more aggressively than partial assist (design §9 contamination).
+            contamination *= consts.DELEGATE_CONTAM_MULTIPLIER
         lab.researched_advances[proc.template_id] = ResearchedItem(
             node_id=proc.template_id,
             version=(prev.version + 1 if prev else 1),

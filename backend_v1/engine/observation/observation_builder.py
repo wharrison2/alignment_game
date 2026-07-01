@@ -149,6 +149,7 @@ def _in_progress_entries(lab, state):
             "kind": process.kind,
             "phase": template.phase if template is not None else None,
             "ai_assist": process.ai_assist,
+            "is_delegate": process.is_delegate,
             "years_remaining_estimate": round(max(0.0, process.duration_years_remaining), 2),
         }
         active_project_entries.append(entry)

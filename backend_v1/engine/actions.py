@@ -341,6 +341,8 @@ def legal_moves(lab, world, consts, dt, turn) -> dict:
             "speed_potency": round(assist_speed_potency(lab, consts), 3),
             "max_reduction": consts.ASSIST_MAX_REDUCTION,
             "speedup": consts.ASSIST_SPEEDUP,
+            # delegate mode unlocked once automated_researcher is in the tree
+            "delegate_unlocked": "automated_researcher" in lab.researched_advances,
         },
         "warnings": warning_payload(),
         "can_post_train": lab.model_in_training is not None,

@@ -15,11 +15,12 @@ class ResearchProcess:
     kind: str                    # "capability" | "safety"
     template_id: str
     lab_id: str
-    ai_assist: float             # 0..1, per-project (§9b)
+    ai_assist: float             # 0..1, per-project (§9b); always 1.0 when is_delegate
     started_turn: int
     duration_years_remaining: float
     budget_fraction_effective: float    # after assist reduction
     is_reresearch: bool = False
+    is_delegate: bool = False           # full handoff mode (automated_researcher unlock)
     # frozen at start: who is doing the assisted labor (contamination source)
     assisting_model_id: str | None = None
     assisting_model_goal_mis: float = 0.0

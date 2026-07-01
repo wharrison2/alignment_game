@@ -2153,3 +2153,15 @@ non-trivial preserved (no-op loses 8/8; reckless composite ~0.51). Determinism r
 (NB: a clean END-TO-END hand-win demonstration under this balance is the remaining step;
 the validation run itself was sloppy — applied un-researched deliberative -> dropped
 post-trains -> over-elicited a model -> not a clean win — but containment behaved correctly.)
+
+---
+
+## Delegate tier (automated_researcher unlock)
+
+Implemented a "delegate" mode for AI-assist, unlocked by researching `automated_researcher`.
+
+**Mechanic:** delegate is a project-level boolean (`{delegate: true}` in the action spec). Once `automated_researcher` is in `lab.researched_advances`, the player can toggle Delegate on any project. The backend treats it as `ai_assist=1.0` for budget/speed, but applies `DELEGATE_CONTAM_MULTIPLIER` (2.5 [TUNE]) on top of the normal contamination formula — so contamination = `1.0 * goal_mis * CONTAM_PER_ASSIST * contamination_tier * 2.5`. The model isn't assisting, it IS the researcher.
+
+**Invented constant:** `DELEGATE_CONTAM_MULTIPLIER = 2.5` — nothing in the design doc specifies the relative magnitude. Chosen so that delegating to a moderately misaligned model (goal_mis≈0.3) on a mid-tier node produces roughly 2× the contamination of fully-assisted (non-delegate) research on the same node. Flagged [TUNE] for designer review.
+
+**Frontend:** a Delegate checkbox appears on every unresearched card once the unlock is live. Checking it disables the slider (fixed at 1.0 for the preview) and labels the queued item "delegate" in the queue bar and in-progress view. `toggleDelegate` is the handler, registered on `window` in `main.js`.

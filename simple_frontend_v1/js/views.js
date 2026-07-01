@@ -964,6 +964,23 @@ export function previewAssist(pid, base, years){
     `→ wb ${effFraction(base, assistLevel).toFixed(2)} · ~${effYears(years, assistLevel).toFixed(2)}y`;
 }
 
+// Handles the Delegate checkbox: when checked, fix the assist slider at 1.0 and
+// disable it (delegate = full assist + extra contamination); when unchecked, restore
+// the slider to 0 and re-enable it. Either way, refresh the preview.
+export function toggleDelegate(pid, base, years){
+  const checkbox = $("dlg-"+pid);
+  const slider = $("as-"+pid);
+  if(!checkbox || !slider) return;
+  if(checkbox.checked){
+    slider.value = "1";
+    slider.disabled = true;
+  } else {
+    slider.value = "0";
+    slider.disabled = false;
+  }
+  previewAssist(pid, base, years);
+}
+
 // A project queued THIS turn already lives in pending.start_projects (and shows in
 // the bottom queue bar with its own ✕). The server only hides items it has already
 // started, not ones queued client-side, so we drop the queued ones here — applied
@@ -978,9 +995,10 @@ export function renderProjects(){
   const lm = OBS.legal_moves;
   const assistParams = lm.assist;
   // No model at all (released or in training) ⇒ no assistant ⇒ the per-card assist
-  // control is suppressed (and the backend treats any assist as 0). This single
-  // flag drives every list.
+  // control is suppressed (and the backend treats any assist as 0). These two flags
+  // drive every list.
   const assistAvailable = assistParams.available;
+  const delegateUnlocked = assistParams.delegate_unlocked;
 
   const hint = !assistAvailable
     ? `<div class="dim" style="margin-bottom:6px">${t("research.assistHint.noModel")}</div>`
@@ -993,7 +1011,7 @@ export function renderProjects(){
   $("cap-projects").innerHTML = hint;
   // append the capability cards beneath the assist hint
   renderAvailableInto("cap-projects", excludeQueued(lm.capability_projects_available),
-    capabilityKindTag, t("research.capability.empty"), /*append=*/true, assistAvailable);
+    capabilityKindTag, t("research.capability.empty"), /*append=*/true, assistAvailable, delegateUnlocked);
 
   // Safety projects are a MIX: measurement EVALUATIONS (return findings) and
   // INTERVENTIONS (fine-tuning-style edits that remediate a target axis via the
@@ -1007,9 +1025,9 @@ export function renderProjects(){
 
   // Research tab: evaluations, then the §8b pre/post-training ADVANCES to unlock.
   renderAvailableItems("safety-projects", safetyEvaluations,
-    safetyKindTag, t("research.safety.empty"), assistAvailable);
+    safetyKindTag, t("research.safety.empty"), assistAvailable, delegateUnlocked);
   renderAvailableItems("safety-advances", excludeQueued(lm.safety_advances_available),
-    safetyKindTag, t("research.safetyAdvances.empty"), assistAvailable);
+    safetyKindTag, t("research.safetyAdvances.empty"), assistAvailable, delegateUnlocked);
 
   // Lab tab: the interventions, with a one-line note that they shape the model in
   // training and bite at the next post-train round.
@@ -1017,18 +1035,18 @@ export function renderProjects(){
     `<div class="dim" style="margin-bottom:6px">${t("lab.interventions.hint")}</div>`;
   $("safety-interventions").innerHTML = interventionsHint;
   renderAvailableInto("safety-interventions", safetyInterventions,
-    safetyKindTag, t("lab.interventions.empty"), /*append=*/true, assistAvailable);
+    safetyKindTag, t("lab.interventions.empty"), /*append=*/true, assistAvailable, delegateUnlocked);
 
   renderCompletedAdvances("completed-advances", OBS.researched_advances,
     t("research.completed.empty"));
 }
 
 // Small adapter so the capability panel can keep its assist hint above the cards.
-function renderAvailableInto(containerId, items, kindOf, emptyText, append, assistAvailable){
+function renderAvailableInto(containerId, items, kindOf, emptyText, append, assistAvailable, delegateUnlocked){
   const container = $(containerId);
   if(!container) return;
   const hintHTML = append ? container.innerHTML : "";
-  renderAvailableItems(containerId, items, kindOf, emptyText, assistAvailable);
+  renderAvailableItems(containerId, items, kindOf, emptyText, assistAvailable, delegateUnlocked);
   if(append) container.innerHTML = hintHTML + container.innerHTML;
 }
 
@@ -1037,8 +1055,12 @@ function renderAvailableInto(containerId, items, kindOf, emptyText, append, assi
 // queued and `reason` says which limit it breached — the modal caller surfaces it
 // inline, and it's also written to the queue error line for the non-modal path.
 export function queueProject(pid){
+  const isDelegating = $("dlg-"+pid)?.checked;
   const assistValue = parseFloat($("as-"+pid)?.value || 0);
-  pending.start_projects.push({project_id:pid, ai_assist:isNaN(assistValue)?0:assistValue});
+  const spec = isDelegating
+    ? {project_id: pid, delegate: true}
+    : {project_id: pid, ai_assist: isNaN(assistValue) ? 0 : assistValue};
+  pending.start_projects.push(spec);
   const fit = queueFits();
   if(!fit.ok){
     pending.start_projects.pop();   // revert: this item didn't fit the budget/cash
@@ -1483,7 +1505,11 @@ export function renderQueue(){
   pending.start_projects.forEach(queued => {
     const project = allProjects.find(x => x.project_id === queued.project_id);
     let suffix = "";
-    if(queued.ai_assist && project){
+    if(queued.delegate && project){
+      suffix = ` (delegate → wb ${effFraction(project.budget_fraction,1.0).toFixed(2)}, ~${effYears(project.duration_years,1.0).toFixed(2)}y)`;
+    } else if(queued.delegate){
+      suffix = ` (delegate)`;
+    } else if(queued.ai_assist && project){
       suffix = ` (assist ${queued.ai_assist} → wb ${effFraction(project.budget_fraction,queued.ai_assist).toFixed(2)}, ~${effYears(project.duration_years,queued.ai_assist).toFixed(2)}y)`;
     } else if(queued.ai_assist){
       suffix = ` (assist ${queued.ai_assist})`;
