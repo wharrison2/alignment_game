@@ -2199,3 +2199,17 @@ Building MULTIPLAYER_DESIGN.md. Decisions and liberties recorded per work packag
   passes (`resim=False`, §4.7). Flagged, not fixed.
 - `new_multiplayer_game` allows duplicate human lab names/tickers (cosmetic; seats stay
   distinct via lab ids `player1..playerN`).
+
+### WP2 — trim_action_to_budget (forced-resolution trimmer)
+
+- **Invented drop-order convention.** The design's §4.4 says "reverse-chronological
+  (most-recently-queued first)", but `Action` has no unified queue — only `start_projects`
+  is intrinsically ordered; lobby/litigation/defect are keyed dicts. Convention shipped:
+  within a field, last list entry / last-inserted dict key first; across fields,
+  `start_projects → build_evals → litigation → lobby → commission_run → post_train →
+  release → defect/sign_safe_harbor`; floor = empty Action (a pass). Consequence worth
+  designer awareness: a pure CASH overrun (e.g. two big lobby spends) eats queued
+  projects before touching lobby, because categories shed strictly in that order. Kept
+  simple deliberately — the frontend's queue guards prevent over-budget staging in normal
+  play, so the trimmer only fires on staleness (world changed between staging and the
+  timer deadline).

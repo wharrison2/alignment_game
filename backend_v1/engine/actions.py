@@ -270,6 +270,63 @@ def validate_action(action: Action, lab, world, consts, dt) -> list[str]:
     return problems
 
 
+def trim_action_to_budget(action: Action, lab, world, consts, dt) -> Action:
+    """Forced-resolution safety for the multiplayer turn timer (MULTIPLAYER_DESIGN
+    §4.4): when a seat's staged action must be submitted as-is at the deadline,
+    drop its most-recently-queued cost-bearing entries until validate_action
+    passes, so an over-budget (or stale) queue can never wedge the barrier.
+
+    "Most-recently-queued" across the Action's heterogeneous fields is an
+    INVENTED convention (the Action has no unified queue — see ISSUES.md):
+    within a field, the last list entry / last-inserted dict key goes first;
+    across fields the drop order is
+        start_projects -> build_evals -> litigation -> lobby
+        -> commission_run -> post_train -> release -> defect/sign_safe_harbor.
+    The floor is an empty Action (a pass), which always validates. Pure: the
+    caller's action is never mutated; never raises."""
+    trimmed = Action(
+        start_projects=list(action.start_projects),
+        post_train=action.post_train,
+        commission_run=action.commission_run,
+        release=action.release,
+        lobby=dict(action.lobby),
+        litigation=dict(action.litigation),
+        defect=dict(action.defect),
+        sign_safe_harbor=action.sign_safe_harbor,
+        build_evals=dict(action.build_evals),
+    )
+    while validate_action(trimmed, lab, world, consts, dt):
+        if trimmed.start_projects:
+            trimmed.start_projects.pop()
+        elif trimmed.build_evals:
+            _drop_last_inserted_entry(trimmed.build_evals)
+        elif trimmed.litigation:
+            _drop_last_inserted_entry(trimmed.litigation)
+        elif trimmed.lobby:
+            _drop_last_inserted_entry(trimmed.lobby)
+        elif trimmed.commission_run is not None:
+            trimmed.commission_run = None
+        elif trimmed.post_train is not None:
+            trimmed.post_train = None
+        elif trimmed.release:
+            trimmed.release = False
+        elif trimmed.defect or trimmed.sign_safe_harbor:
+            trimmed.defect = {}
+            trimmed.sign_safe_harbor = False
+        else:
+            # Nothing left to drop but validation still fails (shouldn't happen:
+            # an empty action has no problems). Hard floor: pass.
+            return Action()
+    return trimmed
+
+
+def _drop_last_inserted_entry(entries: dict):
+    """Remove the most-recently-inserted key (dict insertion order = the order
+    the player queued the entries)."""
+    last_inserted_key = next(reversed(entries))
+    del entries[last_inserted_key]
+
+
 def legal_moves(lab, world, consts, dt, turn) -> dict:
     """Explicit action space for agents/humans (§14)."""
     pool = budget_pool(lab, dt)
