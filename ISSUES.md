@@ -2213,3 +2213,34 @@ Building MULTIPLAYER_DESIGN.md. Decisions and liberties recorded per work packag
   simple deliberately — the frontend's queue guards prevent over-budget staging in normal
   play, so the trimmer only fires on staleness (world changed between staging and the
   timer deadline).
+
+### WP3 — multiplayer server layer (`backend_v1/server/multiplayer.py` + `/api/mp/*`)
+
+- **Invented bounds** (all [TUNE], security-relevant ones flagged): lobby code = 6 chars
+  over a 31-char unambiguous alphabet (~8.9e8 codes vs ≤100 live games — the code's
+  entropy is the §6 A6 join-credential parameter); `MAX_SEATS=6`;
+  `MAX_MULTIPLAYER_GAMES=100` (LRU like the solo session registry; eviction revokes the
+  game's seat tokens); `MAX_MP_RIVALS=5`; `DEFAULT_MP_RIVAL_COUNT=2` (not solo's 4 —
+  humans fill the world); turn timer clamped 15–600 s; "disconnected" dot after 10 s
+  without a poll (presentation only — nothing auto-resolves on it, per decision #4).
+- **`POST /api/mp/stage` added beyond the design's §4.10 endpoint list.** Decision #2
+  ("timer expiry submits what's *staged*") only works if the server holds the staged
+  queue; the client syncs it via this endpoint. Staged actions are not validated at
+  stage time — `trim_action_to_budget` absorbs staleness at the deadline.
+- **Replace-with-AI keeps `is_player=True`** — the lab stays buyout-immune and
+  explicit-defection; only who decides changes. It gets an invented balanced takeover
+  `Disposition` (recklessness 0.5, governance weights derived exactly as `new_game`
+  derives rivals') because a human lab's default Disposition would make the AI play
+  dead. [TUNE]
+- **MP seed is server-random** (`secrets.randbelow`) — multiplayer games are
+  non-replayable by design (§7; human timing already breaks determinism). Difficulty
+  and guidance are not creator settings (the design's lobby settings are rival count +
+  timer only); MP games run "realistic"/"standard" defaults.
+- **Leaderboard ranking invented:** winner (if any) pinned first, then market cap
+  descending, all labs listed with an `is_human` flag.
+- **Late submit after timer expiry:** the deadline is enforced before the arriving
+  action is processed, so a too-late submit lands on (and is validated against) the
+  NEXT turn rather than sneaking into the resolved one.
+- Shared payload builders extracted to `backend_v1/server/payloads.py` so the solo
+  Session and multiplayer seats emit an identical base state-payload shape (pure
+  refactor of `Session.state_payload`/`caps_history` — output byte-identical).

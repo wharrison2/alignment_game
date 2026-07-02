@@ -32,6 +32,8 @@ from backend_v1.engine.controllers.rival_controller import RivalController
 from backend_v1.engine.observation.observation_builder import build_observation
 from backend_v1.engine.postmortem import build_postmortem
 from backend_v1.engine.rng import Rng
+from backend_v1.server import multiplayer
+from backend_v1.server.payloads import base_state_payload
 from backend_v1.content.copy import t
 
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -56,6 +58,10 @@ MAX_BODY_BYTES = 64 * 1024
 # Name of the opaque session cookie. Its value maps to a Session in the registry;
 # HttpOnly keeps page JS (and thus any XSS) from ever reading it.
 SESSION_COOKIE = "sid"
+
+# Multiplayer seat cookie (MULTIPLAYER_DESIGN §4.1): same hardening as `sid`,
+# distinct name so one browser can hold a solo game AND a multiplayer seat.
+MP_COOKIE = "mp"
 
 # ── Load-shedding bounds (INVENTED for deployment — see ISSUES.md) ─────────────
 # Hard ceiling on a single game's length. A real game ends far sooner (~50-60
@@ -126,29 +132,6 @@ class Session:
         # turn 0: no step has run yet; build a fresh filtered view directly
         return build_observation(self.state, self.player, [], [], [], [])
 
-    def caps_history(self):
-        # Turn 0 has no logged turns yet, but every lab already has a market_cap
-        # (default 100.0). Seed a single turn-0 point from the CURRENT caps so the
-        # frontend graph renders immediately instead of "no turns played yet"
-        # (UI_ISSUES #9). Once turn 1 is logged this branch stops firing, so we never
-        # double-count turn 0. Server payload only — no TRUE-state log, no RNG.
-        if not self.engine.logger.turns:
-            turn_zero_caps = {lab.id: round(lab.market_cap, 1)
-                              for lab in self.state.labs}
-            return [{"turn": self.state.turn, "caps": turn_zero_caps}]
-
-        hist = []
-        for t in self.engine.logger.turns:
-            per_lab_caps = {l["id"]: round(l["market_cap"], 1) for l in t["labs"]}
-            hist.append({"turn": t["turn"], "caps": per_lab_caps})
-        return hist
-
-    def lab_names(self):
-        return {l.id: l.name for l in self.state.labs}
-
-    def lab_tickers(self):
-        return {l.id: l.ticker for l in self.state.labs}
-
     def truth_payload(self):
         """God's-eye TRUE state for the debug Truth tab. Reads the logger's
         per-turn snapshots (full true+measured) — NOT the firewalled player
@@ -188,10 +171,9 @@ class Session:
         return self.state_payload()
 
     def state_payload(self):
-        return {"observation": self.player_observation().to_dict(),
-                "caps_history": self.caps_history(),
-                "lab_names": self.lab_names(),
-                "lab_tickers": self.lab_tickers()}
+        # shared with the multiplayer seats (payloads.py) — identical shape
+        return base_state_payload(self.player_observation(), self.engine,
+                                  self.state)
 
     def postmortem(self):
         if not self.state.game_over:
@@ -272,28 +254,33 @@ class Handler(BaseHTTPRequestHandler):
             _request_slots.release()
 
     # ── Response helpers ──────────────────────────────────────────────────────
-    def _json(self, payload, code=200, set_cookie_token=None):
+    def _json(self, payload, code=200, set_cookie=None):
         body = json.dumps(payload).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
-        if set_cookie_token is not None:
-            self.send_header("Set-Cookie", self._session_cookie(set_cookie_token))
+        if set_cookie is not None:
+            self.send_header("Set-Cookie", set_cookie)
         self.end_headers()
         self.wfile.write(body)
 
-    def _session_cookie(self, token):
-        # HttpOnly: page JS (and any XSS) can never read the session id.
+    def _cookie_header(self, cookie_name, token):
+        # HttpOnly: page JS (and any XSS) can never read the token.
         # SameSite=Lax: not sent on cross-site requests.
         # Secure (HTTPS-only): production only — a Secure cookie is dropped over
         # plain http://127.0.0.1, which would break local playtesting.
-        attributes = [f"{SESSION_COOKIE}={token}", "HttpOnly", "Path=/", "SameSite=Lax"]
+        # Shared by the solo `sid` and multiplayer `mp` cookies (§6, A7) so the
+        # hardening can't drift between them.
+        attributes = [f"{cookie_name}={token}", "HttpOnly", "Path=/", "SameSite=Lax"]
         if DEPLOY_MODE:
             attributes.append("Secure")
         return "; ".join(attributes)
 
-    def _session_token(self):
-        """Read the session token from the request's Cookie header, or None."""
+    def _session_cookie(self, token):
+        return self._cookie_header(SESSION_COOKIE, token)
+
+    def _cookie_value(self, cookie_name):
+        """Read one cookie's value from the request's Cookie header, or None."""
         raw_cookie = self.headers.get("Cookie")
         if not raw_cookie:
             return None
@@ -302,8 +289,34 @@ class Handler(BaseHTTPRequestHandler):
             jar.load(raw_cookie)
         except CookieError:
             return None
-        morsel = jar.get(SESSION_COOKIE)
+        morsel = jar.get(cookie_name)
         return morsel.value if morsel else None
+
+    def _session_token(self):
+        return self._cookie_value(SESSION_COOKIE)
+
+    def _require_seat(self):
+        """Resolve the caller's multiplayer (game, seat) from the `mp` cookie.
+        Authorization is by cookie, NEVER by anything in the body (§6, A1) —
+        an unknown or revoked token gets 401, which is also how a kicked
+        player's polling stops (§6, A4)."""
+        resolved = multiplayer.lookup_seat(self._cookie_value(MP_COOKIE))
+        if resolved is None:
+            self._json({"errors": ["no multiplayer seat — create or join a game"]},
+                       401)
+        return resolved
+
+    def _require_creator_seat(self):
+        """Like _require_seat, but 403 for a non-creator (§6, A2). Admin
+        endpoints (settings/start/kick) funnel through here."""
+        resolved = self._require_seat()
+        if resolved is None:
+            return None
+        _game, seat = resolved
+        if not seat.is_creator:
+            self._json({"errors": ["only the game creator can do that"]}, 403)
+            return None
+        return resolved
 
     def _require_session(self):
         """Resolve the caller's game from the session cookie, or emit the
@@ -341,6 +354,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(session.postmortem())
         elif self.path == "/api/truth":
             self._serve_truth()
+        elif self.path == "/api/mp/lobby":
+            self._handle_mp_lobby()
+        elif self.path == "/api/mp/state":
+            self._handle_mp_state()
+        elif self.path == "/api/mp/postmortem":
+            self._handle_mp_postmortem()
         elif self.path.startswith("/js/") or self.path.endswith(".css"):
             self._static(self.path)
         else:
@@ -414,6 +433,20 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_new(body)
         elif self.path == "/api/action":
             self._handle_action(body)
+        elif self.path == "/api/mp/create":
+            self._handle_mp_create(body)
+        elif self.path == "/api/mp/join":
+            self._handle_mp_join(body)
+        elif self.path == "/api/mp/settings":
+            self._handle_mp_settings(body)
+        elif self.path == "/api/mp/start":
+            self._handle_mp_start()
+        elif self.path == "/api/mp/kick":
+            self._handle_mp_kick(body)
+        elif self.path == "/api/mp/action":
+            self._handle_mp_action(body)
+        elif self.path == "/api/mp/stage":
+            self._handle_mp_stage(body)
         else:
             self._json({"errors": ["not found"]}, 404)
 
@@ -436,7 +469,7 @@ class Handler(BaseHTTPRequestHandler):
             payload = session.state_payload()
         # Set-Cookie binds this browser to the game it just created; every
         # subsequent same-origin request carries it back automatically.
-        self._json(payload, set_cookie_token=token)
+        self._json(payload, set_cookie=self._session_cookie(token))
 
     def _handle_action(self, body):
         session = self._require_session()
@@ -446,6 +479,138 @@ class Handler(BaseHTTPRequestHandler):
             result = session.submit(body.get("action", {}))
         status_code = 200 if "errors" not in result else 422
         self._json(result, status_code)
+
+    # ── Multiplayer routes (MULTIPLAYER_DESIGN §4.10) ─────────────────────────
+    # Except create/join, the acting seat comes from the `mp` cookie via
+    # _require_seat — never from the body (§6, A1/A3). Admin routes assert
+    # is_creator via _require_creator_seat (§6, A2). There is deliberately NO
+    # /api/mp/truth route (§6, L1): the god-view stays a solo debug aid.
+
+    def _handle_mp_create(self, body):
+        token, game, creator_seat = multiplayer.create_game(
+            body.get("lab_name"), body.get("ticker"))
+        with game.lock:
+            payload = {"code": game.code,
+                       "lobby": game.lobby_payload(creator_seat)}
+        self._json(payload, set_cookie=self._cookie_header(MP_COOKIE, token))
+
+    def _handle_mp_join(self, body):
+        token, game, seat = multiplayer.join_game(
+            body.get("code"), body.get("lab_name"), body.get("ticker"))
+        if token is None:
+            error_payload = seat   # join_game returns the error in third slot
+            status_code = error_payload.pop("status", 400)
+            self._json(error_payload, status_code)
+            return
+        with game.lock:
+            payload = {"code": game.code, "lobby": game.lobby_payload(seat)}
+        self._json(payload, set_cookie=self._cookie_header(MP_COOKIE, token))
+
+    def _handle_mp_lobby(self):
+        resolved = self._require_seat()
+        if resolved is None:
+            return
+        game, seat = resolved
+        with game.lock:
+            self._json(game.lobby_payload(seat))
+
+    def _handle_mp_settings(self, body):
+        resolved = self._require_creator_seat()
+        if resolved is None:
+            return
+        game, seat = resolved
+        with game.lock:
+            try:
+                result = game.set_settings(
+                    rival_count=body.get("rival_count"),
+                    turn_seconds=body.get("turn_seconds"))
+            except (TypeError, ValueError):
+                self._json({"errors": ["settings must be numbers"]}, 400)
+                return
+            if "errors" in result:
+                self._json(result, 409)
+                return
+            self._json(game.lobby_payload(seat))
+
+    def _handle_mp_start(self):
+        resolved = self._require_creator_seat()
+        if resolved is None:
+            return
+        game, seat = resolved
+        with game.lock:
+            # Server-random seed: multiplayer games are non-replayable by
+            # design (§7 — human timing already breaks determinism).
+            result = game.start(seed=secrets.randbelow(2**31),
+                                max_turns=clamp_max_turns(None))
+            if "errors" in result:
+                self._json(result, 409)
+                return
+            self._json(game.lobby_payload(seat))
+
+    def _handle_mp_kick(self, body):
+        resolved = self._require_creator_seat()
+        if resolved is None:
+            return
+        game, seat = resolved
+        try:
+            target_seat_id = int(body.get("target_seat"))
+        except (TypeError, ValueError):
+            self._json({"errors": ["target_seat must be a seat id"]}, 400)
+            return
+        with game.lock:
+            result, revoked_token = game.kick(
+                target_seat_id, body.get("resolution", "auto_pass"))
+        multiplayer.revoke_token(revoked_token)
+        if "errors" in result:
+            self._json(result, 400)
+            return
+        with game.lock:
+            self._json({"ok": True, "lobby": game.lobby_payload(seat)})
+
+    def _handle_mp_state(self):
+        resolved = self._require_seat()
+        if resolved is None:
+            return
+        game, seat = resolved
+        with game.lock:
+            if not game.started:
+                self._json({"errors": ["game not started"]}, 409)
+                return
+            self._json(game.state_payload_for(seat))
+
+    def _handle_mp_action(self, body):
+        resolved = self._require_seat()
+        if resolved is None:
+            return
+        game, seat = resolved
+        with game.lock:
+            if not game.started:
+                self._json({"errors": ["game not started"]}, 409)
+                return
+            result = game.submit_seat(seat, body.get("action", {}))
+        status_code = 200 if "errors" not in result else 422
+        self._json(result, status_code)
+
+    def _handle_mp_stage(self, body):
+        resolved = self._require_seat()
+        if resolved is None:
+            return
+        game, seat = resolved
+        with game.lock:
+            if not game.started:
+                self._json({"errors": ["game not started"]}, 409)
+                return
+            result = game.stage_seat(seat, body.get("action", {}))
+        status_code = 200 if "errors" not in result else 400
+        self._json(result, status_code)
+
+    def _handle_mp_postmortem(self):
+        resolved = self._require_seat()
+        if resolved is None:
+            return
+        game, seat = resolved
+        with game.lock:
+            self._json(game.postmortem_for(seat))
 
 
 def main():
