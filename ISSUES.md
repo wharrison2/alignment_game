@@ -2165,3 +2165,37 @@ Implemented a "delegate" mode for AI-assist, unlocked by researching `automated_
 **Invented constant:** `DELEGATE_CONTAM_MULTIPLIER = 2.5` — nothing in the design doc specifies the relative magnitude. Chosen so that delegating to a moderately misaligned model (goal_mis≈0.3) on a mid-tier node produces roughly 2× the contamination of fully-assisted (non-delegate) research on the same node. Flagged [TUNE] for designer review.
 
 **Frontend:** a Delegate checkbox appears on every unresearched card once the unlock is live. Checking it disables the slider (fixed at 1.0 for the preview) and labels the queued item "delegate" in the queue bar and in-progress view. `toggleDelegate` is the handler, registered on `window` in `main.js`.
+
+---
+
+## Multiplayer (Kahoot-style) — implementation session
+
+Building MULTIPLAYER_DESIGN.md. Decisions and liberties recorded per work package.
+
+### WP1 — engine generalization for N human labs (solo bit-identical)
+
+- **`policy_news` restructured: one shared list → per-lab lists (`TurnNews` in
+  `turn_pipeline.py`).** Two lines were leaking through the shared list once N humans are
+  all `is_player`: (a) litigation-move confirmations (`turn_pipeline.py`, the acting lab's
+  own receipt — the design's §6 missed this one) and (b) the precise
+  `[measured general X.X]` note on a human's own release headline (the design's L3). Both
+  are now `to_lab`-scoped; policy enactments, court rulings, audit/interp notices remain
+  `to_all`. **Behavior change to solo rival observations:** rivals no longer receive the
+  player's confirmations or the precise release note (they now get the bare headline).
+  The rival controller never reads `policy_news` and the golden master hashes the TRUE
+  log, so the digest is unchanged (verified — no re-record).
+- **`_finish` generalized to a per-human race** (`_lab_outcome` per human lab,
+  `state.outcome_by_lab`). Dominance is exclusive (`max(market_cap)`), so at most one
+  human wins — the design's §9 invented tie-break (impact → market_cap) is **unreachable**;
+  the effective rule on an exact market-cap tie is `state.labs` order via `max`. Solo:
+  `state.outcome` keeps the first (only) human's dict, byte-identical.
+- **Human frontier for the §10 frontier rule** (`event.py`): max true general across all
+  human labs — the design's own flagged default (§9), confirmed as implemented.
+- **No-change generalizations, comments only:** `_complies` (every human lab is
+  explicit-defection; sibling of the regulation.py rows the design listed),
+  `buyouts._is_moribund` (all human labs buyout-immune), `regulation.py` compliance rows.
+- **`postmortem.py` `rival_count`** counts every non-`is_player` lab as a rival — with N
+  humans it would miscount, but it only runs under `resim=True`, which multiplayer never
+  passes (`resim=False`, §4.7). Flagged, not fixed.
+- `new_multiplayer_game` allows duplicate human lab names/tickers (cosmetic; seats stay
+  distinct via lab ids `player1..playerN`).

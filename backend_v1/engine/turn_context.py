@@ -26,4 +26,11 @@ class TurnContext:
 
     @property
     def player(self):
+        """THE human lab — solo-only tooling. Engine code must not assume a
+        single human (multiplayer has N); iterate human_labs instead."""
         return next(l for l in self.labs if l.is_player)
+
+    @property
+    def human_labs(self):
+        """Every human-controlled lab, in state.labs order (solo: [player])."""
+        return [l for l in self.labs if l.is_player]

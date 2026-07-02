@@ -98,6 +98,10 @@ class GameState:
     turn: int = 0
     game_over: bool = False
     outcome: dict | None = None
+    # per-human outcomes (multiplayer race, MULTIPLAYER_DESIGN §4.6). Filled by
+    # _finish; solo it holds the single player's dict (same object as outcome).
+    outcome_by_lab: dict = field(default_factory=dict)
+    is_multiplayer: bool = False
     # public record shared by all observers this turn
     last_events: list = field(default_factory=list)
 
@@ -121,12 +125,22 @@ def new_game(seed=0, difficulty="realistic", guidance="standard",
         # the score-divvied pie exists. It holds while the lab is active, decays if idle.
         base_investment_rate=consts.BASE_INVESTMENT_PER_YEAR,
     )
-    labs = [player_lab]
+    labs = [player_lab] + _build_rival_labs(consts, rng, num_rivals)
 
-    rival_names = RIVAL_LAB_NAMES
+    world = World(public_approval=consts.APPROVAL_START, wtr=consts.WTR_START)
+    return GameState(consts=consts, rng=rng, dt=consts.DT_YEARS,
+                     max_turns=max_turns, labs=labs, world=world,
+                     guidance=guidance)
+
+
+def _build_rival_labs(consts, rng, num_rivals) -> list:
+    """The AI rival roster, shared by solo and multiplayer construction. Draws
+    one rng.uniform per rival (starting-cash jitter) — keep the draw order
+    stable, it's part of the seeded sequence (CLAUDE.md §0.4)."""
+    rival_labs = []
     for i in range(num_rivals):
         reck, cost, ow = consts.RIVAL_DISPOSITIONS[i % len(consts.RIVAL_DISPOSITIONS)]
-        rival_name = rival_names[i % len(rival_names)]
+        rival_name = RIVAL_LAB_NAMES[i % len(RIVAL_LAB_NAMES)]
         # Rivals get tickers too (first 3 chars, uppercased) so the graph legend can
         # show every lab's ticker consistently — same derivation as the player default.
         rival_ticker = derive_ticker_from_name(rival_name)
@@ -134,7 +148,7 @@ def new_game(seed=0, difficulty="realistic", guidance="standard",
         reg_stance = min(0.95, 0.3 + 0.6 * reck + (0.2 if ow else 0.0))
         safety_pri = max(0.05, 0.5 * (1.0 - reck))
         rival_cash = consts.STARTING_CASH * rng.uniform(0.8, 1.2)
-        rival_lab = Lab(
+        rival_labs.append(Lab(
             id=f"rival{i+1}", name=rival_name, ticker=rival_ticker,
             cash=rival_cash,
             work_budget_per_year=consts.WORK_BUDGET_PER_YEAR,
@@ -145,13 +159,42 @@ def new_game(seed=0, difficulty="realistic", guidance="standard",
                 regulation_stance=reg_stance,
                 safety_priority=safety_pri,
             ),
-        )
-        labs.append(rival_lab)
+        ))
+    return rival_labs
+
+
+def new_multiplayer_game(seed=0, difficulty="realistic", guidance="standard",
+                         human_identities=None, rival_count=None,
+                         max_turns=None) -> GameState:
+    """N-human shared world (MULTIPLAYER_DESIGN §4.2).
+
+    human_identities is a list of (raw_name, raw_ticker) pairs, one per seat,
+    each sanitized here exactly like the solo player's. Human labs are
+    player1..playerN at the front of state.labs — all is_player=True with the
+    same starting constants and default Disposition as the solo player. AI
+    rivals fill in after. Solo play keeps new_game untouched (golden master,
+    CLAUDE.md §8)."""
+    consts = build_constants(difficulty)
+    rng = Rng(seed)
+    num_rivals = rival_count if rival_count is not None else consts.RIVAL_COUNT
+
+    labs = []
+    for i, (raw_name, raw_ticker) in enumerate(human_identities):
+        safe_name = sanitize_lab_name(raw_name)
+        safe_ticker = sanitize_ticker(raw_ticker, safe_name)
+        labs.append(Lab(
+            id=f"player{i+1}", name=safe_name, ticker=safe_ticker,
+            is_player=True,
+            cash=consts.STARTING_CASH,
+            work_budget_per_year=consts.WORK_BUDGET_PER_YEAR,
+            base_investment_rate=consts.BASE_INVESTMENT_PER_YEAR,
+        ))
+    labs += _build_rival_labs(consts, rng, num_rivals)
 
     world = World(public_approval=consts.APPROVAL_START, wtr=consts.WTR_START)
     return GameState(consts=consts, rng=rng, dt=consts.DT_YEARS,
                      max_turns=max_turns, labs=labs, world=world,
-                     guidance=guidance)
+                     guidance=guidance, is_multiplayer=True)
 
 
 class GameEngine:
@@ -167,12 +210,19 @@ class GameEngine:
         state.last_events = result["events"]
         self.logger.record(state, actions, result["events"])
 
-        player = next(l for l in state.labs if l.is_player)
-        tips = collect_tips(state, player)   # public; guidance level applies
+        # Tips for every HUMAN lab are collected BEFORE any observation is
+        # built: collect_tips and build_observation both consume the seeded
+        # RNG, and this ordering (all tips first, then observations, each in
+        # state.labs order) is exactly the solo draw sequence — do not
+        # interleave them (determinism, CLAUDE.md §0.4).
+        tips_by_lab = {}
+        for lab in state.labs:
+            if lab.is_player:
+                tips_by_lab[lab.id] = collect_tips(state, lab)   # public; guidance level applies
         observations = {}
         for lab in state.labs:
             observations[lab.id] = build_observation(
-                state, lab, tips if lab.is_player else [],
-                result["policy_news"], result["events"],
+                state, lab, tips_by_lab.get(lab.id, []),
+                result["policy_news_by_lab"][lab.id], result["events"],
                 result["new_findings"][lab.id])
         return state, observations

@@ -41,13 +41,45 @@ from backend_v1.content.copy import t
 from backend_v1.content.true_log_copy import t_true
 
 
+class TurnNews:
+    """Per-lab policy-news lists, filled in one chronological pass.
+
+    Replaces the old single shared list. With N human labs (multiplayer), a line
+    meant for one lab — a litigation confirmation, the precise measured-general
+    note on your OWN release — must be structurally absent from every other
+    lab's observation, not merely unrendered (CLAUDE.md §2). Appends preserve
+    chronological order within each lab's list, so the solo player's feed is
+    unchanged."""
+
+    def __init__(self, labs):
+        self.by_lab = {lab.id: [] for lab in labs}
+
+    def to_all(self, text):
+        """Public news every observer carries (policy enactments, litigation
+        rulings, audit/interp-mandate notices)."""
+        for news_lines in self.by_lab.values():
+            news_lines.append(text)
+
+    def to_lab(self, lab, text):
+        """News private to one lab (its own action confirmations)."""
+        self.by_lab[lab.id].append(text)
+
+    def to_others(self, lab, text):
+        """News every lab EXCEPT `lab` carries — the fogged public version of a
+        headline whose precise version went to_lab."""
+        for lab_id, news_lines in self.by_lab.items():
+            if lab_id != lab.id:
+                news_lines.append(text)
+
+
 def run_turn(state, actions):
-    """Mutates state. Returns dict with events, per-lab new findings, policy news."""
+    """Mutates state. Returns dict with events, per-lab new findings, per-lab
+    policy news."""
     rng, consts, dt = state.rng, state.consts, state.dt
     turn = state.turn
     flags = {"existential": False, "game_over": False, "existential_event": None}
     new_findings = {lab.id: [] for lab in state.labs}
-    policy_news = []
+    news = TurnNews(state.labs)
     events = []
     ctx = TurnContext(labs=state.labs, world=state.world, flags=flags, rng=rng,
                       consts=consts, dt=dt, turn=turn)
@@ -57,7 +89,7 @@ def run_turn(state, actions):
         action = actions.get(lab.id)
         if action is None:
             continue
-        _apply_action(state, lab, action, policy_news)
+        _apply_action(state, lab, action, news)
 
     # ── 2. tick research processes ──────────────────────────────────
     for lab in state.labs:
@@ -88,12 +120,12 @@ def run_turn(state, actions):
             lab.audit_pending_release = None
             if regulation.government_audit(model, rng, consts):
                 regulation.audit_theater_effect(state.world, consts)
-                _do_release(state, lab, model, policy_news,
+                _do_release(state, lab, model, news,
                             note="passed government audit")
             else:
                 lab.model_in_training = model
-                policy_news.append(t("release.audit_blocked",
-                                     {"lab": lab.name, "model": model.id}))
+                news.to_all(t("release.audit_blocked",
+                              {"lab": lab.name, "model": model.id}))
 
     # ── 5/6. finances + job-loss drag ───────────────────────────────
     run_finances(state.labs, state.world, turn, rng, consts, dt)
@@ -104,14 +136,15 @@ def run_turn(state, actions):
     for change, pid in regulation.update_policies(state.labs, state.world, rng,
                                                   consts, turn, dt):
         change_label = change.replace('_', ' ').upper()
-        policy_news.append(t("policy.enacted_news",
-                             {"change": change_label,
-                              "policy": POLICY_DEFS_BY_ID[pid].name}))
+        news.to_all(t("policy.enacted_news",
+                      {"change": change_label,
+                       "policy": POLICY_DEFS_BY_ID[pid].name}))
 
     # litigation resolves BEFORE enforcement (a struck/enjoined policy doesn't bite)
     lit_events, lit_news = resolve_litigation(ctx)
     events += lit_events
-    policy_news += lit_news
+    for lit_line in lit_news:
+        news.to_all(lit_line)   # court rulings are public record
     events += regulation.enforcement_phase(ctx)
 
     # ── 8. event phase: armed latents first, then fresh rolls ───────
@@ -134,14 +167,16 @@ def run_turn(state, actions):
     _check_endgame(state, flags, events)
 
     return {"events": events, "new_findings": new_findings,
-            "policy_news": policy_news, "flags": flags}
+            "policy_news_by_lab": news.by_lab, "flags": flags}
 
 
 # ───────────────────────────────────────────────────────────────────────
 
 def _complies(lab, policy_id, rng):
-    """The player complies unless they explicitly chose to defect on this policy
-    (the frontend warned them first); rivals comply stochastically ∝ disposition."""
+    """A human lab complies unless it explicitly chose to defect on this policy
+    (the frontend warned it first); AI rivals comply stochastically ∝ disposition.
+    Already per-lab, so it generalizes to N human labs (multiplayer) untouched:
+    every is_player lab is explicit-defection."""
     if lab.is_player:
         return policy_id not in lab.active_defections
     return rng.random() < lab.disposition.compliance
@@ -183,15 +218,15 @@ def _tick_eval_builds(lab, dt):
     lab.eval_builds = still_building
 
 
-def _apply_action(state, lab, action, policy_news):
+def _apply_action(state, lab, action, news):
     """One lab's action, in fixed order: governance -> research -> training.
     Order is load-bearing (the RNG draw sequence); keep it stable."""
-    _apply_governance_action(state, lab, action, policy_news)
+    _apply_governance_action(state, lab, action, news)
     _apply_research_action(state, lab, action)
-    _apply_training_action(state, lab, action, policy_news)
+    _apply_training_action(state, lab, action, news)
 
 
-def _apply_governance_action(state, lab, action, policy_news):
+def _apply_governance_action(state, lab, action, news):
     """Lobbying spend, defection choices, litigation moves, safe-harbor sign-on,
     and passive-eval harness builds."""
     consts = state.consts
@@ -222,7 +257,11 @@ def _apply_governance_action(state, lab, action, policy_news):
     for pid, spec in action.litigation.items():
         ok, msg = apply_litigation_action(state.world, lab, pid, spec, consts)
         if ok and lab.is_player:
-            policy_news.append(msg)
+            # A filing confirmation is the acting lab's OWN receipt — with N
+            # human labs it must never reach another seat's observation
+            # (MULTIPLAYER_DESIGN §6; the resolved RULING is public, via
+            # resolve_litigation's to_all above).
+            news.to_lab(lab, msg)
 
     if action.sign_safe_harbor:
         lab.safe_harbor_signed = True
@@ -288,7 +327,7 @@ def _apply_research_action(state, lab, action):
             assist_speedup_max=consts.ASSIST_SPEEDUP))
 
 
-def _apply_training_action(state, lab, action, policy_news):
+def _apply_training_action(state, lab, action, news):
     """Commission a pretrain run, post-train the model in training, or release it
     (subject to interp-mandate / audit gates)."""
     rng, consts, dt = state.rng, state.consts, state.dt
@@ -325,8 +364,8 @@ def _apply_training_action(state, lab, action, policy_news):
         # warns the player about this BEFORE they submit (§7c).
         if interp is not None and interp.active and _complies(lab, "interp_mandate", rng):
             if not regulation.interp_mandate_check(lab, model, consts, turn, dt):
-                policy_news.append(t("release.interp_mandate_blocked",
-                                     {"lab": lab.name, "model": model.id}))
+                news.to_all(t("release.interp_mandate_blocked",
+                              {"lab": lab.name, "model": model.id}))
                 return
         # Past the hard block, the model is leaving training: either delayed one turn
         # for a government audit, or released now.
@@ -334,12 +373,12 @@ def _apply_training_action(state, lab, action, policy_news):
         if audit is not None and audit.active and _complies(lab, "audit_requirement", rng):
             lab.cash = max(0.0, lab.cash - consts.AUDIT_CASH_COST)
             lab.audit_pending_release = model    # one-turn delay
-            policy_news.append(t("release.audit_submitted",
-                                 {"lab": lab.name, "model": model.id}))
+            news.to_all(t("release.audit_submitted",
+                          {"lab": lab.name, "model": model.id}))
         else:
-            _do_release(state, lab, model, policy_news)
+            _do_release(state, lab, model, news)
 
-def _do_release(state, lab, model, policy_news, note=""):
+def _do_release(state, lab, model, news, note=""):
     model.released = True
     model.release_turn = state.turn
     lab.release_history.append(model)
@@ -356,21 +395,28 @@ def _do_release(state, lab, model, policy_news, note=""):
     lab.current_best_model = model
     suffix = f" ({note})" if note else ""
     # Your OWN release publishes its precise measured general — your instruments
-    # produced that number, so you're entitled to it. A RIVAL'S release must NOT:
-    # the information model only ever shows you rivals' stats as "much worse
-    # estimates" (design §805/§977). Printing the precise figure here contradicts
-    # the FOGGED frontier estimate the Intel tab builds for the same model in
-    # observation_builder._rival_public_entry (which adds RIVAL_ESTIMATE_NOISE) —
-    # that mismatch is the bug. Rivals get a bare release headline; the player
-    # gauges them from the fogged Intel estimate and the public benchmark scores.
+    # produced that number, so you're entitled to it. Every OTHER observer must
+    # NOT see it: the information model only ever shows you rivals' stats as
+    # "much worse estimates" (design §805/§977) via the FOGGED frontier estimate
+    # in observation_builder._rival_public_entry (RIVAL_ESTIMATE_NOISE). The
+    # per-lab news split makes that structural: the precise note goes only to
+    # the releasing lab's own feed; everyone else gets the bare headline. With N
+    # human labs this is firewall-critical (MULTIPLAYER_DESIGN §6, L3) — a
+    # human's precise figure must never broadcast to other seats.
     if lab.is_player:
         measured_general_note = f" [measured general {model.measured_capability.general:.1f}]"
     else:
         measured_general_note = ""
-    policy_news.append(t("release.announced",
-                         {"lab": lab.name, "model": model.id,
-                          "measured_general_note": measured_general_note,
-                          "suffix": suffix}))
+    own_headline = t("release.announced",
+                     {"lab": lab.name, "model": model.id,
+                      "measured_general_note": measured_general_note,
+                      "suffix": suffix})
+    bare_headline = t("release.announced",
+                      {"lab": lab.name, "model": model.id,
+                       "measured_general_note": "",
+                       "suffix": suffix})
+    news.to_lab(lab, own_headline)
+    news.to_others(lab, bare_headline)
 
 
 def _complete_process(state, lab, proc, new_findings):
@@ -435,7 +481,6 @@ def _complete_process(state, lab, proc, new_findings):
 def _check_endgame(state, flags, events):
     consts, rng = state.consts, state.rng
     world = state.world
-    player = next(l for l in state.labs if l.is_player)
 
     if flags["existential"]:
         ev = flags["existential_event"]
@@ -508,16 +553,33 @@ def _find_model(state, model_id):
 
 
 def _finish(state, existential, cause=None, asi_lab=None, asi_aligned=None):
-    """Two-layer scoring (§3): existential gate first, then impact + dominance."""
-    player = next(l for l in state.labs if l.is_player)
+    """Two-layer scoring (§3): existential gate first, then impact + dominance.
+
+    Evaluated once per HUMAN lab (multiplayer race, MULTIPLAYER_DESIGN §4.6):
+    dominance is exclusive (max market cap), so at most one human's outcome is
+    a WIN; an existential catastrophe is a shared LOSS for every human. Solo is
+    the one-human special case — state.outcome keeps the first human's dict,
+    byte-identical to the pre-multiplayer payload."""
+    human_labs = [lab for lab in state.labs if lab.is_player]
     dominant = max(state.labs, key=lambda l: l.market_cap)
-    is_dominant = dominant.id == player.id
-    net_impact = player.impact_ledger
     state.game_over = True
+    state.outcome_by_lab = {}
+    for human in human_labs:    # state.labs order — deterministic
+        state.outcome_by_lab[human.id] = _lab_outcome(
+            state, human, dominant, existential, cause, asi_lab, asi_aligned)
+    state.outcome = state.outcome_by_lab[human_labs[0].id]
+
+
+def _lab_outcome(state, human, dominant, existential, cause, asi_lab, asi_aligned):
+    """One human lab's outcome dict — the solo endgame verdict, parameterized
+    by which human is being scored. "Rival" in the copy means any OTHER lab
+    from this human's seat, AI-controlled or not."""
+    is_dominant = dominant.id == human.id
+    net_impact = human.impact_ledger
 
     if existential:
         who = cause.lab_id if cause else "?"
-        yours = who == player.id
+        yours = who == human.id
         cause_text = cause.true_text if cause else "unknown"
         yours_note = " — YOURS" if yours else ""
         if not yours:
@@ -525,7 +587,7 @@ def _finish(state, existential, cause=None, asi_lab=None, asi_aligned=None):
                                 "run too.")
         else:
             attribution_line = "Your own model. The dashboards were green."
-        state.outcome = {
+        return {
             "result": "LOSS", "existential": True,
             "headline": t("postmortem.headline.existential_catastrophe"),
             "detail": t("postmortem.detail.existential_catastrophe",
@@ -533,15 +595,14 @@ def _finish(state, existential, cause=None, asi_lab=None, asi_aligned=None):
                          "yours_note": yours_note,
                          "attribution_line": attribution_line}),
             "dominant": is_dominant, "net_impact": round(net_impact, 1),
-            "voided_positives": round(player.impact_positives, 1),
+            "voided_positives": round(human.impact_positives, 1),
         }
-        return
 
     won = is_dominant and net_impact > state.consts.IMPACT_WIN_BAR
     if asi_lab is not None and asi_aligned:
-        if asi_lab.id == player.id and won:
+        if asi_lab.id == human.id and won:
             headline = t("postmortem.headline.victory_aligned_asi")
-        elif asi_lab.id == player.id:
+        elif asi_lab.id == human.id:
             if net_impact <= 0:
                 aligned_but_tail = "your accumulated externalities outweigh the good."
             else:
@@ -568,7 +629,7 @@ def _finish(state, existential, cause=None, asi_lab=None, asi_aligned=None):
         dominance_note = "yes"
     else:
         dominance_note = f"no ({dominant.name} leads)"
-    state.outcome = {
+    return {
         "result": "WIN" if won else "LOSS",
         "existential": False,
         "headline": headline,

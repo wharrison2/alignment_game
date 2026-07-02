@@ -386,5 +386,8 @@ def build_observation(state, lab, tips, policy_news, public_events,
         benchmarks=_benchmark_cards(state, lab, consts),
         evals=_eval_cards(lab, consts),
         game_over=state.game_over,
-        outcome=state.outcome,
+        # Each human sees ITS OWN endgame verdict (multiplayer race, §4.6);
+        # solo the player's entry is the same object as state.outcome, and
+        # labs without an entry (AI rivals, game still running) fall back.
+        outcome=state.outcome_by_lab.get(lab.id, state.outcome),
     )

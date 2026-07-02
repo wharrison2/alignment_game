@@ -44,8 +44,10 @@ def run_event_phase(ctx, definitions):
     labs, world, flags = ctx.labs, ctx.world, ctx.flags
     rng, consts, dt, turn = ctx.rng, ctx.consts, ctx.dt, ctx.turn
     fired = []
-    player = ctx.player
-    player_best = player.best_true_general()
+    # The "human frontier" the §10 frontier rule compares AI rivals against:
+    # the best true general across ALL human labs (solo: the player's). Chosen
+    # default for multiplayer — see ISSUES.md.
+    human_frontier_best = max(lab.best_true_general() for lab in ctx.human_labs)
 
     for d in definitions:
         if d.target == "released_model":
@@ -76,7 +78,7 @@ def run_event_phase(ctx, definitions):
             )
             if rival_existential:
                 rival_best = lab.best_true_general()
-                rival_lacks_decisive_lead = rival_best < player_best + consts.RIVAL_BIG_LEAD
+                rival_lacks_decisive_lead = rival_best < human_frontier_best + consts.RIVAL_BIG_LEAD
                 if rival_lacks_decisive_lead:
                     ev.klass = "ordinary"
                     ev.severity *= 0.5
