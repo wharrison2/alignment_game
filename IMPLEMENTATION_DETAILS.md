@@ -10,9 +10,10 @@ grows — when you add a mechanism the doc doesn't mention, add it here.
 Audited 2026-06-18 against `design_doc.md`. Locations are paths under `backend_v1/`
 (or `cli/`) and may drift — grep the symbol if a line moved.
 
-**Planned (not yet in code):** a Kahoot-style multiplayer mode — see
-`MULTIPLAYER_DESIGN.md`. When it lands, move its subsystems (shared game / seat
-registry, turn barrier, lobby/admin panel) into this catalog.
+**Multiplayer (IMPLEMENTED 2026-07-01):** the Kahoot-style multiplayer mode from
+`MULTIPLAYER_DESIGN.md` is now in the code — see the "Multiplayer" section at the
+bottom of this catalog and the "Multiplayer (Kahoot-style)" header in `ISSUES.md`
+for the liberties taken.
 
 ---
 
@@ -356,3 +357,34 @@ translator can find every string by key without reading engine/render logic.
   post-mortem text reaches the UI as backend content through the observation.
 - **Left in markup:** `index.html` static labels/headers/prose (rendered once, never
   re-generated) are intentionally not centralized; see ISSUES.md Stage C.
+
+## Multiplayer (`backend_v1/server/multiplayer.py`, `payloads.py`, `simple_frontend_v1/js/lobby.js`)
+
+Implements `MULTIPLAYER_DESIGN.md` (which remains the spec; this is the code map):
+
+- **`server/multiplayer.py`** — `Seat` (token credential, control =
+  human/ai/auto_pass, private `staged_action`) + `MultiplayerGame` (shared
+  `GameState`/`GameEngine`, seats, turn barrier `_maybe_resolve`/`_resolve_turn`,
+  lazy timer `check_deadline`, kick/replace-with-AI, per-seat `state_payload_for` /
+  `lobby_payload` / `postmortem_for(resim=False)` + leaderboard) and the
+  code→game LRU registry with token→seat resolution (`lookup_seat`). Clock is
+  injectable (`now_fn`) for headless tests.
+- **`server/payloads.py`** — `base_state_payload`/`caps_history_payload`, shared by
+  solo `Session` and multiplayer seats so the two payload shapes can't drift.
+- **`server/server.py`** — `/api/mp/*` routes; `mp` seat cookie beside solo `sid`
+  (same hardening via `_cookie_header`); `_require_seat` (401) /
+  `_require_creator_seat` (403). No `/api/mp/truth` route exists.
+- **Engine generalizations** — per-lab `TurnNews` (turn_pipeline), per-human
+  `_finish` race via `state.outcome_by_lab`, per-human tips in `GameEngine.step`,
+  `new_multiplayer_game`/`_build_rival_labs` (game.py), `human_labs` on
+  `TurnContext`, human-frontier max in `events/event.py`,
+  `trim_action_to_budget` (actions.py — timer forced-resolution trimmer).
+- **Frontend** — `js/lobby.js` (create/join/lobby/admin overlays, 1 s lobby poll +
+  1.5 s game poll, countdown chip interpolation, debounced `/api/mp/stage` queue
+  sync, leaderboard panel); `core.js` gains `MP`/`setMP`, core-owned `started`,
+  `colorFor` (palette beyond the six fixed lab colors), and an MP-aware `apply()`
+  that skips the solo-only `/api/truth` fetch; `views.js` keys "own lab" off
+  `OBS.lab_id` instead of the literal `"player"`.
+- **Tests** — `tests/test_multiplayer.py` (barrier, timer+trim, firewall-by-key,
+  endgame race/shared loss, kick+revocation, cross-game isolation),
+  `tests/test_action_trim.py`. The golden master runs the solo path unchanged.

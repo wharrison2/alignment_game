@@ -345,7 +345,12 @@
   <span class="chip">approval <b id="t-appr">–</b></span>
   <span class="chip">reg. chatter <b id="t-chatter">–</b></span>
   <span class="chip dim" id="t-policies"></span>
+  <!-- multiplayer turn-timer countdown; hidden solo / when no timer is set -->
+  <span class="chip warn" id="mp-chip" style="display:none"></span>
 </div>
+
+<!-- multiplayer barrier status (submitted x/y + per-seat readiness); hidden solo -->
+<div id="mp-banner" style="display:none;padding:4px 10px"></div>
 
 <div id="nav">
   <button data-view="market" class="active" onclick="switchView('market')" data-i18n="nav.market">Market</button>

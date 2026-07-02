@@ -2244,3 +2244,20 @@ Building MULTIPLAYER_DESIGN.md. Decisions and liberties recorded per work packag
 - Shared payload builders extracted to `backend_v1/server/payloads.py` so the solo
   Session and multiplayer seats emit an identical base state-payload shape (pure
   refactor of `Session.state_payload`/`caps_history` — output byte-identical).
+
+### WP4 — frontend (lobby.js + core/main/views touches)
+
+- **Own-lab identity keyed off `OBS.lab_id`** everywhere views compared against the
+  literal `"player"` (benchmarks, caps chart, truth-tab sort). Solo-identical
+  (`OBS.lab_id === "player"`); required in MP where a seat's lab is `playerN`.
+- **`colorFor` palette extension** (invented): lab ids beyond the fixed six-color
+  table get a muted color by their stable position in the server's `lab_names` map,
+  so all seats render the same lab in the same color.
+- **Countdown chip interpolates client-side** between polls from the last
+  `deadline_seconds_left`; the server clock is authoritative (lazy enforcement).
+- **Staged-queue sync**: while a timer is running and the seat hasn't submitted,
+  the client debounces `POST /api/mp/stage` (~0.8 s) from the render hook, so the
+  deadline submits what the player actually queued (decision #2).
+- **MP `apply()` never fetches `/api/truth`** (L1); the Truth tab stays empty and
+  the dev-mode checkbox is absent from the MP create/join overlays.
+- R1 (creator disconnect strands the admin panel) remains open, as the design flagged.

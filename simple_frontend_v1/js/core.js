@@ -37,11 +37,34 @@ export async function api(path, body){
 export const COLORS = {player:"#7badd3", rival1:"#d98e8e", rival2:"#d1ab75",
                        rival3:"#ac9cde", rival4:"#87b893", rival5:"#e2a7ca"};
 
+// Multiplayer worlds have lab ids (player1..playerN) the fixed table doesn't
+// know. Fall back to a second muted palette picked by the lab's stable position
+// in the server's lab map, so every seat sees the same color for the same lab.
+const EXTRA_COLORS = ["#8fb8c9", "#c9a58f", "#9ec98f", "#b48fc9",
+                      "#c98fa5", "#8f93c9"];
+export function colorFor(labId){
+  if(COLORS[labId]) return COLORS[labId];
+  const stableIndex = Object.keys(NAMES).indexOf(labId);
+  if(stableIndex < 0) return "#888";
+  return EXTRA_COLORS[stableIndex % EXTRA_COLORS.length];
+}
+
 export const ENF_COLOR = {low:"dim", medium:"warn", high:"bad"};
 
 // ── Mutable game state (live-binding exports) ────────────────────────────────
 export let OBS = null, NAMES = {}, TICKERS = {}, HIST = [], FEED = [], TRUTH = {turns:[]};
 export let pending = freshPending();
+
+// Multiplayer status for THIS seat (the `mp` block of /api/mp/state): null in
+// solo play. Reassigned only here (setMP), read everywhere — same live-binding
+// convention as OBS.
+export let MP = null;
+export function setMP(next){ MP = next; }
+
+// Whether a game has been started in this tab (solo modal or multiplayer
+// lobby). Lives here (not main.js) so the lobby module can flip it too.
+export let started = false;
+export function setStarted(value){ started = value; }
 
 export function freshPending(){
   // lobby: {pid:{stance,spend}}  litigation: {pid:{side,tier,spend}}  defect: {pid:true}
@@ -67,7 +90,10 @@ export async function apply(payload){
   TICKERS = payload.lab_tickers || {};
   pending = freshPending();
   collectFeed();
-  TRUTH = await api("/api/truth");   // debug god-view, served separately from OBS
+  // Debug god-view, served separately from OBS. Solo only: multiplayer has NO
+  // truth route (MULTIPLAYER_DESIGN §6, L1 — it would be opponents' hidden
+  // state), so don't even ask.
+  TRUTH = MP ? {turns: []} : await api("/api/truth");
   render();
   if(OBS.game_over) onGameOver();
 }

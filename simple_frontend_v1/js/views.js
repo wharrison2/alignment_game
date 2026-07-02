@@ -5,7 +5,7 @@
 // window by main.js.
 import {
   $, fmt$, OBS, NAMES, TICKERS, HIST, FEED, TRUTH, pending, esc,
-  COLORS, ENF_COLOR,
+  colorFor, ENF_COLOR,
   effFraction, effYears, budgetLeft, queueableProjects, queueFits, render, t,
 } from "./core.js";
 import {
@@ -274,8 +274,8 @@ function quarterLabelForTurn(turnIndex){
 // fight the eligible tab on top of the stack.
 function drawCapLabSeries(svg, labId, xForTurn, yForCap, hoverCoordination){
   const { isTabInteractive, setHoveredLab, labHoverTogglers } = hoverCoordination;
-  const color = COLORS[labId] || "#888";
-  const isPlayer = labId === "player";
+  const color = colorFor(labId);
+  const isPlayer = labId === OBS.lab_id;   // your OWN lab (solo: "player")
 
   const points = capWigglePoints(labId, xForTurn, yForCap);
   const pointsAttr = points.map(p => p.x.toFixed(1) + "," + p.y.toFixed(1)).join(" ");
@@ -502,7 +502,7 @@ function renderCapLegend(){
     .map(([labId, capValue]) => {
       const ticker = esc(TICKERS[labId] || labId);
       const name = esc(NAMES[labId] || labId);
-      const swatch = `<i class="lg" style="background:${COLORS[labId]||'#888'}"></i>`;
+      const swatch = `<i class="lg" style="background:${colorFor(labId)}"></i>`;
       return `<span style="margin-right:10px">${swatch}<b>${ticker}</b> ${name} ${fmt$(capValue)}</span>`;
     })
     .join("");
@@ -816,22 +816,22 @@ export function renderBenchmarks(){
     const rows = Object.entries(card.scores)
       .map(([labId, value]) => ({labId, value, training:false}));
     if(card.in_training !== undefined)
-      rows.push({labId:"player", value:card.in_training, training:true});
+      rows.push({labId: OBS.lab_id, value:card.in_training, training:true});
     rows.sort((a, b) => b.value - a.value);
 
-    const playerReleased = card.scores.player;
+    const playerReleased = card.scores[OBS.lab_id];
     const gauge = card.kind === "ring" && playerReleased !== undefined
       ? ringSVG(playerReleased)
       : `<div class="headline">${playerReleased !== undefined
           ? fmtBenchScore(card.kind, playerReleased) : "—"}</div>`;
 
     const scoreList = rows.map(row => {
-      const isMe = row.labId === "player";
+      const isMe = row.labId === OBS.lab_id;
       // Lab name is player-authored/untrusted — escape before innerHTML.
       const labName = esc(NAMES[row.labId] || row.labId);
       const name = labName + (row.training ? t("caps.inTraining") : "");
       return `<div class="row${isMe ? " me" : ""}" style="margin:1px 0">
-        <i class="lg" style="background:${COLORS[row.labId] || '#888'}"></i>
+        <i class="lg" style="background:${colorFor(row.labId)}"></i>
         ${isMe ? "<b>"+name+"</b>" : name}
         <span style="flex:1"></span>
         <span>${fmtBenchScore(card.kind, row.value)}</span></div>`;
@@ -902,7 +902,7 @@ function truthModelCard(labId, model){
   // Lab name is player-authored/untrusted — escape before innerHTML (even on the
   // debug Truth tab; the §2 firewall discipline applies here in full).
   return `<div class="panel" style="margin:0">
-    <div class="row"><i class="lg" style="background:${COLORS[labId]||'#888'}"></i>
+    <div class="row"><i class="lg" style="background:${colorFor(labId)}"></i>
       <b>${esc(NAMES[labId]||labId)}</b> · <span>${esc(model.id)}</span>
       ${model.released?`<span class="tag">${t("truth.released")}</span>`:`<span class="tag">${t("truth.inTraining")}</span>`}
       ${model.leaked?`<span class="tag bad">${t("truth.leaked")}</span>`:''}</div>
@@ -924,7 +924,7 @@ export function renderTruth(){
   // Latest snapshot, player's lab first then rivals.
   const last = TRUTH.turns[TRUTH.turns.length-1];
   const labs = [...last.labs].sort((a,b) =>
-    (a.id==="player"?-1:0) - (b.id==="player"?-1:0));
+    (a.id===OBS.lab_id?-1:0) - (b.id===OBS.lab_id?-1:0));
 
   const cards = labs.flatMap(lab =>
     lab.models.map(model => truthModelCard(lab.id, model)));
@@ -1213,7 +1213,7 @@ export function renderRivals(){
 // ticker + name) over an aligned field grid (market cap, # released models,
 // frontier-capability estimate) so the public race reads column-by-column.
 function rivalCardHTML(rival){
-  const color = COLORS[rival.lab_id] || "#888";
+  const color = colorFor(rival.lab_id);
   // rival.name / rival.ticker are public lab identity but still strings that
   // (for the player's own lab) can be user-authored — escape before innerHTML.
   const ticker = esc(rival.ticker || rival.lab_id);

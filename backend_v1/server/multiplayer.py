@@ -197,7 +197,11 @@ class MultiplayerGame:
             "game_over": bool(self.state.game_over) if self.started else False,
             "rival_count": self.rival_count,
             "turn_seconds": self.turn_seconds,
+            # bounds, so the frontend copy can state real values (never "the bar")
             "max_seats": MAX_SEATS,
+            "max_rivals": MAX_MP_RIVALS,
+            "turn_seconds_min": TURN_SECONDS_MIN,
+            "turn_seconds_max": TURN_SECONDS_MAX,
             "seats": [self._seat_status(seat, viewing_seat)
                       for seat in self.seats],
         }

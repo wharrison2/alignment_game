@@ -3,7 +3,13 @@
 import {
   $, fmt$, api, apply, OBS, pending, budgetLeft, cashLeft,
   setRender, setOnGameOver, resetFeed, t,
+  MP, setMP, started, setStarted,
 } from "./core.js";
+import {
+  showMpCreate, showMpJoin, mpCreate, mpJoin, mpStart, mpKick,
+  mpSetRivals, mpSetTimer, showMpAdmin, handleMpPayload, mpOnRender,
+  leaderboardHTML,
+} from "./lobby.js";
 import {
   switchView, drawCaps, renderTraining, togglePostTrain, togglePostTrainSafety,
   toggleRelease, renderPretrain, queueRun, clearRun, renderReleased, renderBenchmarks,
@@ -48,14 +54,16 @@ function render(){
   renderBenchmarks();
   renderProjects(); renderInProgress(); renderWorry(); renderGovernance();
   renderRivals(); renderAlignmentEvidence(); renderFeed(); renderQueue(); renderTruth();
+  mpOnRender();   // multiplayer barrier banner + staged-queue sync (no-op solo)
   // No turns until a game has been started through the new-game modal (and never
-  // once the game is over).
-  $("endturn").disabled = !started || !!OBS.game_over;
+  // once the game is over). In multiplayer, also not while this seat's action is
+  // submitted and the barrier is waiting on the other players.
+  const waitingOnBarrier = !!(MP && MP.you && MP.you.submitted);
+  $("endturn").disabled = !started || !!OBS.game_over || waitingOnBarrier;
 }
 
-// A game must be explicitly started via the new-game modal before any turn can be
-// taken. Set true only when newGame() completes.
-let started = false;
+// `started` lives in core.js (the lobby module flips it too); newGame() below
+// sets it via setStarted once the server actually builds a game.
 
 // Whether the player wants the guided walkthrough on the next game they start. The
 // new-game checkbox reflects (and updates) this; it defaults ON so a first-time
@@ -78,9 +86,20 @@ async function endTurn(){
   if(!started) return;   // modal must be dismissed via "start" first
   pending.sign_safe_harbor = $("safeharbor").checked;
   $("endturn").disabled = true;
-  const res = await api("/api/action", {action: pending});
+  const res = await api(MP ? "/api/mp/action" : "/api/action", {action: pending});
+  if(res.errors){
+    $("endturn").disabled = false;
+    $("errors").textContent = res.errors.join("\n");
+    return;
+  }
+  if(MP){
+    // Same state-payload shape as the poll; the barrier may still be waiting
+    // (render() keeps END TURN disabled until the turn actually resolves).
+    handleMpPayload(res);
+    render();
+    return;
+  }
   $("endturn").disabled = false;
-  if(res.errors){ $("errors").textContent = res.errors.join("\n"); return; }
   apply(res);
 }
 
@@ -115,6 +134,9 @@ function showNewGame(opts){
     <div class="row" style="margin-top:10px">
       <button class="primary" onclick="newGame()">${t("newgame.start")}</button>
       ${initial ? "" : `<button onclick="closeOverlay()">${t("newgame.cancel")}</button>`}</div>
+    <div class="row" style="margin-top:6px">
+      <button onclick="showMpCreate()">${t("newgame.multiplayer.create")}</button>
+      <button onclick="showMpJoin()">${t("newgame.multiplayer.join")}</button></div>
     </div>`;
   $("overlay").classList.add("show");
 }
@@ -163,7 +185,8 @@ async function newGame(){
     $("errors").textContent = fresh.errors.join("\n");
     return;
   }
-  started = true;            // enable turns now that a game has been started
+  setMP(null);               // a fresh SOLO game; drop any finished MP status
+  setStarted(true);          // enable turns now that a game has been started
   // apply() populates OBS BEFORE anything renders. setDevMode() can switchView →
   // drawCaps, which reads OBS, so it must run AFTER apply — otherwise the
   // dev-unchecked path renders against a null OBS, throws, and the modal never
@@ -177,13 +200,14 @@ async function newGame(){
 }
 
 async function showPostmortem(){
-  const pm = await api("/api/postmortem");
+  const pm = await api(MP ? "/api/mp/postmortem" : "/api/postmortem");
   const outcome = pm.outcome || {};
   const lastModel = pm.trajectories.length ?
       pm.trajectories[pm.trajectories.length-1].model : null;
   const trajectoryRows = pm.trajectories.filter(t => t.model === lastModel).slice(-14);
 
   $("overlay-content").innerHTML = `
+    ${MP ? leaderboardHTML(pm.leaderboard) : ""}
     <div class="panel">
       <h3>${outcome.result || t("postmortem.defaultResult")} — ${t("postmortem.suffix")}</h3>
       <p style="font-size:15px">${outcome.headline||""}</p>
@@ -267,6 +291,8 @@ Object.assign(window, {
   newGame, closeOverlay, openProjectModal, carryOutProject, closeItemModal,
   onLabNameInput, onTickerInput,
   tutorialNext, tutorialPrev, tutorialEnd,
+  showMpCreate, showMpJoin, mpCreate, mpJoin, mpStart, mpKick,
+  mpSetRivals, mpSetTimer, showMpAdmin,
 });
 
 setDevMode(false);   // Truth tab hidden until a game is started with dev mode on
