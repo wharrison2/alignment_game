@@ -1,13 +1,16 @@
 """trim_action_to_budget (MULTIPLAYER_DESIGN §4.4) — the forced-resolution
 trimmer that runs when a multiplayer turn timer expires on a non-submitted
-seat. Contract under test:
+seat. It GREEDILY REBUILDS the action from empty, keeping each staged entry
+only if the whole action still validates. Contract under test:
 
-  1. drops the most-recently-queued entry first (list tail / last dict key);
-  2. categories shed in the documented order (start_projects -> build_evals
-     -> litigation -> lobby -> commission_run -> post_train -> release ->
-     defect/sign_safe_harbor);
+  1. an individually invalid/stale entry is dropped WITHOUT costing any valid
+     entry in another field;
+  2. when the budget binds, entries fall off newest-first within a field
+     (re-added oldest-first), and projects have the lowest cross-field
+     priority (re-added last);
   3. the result always passes validate_action (floor: an empty pass);
-  4. the caller's Action is never mutated.
+  4. the caller's Action is never mutated;
+  5. never raises, even on malformed entries inside well-typed fields.
 
 Runs on a real new_game state so validate_action sees genuine budgets:
 pool = 1.0 work-budget, cash = 800 at seed 1 (asserted below so a constants
@@ -70,10 +73,10 @@ class TrimActionToBudgetTest(unittest.TestCase):
         self.assertEqual(list(trimmed.lobby), ["disclosure"])   # last key dropped
         self.assert_valid(trimmed)
 
-    def test_categories_shed_in_documented_order(self):
-        # Work budget forces one project pop; the remaining cash overrun then
-        # eats projects (the first category) before touching lobby, and only
-        # then drops the last lobby entry. Documented behavior, not an accident.
+    def test_budget_overrun_keeps_every_entry_that_fits(self):
+        # Cash: lobby is re-added first (disclosure fits, audit would overrun);
+        # the projects (re-added last) all still fit both cash and work budget
+        # except the duplicated fifth entry. Nothing valid is sacrificed.
         overrun = Action(
             start_projects=_project_entries(
                 ROOT_PROJECTS + ["generative_pretraining"]),
@@ -83,8 +86,37 @@ class TrimActionToBudgetTest(unittest.TestCase):
             },
         )
         trimmed = self._trim(overrun)
-        self.assertEqual(trimmed.start_projects, [])            # projects shed first
-        self.assertEqual(list(trimmed.lobby), ["disclosure"])   # then last lobby key
+        self.assertEqual([spec["project_id"] for spec in trimmed.start_projects],
+                         ROOT_PROJECTS)
+        self.assertEqual(list(trimmed.lobby), ["disclosure"])
+        self.assert_valid(trimmed)
+
+    def test_stale_entry_does_not_cost_valid_entries(self):
+        # The pre-greedy trimmer shed whole categories until validation passed,
+        # so one stale post_train (no model in training) destroyed every queued
+        # project. Now the stale entry alone is dropped.
+        stale_plus_valid = Action(
+            start_projects=_project_entries(ROOT_PROJECTS),
+            post_train={"applied_safety": []},   # stale: no model in training
+        )
+        trimmed = self._trim(stale_plus_valid)
+        self.assertIsNone(trimmed.post_train)
+        self.assertEqual([spec["project_id"] for spec in trimmed.start_projects],
+                         ROOT_PROJECTS)
+        self.assert_valid(trimmed)
+
+    def test_malformed_entry_is_dropped_without_raising(self):
+        # Field TYPES are guaranteed by Action.from_dict, but an ENTRY inside a
+        # well-typed field can still be garbage; it must be skipped, not crash
+        # the forced resolution.
+        garbage_entry = Action(
+            start_projects=["not-a-dict"] + _project_entries(["rlhf"]),
+            litigation={"disclosure": "not-a-dict"},
+        )
+        trimmed = self._trim(garbage_entry)
+        self.assertEqual([spec["project_id"] for spec in trimmed.start_projects],
+                         ["rlhf"])   # the garbage entry itself was dropped
+        self.assertEqual(trimmed.litigation, {})
         self.assert_valid(trimmed)
 
     def test_invalid_scalar_entries_trim_to_a_valid_pass(self):

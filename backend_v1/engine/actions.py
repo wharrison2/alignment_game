@@ -59,21 +59,55 @@ class Action:
                             "sign_safe_harbor", "build_evals"}
         if unknown:
             raise ActionError(f"unknown action fields: {sorted(unknown)}")
+        # Shape-check every structured field HERE, at the parse chokepoint, so
+        # everything downstream (validate_action, the forced-resolution trimmer,
+        # _apply_action) can assume the field TYPES. A malformed body must fail
+        # loud now — the multiplayer stage path stores parsed actions without
+        # validating their contents, and a bad shape surfacing later (inside a
+        # deadline resolution) would crash the shared game.
         return cls(
-            start_projects=d.get("start_projects", []) or [],
-            post_train=d.get("post_train"),
-            commission_run=d.get("commission_run"),
+            start_projects=_require_list(d.get("start_projects"), "start_projects"),
+            post_train=_require_dict_or_none(d.get("post_train"), "post_train"),
+            commission_run=_require_dict_or_none(d.get("commission_run"),
+                                                 "commission_run"),
             release=bool(d.get("release", False)),
-            lobby=d.get("lobby", {}) or {},
-            litigation=d.get("litigation", {}) or {},
-            defect=d.get("defect", {}) or {},
+            lobby=_require_dict(d.get("lobby"), "lobby"),
+            litigation=_require_dict(d.get("litigation"), "litigation"),
+            defect=_require_dict(d.get("defect"), "defect"),
             sign_safe_harbor=bool(d.get("sign_safe_harbor", False)),
-            build_evals=d.get("build_evals", {}) or {},
+            build_evals=_require_dict(d.get("build_evals"), "build_evals"),
         )
 
 
 class ActionError(ValueError):
     pass
+
+
+def _require_list(value, field_name) -> list:
+    """None/missing → []; a list passes; anything else fails loud."""
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ActionError(f"{field_name} must be a list")
+    return value
+
+
+def _require_dict(value, field_name) -> dict:
+    """None/missing → {}; a dict passes; anything else fails loud."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ActionError(f"{field_name} must be an object")
+    return value
+
+
+def _require_dict_or_none(value, field_name):
+    """None stays None (field not used this turn); a dict passes."""
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ActionError(f"{field_name} must be an object")
+    return value
 
 
 STANCES = {"for": 1, "against": -1, "abstain": 0}
@@ -273,58 +307,71 @@ def validate_action(action: Action, lab, world, consts, dt) -> list[str]:
 def trim_action_to_budget(action: Action, lab, world, consts, dt) -> Action:
     """Forced-resolution safety for the multiplayer turn timer (MULTIPLAYER_DESIGN
     §4.4): when a seat's staged action must be submitted as-is at the deadline,
-    drop its most-recently-queued cost-bearing entries until validate_action
-    passes, so an over-budget (or stale) queue can never wedge the barrier.
+    keep as much of it as still validates, so an over-budget or stale queue can
+    never wedge the barrier — and one bad entry never costs the good ones.
 
-    "Most-recently-queued" across the Action's heterogeneous fields is an
-    INVENTED convention (the Action has no unified queue — see ISSUES.md):
-    within a field, the last list entry / last-inserted dict key goes first;
-    across fields the drop order is
-        start_projects -> build_evals -> litigation -> lobby
-        -> commission_run -> post_train -> release -> defect/sign_safe_harbor.
-    The floor is an empty Action (a pass), which always validates. Pure: the
-    caller's action is never mutated; never raises."""
-    trimmed = Action(
-        start_projects=list(action.start_projects),
-        post_train=action.post_train,
-        commission_run=action.commission_run,
-        release=action.release,
-        lobby=dict(action.lobby),
-        litigation=dict(action.litigation),
-        defect=dict(action.defect),
-        sign_safe_harbor=action.sign_safe_harbor,
-        build_evals=dict(action.build_evals),
-    )
-    while validate_action(trimmed, lab, world, consts, dt):
-        if trimmed.start_projects:
-            trimmed.start_projects.pop()
-        elif trimmed.build_evals:
-            _drop_last_inserted_entry(trimmed.build_evals)
-        elif trimmed.litigation:
-            _drop_last_inserted_entry(trimmed.litigation)
-        elif trimmed.lobby:
-            _drop_last_inserted_entry(trimmed.lobby)
-        elif trimmed.commission_run is not None:
-            trimmed.commission_run = None
-        elif trimmed.post_train is not None:
-            trimmed.post_train = None
-        elif trimmed.release:
-            trimmed.release = False
-        elif trimmed.defect or trimmed.sign_safe_harbor:
+    Algorithm: GREEDY REBUILD. Start from an empty Action (always valid) and
+    re-add the staged entries one at a time, keeping each only if the whole
+    action still passes validate_action. An entry that is individually invalid
+    (stale post_train, unknown policy, over-budget project) is simply skipped;
+    every other entry survives. Within a field, entries are re-added in queue
+    order (oldest first), so when the BUDGET binds it is the newest entries
+    that fall off — decision #2's "drop most-recently-queued first". Across
+    fields the re-add order gives cheap/scalar fields budget priority and
+    projects last (the invented convention — see ISSUES.md):
+        defect/sign_safe_harbor -> release -> post_train -> commission_run
+        -> lobby -> litigation -> build_evals -> start_projects.
+    Pure: the caller's action is never mutated. Never raises: a validation
+    crash on a malformed entry counts as invalid and drops that entry (field
+    TYPES are already guaranteed by Action.from_dict)."""
+    trimmed = Action()
+
+    def keeps_action_valid():
+        try:
+            problems = validate_action(trimmed, lab, world, consts, dt)
+        except (AttributeError, TypeError, ValueError, KeyError):
+            # a malformed ENTRY (e.g. a non-dict project spec) — treat as
+            # invalid rather than let forced resolution crash the shared game
+            return False
+        return len(problems) == 0
+
+    if action.defect:
+        trimmed.defect = dict(action.defect)
+        if not keeps_action_valid():
             trimmed.defect = {}
+    if action.sign_safe_harbor:
+        trimmed.sign_safe_harbor = True
+        if not keeps_action_valid():
             trimmed.sign_safe_harbor = False
-        else:
-            # Nothing left to drop but validation still fails (shouldn't happen:
-            # an empty action has no problems). Hard floor: pass.
-            return Action()
+    if action.release:
+        trimmed.release = True
+        if not keeps_action_valid():
+            trimmed.release = False
+    if action.post_train is not None:
+        trimmed.post_train = action.post_train
+        if not keeps_action_valid():
+            trimmed.post_train = None
+    if action.commission_run is not None:
+        trimmed.commission_run = action.commission_run
+        if not keeps_action_valid():
+            trimmed.commission_run = None
+    for policy_id, lobby_entry in action.lobby.items():
+        trimmed.lobby[policy_id] = lobby_entry
+        if not keeps_action_valid():
+            del trimmed.lobby[policy_id]
+    for policy_id, litigation_spec in action.litigation.items():
+        trimmed.litigation[policy_id] = litigation_spec
+        if not keeps_action_valid():
+            del trimmed.litigation[policy_id]
+    for harness_id, requested in action.build_evals.items():
+        trimmed.build_evals[harness_id] = requested
+        if not keeps_action_valid():
+            del trimmed.build_evals[harness_id]
+    for project_spec in action.start_projects:
+        trimmed.start_projects.append(project_spec)
+        if not keeps_action_valid():
+            trimmed.start_projects.pop()
     return trimmed
-
-
-def _drop_last_inserted_entry(entries: dict):
-    """Remove the most-recently-inserted key (dict insertion order = the order
-    the player queued the entries)."""
-    last_inserted_key = next(reversed(entries))
-    del entries[last_inserted_key]
 
 
 def legal_moves(lab, world, consts, dt, turn) -> dict:

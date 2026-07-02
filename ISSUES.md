@@ -2261,3 +2261,51 @@ Building MULTIPLAYER_DESIGN.md. Decisions and liberties recorded per work packag
 - **MP `apply()` never fetches `/api/truth`** (L1); the Truth tab stays empty and
   the dev-mode checkbox is absent from the MP create/join overlays.
 - R1 (creator disconnect strands the admin panel) remains open, as the design flagged.
+
+### Code-review fixes (post-implementation review, 10 findings)
+
+Behavior changes from the fixes, where they touch documented liberties:
+
+- **Trimmer rewritten: fixed-order drop loop → GREEDY REBUILD** (`trim_action_to_budget`).
+  The old loop shed whole categories until validation passed, so one stale non-budget
+  entry (e.g. a post_train whose model had been released) destroyed every valid queued
+  project. Now the action is rebuilt from empty, keeping each entry only if the whole
+  action still validates: an individually invalid entry is skipped, everything else
+  survives. Within a field, oldest entries are re-added first (newest fall off when the
+  budget binds — decision #2's ordering); across fields the re-add order gives projects
+  the LOWEST budget priority (defect/sign_safe_harbor → release → post_train →
+  commission_run → lobby → litigation → build_evals → start_projects). This replaces
+  (and improves on) the WP2 note's "cash overrun eats projects before lobby" caveat.
+- **`Action.from_dict` now type-checks field shapes** (list/dict/None) and raises
+  `ActionError` on a malformed body. Required because the stage path stores parsed
+  actions unvalidated; previously `{"post_train": "x"}` staged fine and then crashed
+  `validate_action` inside the deadline resolution, permanently wedging the shared
+  game. The trimmer additionally treats a validation crash on a malformed ENTRY as
+  "invalid, drop it" — forced resolution can no longer raise.
+- **`Lab.controlled_by_ai` (new field)** — set on replace-with-AI takeover. The lab
+  keeps `is_player` privileges (buyout immunity, explicit defection) per the WP3 note,
+  but the §10 frontier rule now treats it as AI-driven: its existential events get the
+  rival containment check, and it no longer counts toward the human frontier
+  (`TurnContext.human_controlled_labs`, used by `event.py`). Solo unaffected (field
+  always False); golden master unchanged, no re-record.
+- **Stage after submit is rejected** — a seat's validated submission is final for the
+  turn; a later `/api/mp/stage` (leaked client debounce or hostile client) can no
+  longer overwrite it with an action that would execute unvalidated. The client also
+  disarms its stage debounce before the submitted-state early-return.
+- **A submit racing the timer deadline is NOT committed** — `submit_seat` detects that
+  `check_deadline` just resolved the turn (the seat's staged copy was played) and
+  returns the fresh state instead of validating the late action against the unseen new
+  turn (which could double-step when the seat was the last human standing). Replaces
+  the WP3 note's "a too-late submit lands on the NEXT turn" behavior.
+- **Settings are tri-state and atomic** — an absent field means "unchanged"; an
+  explicit `turn_seconds: null` (the frontend's emptied timer field) now really clears
+  the timer (`SETTING_UNCHANGED` sentinel); all values convert before any is assigned,
+  so a bad value 400s with no partial change.
+- **Join re-checks game liveness before publishing the seat token**, closing the
+  eviction race that could mint a token for an already-evicted game (zombie entry,
+  reissued lobby code).
+- **Frontend mode switching torn down properly** — `stopMpPolling()` (exported from
+  lobby.js, called by solo `newGame()`) stops the lobby/game/countdown/stage timers so
+  a live MP poll can't clobber a fresh solo game; the first MP payload after
+  `enterGame()` is force-applied so a leftover solo OBS with the same turn number
+  can't leave the solo world rendered inside the MP game.

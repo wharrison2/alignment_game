@@ -34,6 +34,13 @@ class Lab:
     # (see game.sanitize_ticker); never built from any TRUE/hidden field.
     ticker: str = ""
     is_player: bool = False
+    # Multiplayer replace-with-AI takeover (MULTIPLAYER_DESIGN decision #4): the
+    # seat's human was removed and the rival controller decides for this lab.
+    # is_player stays True (the lab keeps human-seat rules: buyout immunity,
+    # explicit-defection compliance), but rules about what a HUMAN can cause or
+    # defend — the §10 frontier rule — must treat it as AI-driven; they key on
+    # `is_player and not controlled_by_ai`. Always False in solo play.
+    controlled_by_ai: bool = False
     cash: float = 0.0                       # SINGLE pot (revenue + investment)
     work_budget_per_year: float = 4.0       # quarterly pool = this * dt
     current_best_model: object | None = None     # most recent RELEASED model

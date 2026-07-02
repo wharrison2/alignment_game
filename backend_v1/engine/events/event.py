@@ -44,10 +44,15 @@ def run_event_phase(ctx, definitions):
     labs, world, flags = ctx.labs, ctx.world, ctx.flags
     rng, consts, dt, turn = ctx.rng, ctx.consts, ctx.dt, ctx.turn
     fired = []
-    # The "human frontier" the §10 frontier rule compares AI rivals against:
-    # the best true general across ALL human labs (solo: the player's). Chosen
-    # default for multiplayer — see ISSUES.md.
-    human_frontier_best = max(lab.best_true_general() for lab in ctx.human_labs)
+    # The "human frontier" the §10 frontier rule compares AI-driven labs
+    # against: the best true general across the labs a human is ACTUALLY
+    # playing (solo: the player's). Replace-with-AI takeovers are excluded —
+    # a lab nobody controls must not raise the bar that contains real rivals.
+    # Chosen default for multiplayer — see ISSUES.md. Fallback: if every human
+    # seat were somehow taken over (the creator can't be kicked, so this is
+    # defensive only), fall back to all human-seated labs.
+    frontier_labs = ctx.human_controlled_labs or ctx.human_labs
+    human_frontier_best = max(lab.best_true_general() for lab in frontier_labs)
 
     for d in definitions:
         if d.target == "released_model":
@@ -70,12 +75,13 @@ def run_event_phase(ctx, definitions):
             if ev is None:
                 continue
 
-            # frontier rule: rivals can't cause game-enders without a big lead
-            rival_existential = (
-                ev.klass == "existential"
-                and lab is not None
-                and not lab.is_player
-            )
+            # frontier rule: AI-driven labs can't cause game-enders without a
+            # big lead. A replace-with-AI takeover counts as AI-driven here —
+            # it plays with rival aggression, so it gets rival containment;
+            # only a lab a human is actually piloting bypasses the rule.
+            ai_driven = lab is not None and (not lab.is_player
+                                             or lab.controlled_by_ai)
+            rival_existential = ev.klass == "existential" and ai_driven
             if rival_existential:
                 rival_best = lab.best_true_general()
                 rival_lacks_decisive_lead = rival_best < human_frontier_best + consts.RIVAL_BIG_LEAD

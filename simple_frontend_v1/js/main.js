@@ -8,7 +8,7 @@ import {
 import {
   showMpCreate, showMpJoin, mpCreate, mpJoin, mpStart, mpKick,
   mpSetRivals, mpSetTimer, showMpAdmin, handleMpPayload, mpOnRender,
-  leaderboardHTML,
+  leaderboardHTML, stopMpPolling,
 } from "./lobby.js";
 import {
   switchView, drawCaps, renderTraining, togglePostTrain, togglePostTrainSafety,
@@ -185,6 +185,7 @@ async function newGame(){
     $("errors").textContent = fresh.errors.join("\n");
     return;
   }
+  stopMpPolling();           // a live MP poll must not clobber the solo game
   setMP(null);               // a fresh SOLO game; drop any finished MP status
   setStarted(true);          // enable turns now that a game has been started
   // apply() populates OBS BEFORE anything renders. setDevMode() can switchView →

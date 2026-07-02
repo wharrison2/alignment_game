@@ -33,6 +33,22 @@ let stageTimer = null;
 // Local wall-clock instant the current turn deadline maps to, interpolated
 // between polls so the countdown chip ticks smoothly.
 let deadlineAtMs = null;
+// Force apply() on the next game-state payload regardless of turn number: a
+// leftover solo OBS can share the MP world's turn number (both start at 0),
+// which would otherwise fool handleMpPayload's is-new-turn check and leave
+// the solo world on screen inside the MP game.
+let forceApplyNextPayload = false;
+
+// Full multiplayer teardown. Called when the player leaves MP for solo play
+// (main.js newGame) — without it the surviving 1.5s poll would re-set MP and
+// apply() the MP world over the fresh solo game.
+export function stopMpPolling(){
+  stopLobbyPoll();
+  stopGamePoll();
+  stopCountdown();
+  clearTimeout(stageTimer);
+  LOBBY = null;
+}
 
 function closeOverlay(){ $("overlay").classList.remove("show"); }
 
@@ -197,6 +213,7 @@ async function enterGame(){
   stopLobbyPoll();
   setStarted(true);
   closeOverlay();
+  forceApplyNextPayload = true;   // first MP payload must replace any solo OBS
   await pollGameState();          // first paint before the interval kicks in
   stopGamePoll();
   gamePollTimer = setInterval(pollGameState, GAME_POLL_MS);
@@ -231,8 +248,10 @@ export function handleMpPayload(payload){
   setMP(payload.mp);
   deadlineAtMs = payload.mp.deadline_seconds_left == null
     ? null : Date.now() + payload.mp.deadline_seconds_left * 1000;
-  const isNewTurn = !OBS || payload.observation.turn !== OBS.turn
-                         || payload.mp.game_over !== OBS.game_over;
+  const isNewTurn = forceApplyNextPayload
+                 || !OBS || payload.observation.turn !== OBS.turn
+                 || payload.mp.game_over !== OBS.game_over;
+  forceApplyNextPayload = false;
   if(isNewTurn){
     apply(payload);      // full re-render; resets pending for the new turn
   } else {
@@ -281,9 +300,12 @@ function renderCountdownChip(){
 // queued (decision #2). Debounced; only matters when a timer is running.
 export function mpOnRender(){
   renderMpStatus();
+  // Disarm BEFORE the early returns: a debounce armed just before the player
+  // submitted must never fire after submission (the server also rejects a
+  // post-submit stage, but don't even send it).
+  clearTimeout(stageTimer);
   if(!MP || MP.game_over || !MP.turn_seconds) return;
   if(!MP.you || MP.you.submitted) return;
-  clearTimeout(stageTimer);
   stageTimer = setTimeout(() => { api("/api/mp/stage", {action: pending}); },
                           STAGE_DEBOUNCE_MS);
 }

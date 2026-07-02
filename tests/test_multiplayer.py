@@ -137,6 +137,48 @@ class TimerTest(unittest.TestCase):
         game.state_payload_for(creator)
         self.assertEqual(game.state.turn, 0)   # still waiting on the others
 
+    def test_malformed_staged_action_cannot_wedge_the_deadline(self):
+        # A non-dict field value is rejected at stage time (Action.from_dict
+        # shape check); nothing malformed can reach forced resolution and
+        # crash the shared game.
+        clock, game, seats = three_seat_game(turn_seconds=30)
+        _, creator = seats["creator"]
+        _, gamma = seats["gamma"]
+        result = game.stage_seat(gamma, {"post_train": "garbage"})
+        self.assertIn("errors", result)
+        self.assertIsNone(gamma.staged_action)
+        clock.advance(31)
+        game.state_payload_for(creator)        # deadline resolves cleanly
+        self.assertEqual(game.state.turn, 1)
+
+    def test_stage_after_submit_is_rejected(self):
+        # A submitted action is validated and FINAL for the turn; a later
+        # stage (leaked client debounce / hostile client) must not overwrite
+        # it with an unvalidated action that would execute raw at resolution.
+        _clock, game, seats = three_seat_game(turn_seconds=30)
+        _, creator = seats["creator"]
+        game.submit_seat(creator, EMPTY_ACTION)
+        result = game.stage_seat(creator, {"lobby": {
+            "disclosure": {"stance": "for", "spend": 99999}}})
+        self.assertIn("errors", result)
+        self.assertEqual(creator.staged_action.lobby, {})   # untouched
+
+    def test_late_submit_after_deadline_is_not_committed(self):
+        # The deadline resolves turn N with the staged copies; a submit that
+        # raced it must NOT be auto-committed against the unseen turn N+1
+        # (which would double-step when the seat is the last human standing).
+        clock, game, seats = three_seat_game(turn_seconds=30)
+        _, creator = seats["creator"]
+        _, beta = seats["beta"]
+        _, gamma = seats["gamma"]
+        game.submit_seat(beta, EMPTY_ACTION)
+        game.submit_seat(gamma, EMPTY_ACTION)
+        clock.advance(31)                       # deadline passes unpolled
+        payload = game.submit_seat(creator, EMPTY_ACTION)
+        self.assertEqual(game.state.turn, 1)    # exactly ONE step (the forced one)
+        self.assertFalse(creator.has_submitted)  # the late action was not committed
+        self.assertEqual(payload["mp"]["turn"], 1)
+
 
 class FirewallTest(unittest.TestCase):
     """Design §10 verification: for each seat, the FULL /api/mp/state payload
@@ -284,6 +326,9 @@ class AdminTest(unittest.TestCase):
         self.assertEqual(gamma_lab.disposition.recklessness,
                          multiplayer.TAKEOVER_RECKLESSNESS)
         self.assertTrue(gamma_lab.is_player)   # keeps buyout immunity etc.
+        # ...but the §10 frontier rule must treat it as AI-driven: it neither
+        # carries human existential potency nor raises the human frontier.
+        self.assertTrue(gamma_lab.controlled_by_ai)
 
         # the takeover plays via the rival controller; two humans now barrier
         game.submit_seat(creator, EMPTY_ACTION)
@@ -307,6 +352,29 @@ class AdminTest(unittest.TestCase):
         self.assertNotIn("errors", result)
         self.assertEqual(len(game.seats), 1)
         self.assertIsNone(multiplayer.lookup_seat(beta_token))
+
+
+class SettingsTest(unittest.TestCase):
+
+    def test_absent_field_is_unchanged_but_explicit_null_clears_the_timer(self):
+        multiplayer.reset_registry_for_tests()
+        _token, game, _creator = multiplayer.create_game("A", "A")
+        game.set_settings(turn_seconds=60)
+        self.assertEqual(game.turn_seconds, 60)
+        game.set_settings(rival_count=3)          # timer field absent
+        self.assertEqual(game.turn_seconds, 60)   # unchanged
+        game.set_settings(turn_seconds=None)      # the frontend's emptied field
+        self.assertIsNone(game.turn_seconds)      # timer OFF
+
+    def test_bad_value_applies_nothing(self):
+        # int("abc") must raise BEFORE any assignment: no partial settings
+        # change may hide behind an error response.
+        multiplayer.reset_registry_for_tests()
+        _token, game, _creator = multiplayer.create_game("A", "A")
+        original_rival_count = game.rival_count
+        with self.assertRaises(ValueError):
+            game.set_settings(rival_count=5, turn_seconds="abc")
+        self.assertEqual(game.rival_count, original_rival_count)
 
 
 class RegistryTest(unittest.TestCase):

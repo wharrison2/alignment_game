@@ -32,5 +32,14 @@ class TurnContext:
 
     @property
     def human_labs(self):
-        """Every human-controlled lab, in state.labs order (solo: [player])."""
+        """Every human-SEATED lab (is_player), in state.labs order — includes
+        multiplayer replace-with-AI takeovers (solo: [player])."""
         return [l for l in self.labs if l.is_player]
+
+    @property
+    def human_controlled_labs(self):
+        """Human-seated labs a human is still actually deciding for — excludes
+        replace-with-AI takeovers. The §10 frontier rule keys on these: a lab
+        nobody is playing must not carry human existential potency, nor raise
+        the human frontier that contains real rivals. Solo: [player]."""
+        return [l for l in self.labs if l.is_player and not l.controlled_by_ai]

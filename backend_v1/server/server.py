@@ -519,11 +519,19 @@ class Handler(BaseHTTPRequestHandler):
         if resolved is None:
             return
         game, seat = resolved
+        # Pass a setting through only when the request actually carried it:
+        # an ABSENT field means "leave unchanged", while an explicit null
+        # turn_seconds means "timer off" (the frontend sends null for an
+        # emptied timer field). set_settings converts before assigning, so a
+        # bad value 400s with no partial change.
+        settings_kwargs = {}
+        if "rival_count" in body:
+            settings_kwargs["rival_count"] = body["rival_count"]
+        if "turn_seconds" in body:
+            settings_kwargs["turn_seconds"] = body["turn_seconds"]
         with game.lock:
             try:
-                result = game.set_settings(
-                    rival_count=body.get("rival_count"),
-                    turn_seconds=body.get("turn_seconds"))
+                result = game.set_settings(**settings_kwargs)
             except (TypeError, ValueError):
                 self._json({"errors": ["settings must be numbers"]}, 400)
                 return

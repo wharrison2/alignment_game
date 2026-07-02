@@ -75,6 +75,10 @@ DISCONNECT_AFTER_SECONDS = 10.0
 # new_game derives them for rivals. [TUNE]
 TAKEOVER_RECKLESSNESS = 0.5
 
+# Sentinel default for set_settings: distinguishes "field absent from the
+# request" (leave unchanged) from an explicit null (turn the timer off).
+SETTING_UNCHANGED = object()
+
 
 def _takeover_disposition() -> Disposition:
     """The Disposition a replace-with-AI takeover plays with. Human labs carry
@@ -154,18 +158,29 @@ class MultiplayerGame:
     def is_joinable(self):
         return not self.started and len(self.seats) < MAX_SEATS
 
-    def set_settings(self, rival_count=None, turn_seconds=None):
-        """Creator-only lobby settings, clamped. turn_seconds None/0 = no timer."""
+    def set_settings(self, rival_count=SETTING_UNCHANGED,
+                     turn_seconds=SETTING_UNCHANGED):
+        """Creator-only lobby settings, clamped.
+
+        Callers pass a field only when the request carried it (the sentinel
+        default means "leave unchanged"), so `turn_seconds=None` — what the
+        frontend sends for an EMPTIED timer field — really clears the timer.
+        Every value is converted BEFORE anything is assigned: a bad value
+        raises out with no partial state change behind the error response."""
         if self.started:
             return {"errors": ["settings are locked once the game starts"]}
-        if rival_count is not None:
-            self.rival_count = max(0, min(MAX_MP_RIVALS, int(rival_count)))
-        if turn_seconds is not None:
+        new_rival_count = self.rival_count
+        if rival_count is not SETTING_UNCHANGED and rival_count is not None:
+            new_rival_count = max(0, min(MAX_MP_RIVALS, int(rival_count)))
+        new_turn_seconds = self.turn_seconds
+        if turn_seconds is not SETTING_UNCHANGED:
             if not turn_seconds:            # null / 0 → timer off
-                self.turn_seconds = None
+                new_turn_seconds = None
             else:
-                self.turn_seconds = max(TURN_SECONDS_MIN,
-                                        min(TURN_SECONDS_MAX, int(turn_seconds)))
+                new_turn_seconds = max(TURN_SECONDS_MIN,
+                                       min(TURN_SECONDS_MAX, int(turn_seconds)))
+        self.rival_count = new_rival_count
+        self.turn_seconds = new_turn_seconds
         return {"ok": True}
 
     def start(self, seed, max_turns):
@@ -229,8 +244,16 @@ class MultiplayerGame:
     def stage_seat(self, seat, action_dict):
         """Store the seat's current queue WITHOUT submitting (decision #2: the
         timer submits "what's staged", so the server must hold a copy). Not
-        validated here — trim_action_to_budget absorbs staleness at the
-        deadline."""
+        validated against the game state here — trim_action_to_budget absorbs
+        staleness at the deadline (field SHAPES are enforced by
+        Action.from_dict, so a malformed body is rejected now, not at forced
+        resolution)."""
+        if seat.has_submitted:
+            # The seat's VALIDATED submission is final for this turn. Accepting
+            # a later stage would let it be overwritten by an action that never
+            # passes validate_action (a leaked client debounce, or a hostile
+            # client) and then execute raw at resolution.
+            return {"errors": ["action already submitted this turn"]}
         try:
             seat.staged_action = Action.from_dict(action_dict)
         except (ActionError, TypeError, ValueError) as e:
@@ -241,7 +264,15 @@ class MultiplayerGame:
         """Validate and submit this seat's action; resolve the turn if it was
         the last human in. Returns this seat's state payload (which reflects
         either the new turn or the still-waiting barrier)."""
+        turn_when_submitted = self.state.turn
         self.check_deadline()
+        if self.state.turn != turn_when_submitted:
+            # The deadline resolved this turn before the submit landed — the
+            # seat's staged copy was already played (trimmed). Do NOT commit
+            # the late action against the new turn: the player has never seen
+            # it. Return the fresh state so their client re-renders and they
+            # decide the new turn deliberately.
+            return self.state_payload_for(seat)
         if self.state.game_over:
             return {"errors": [t("api.game_over")]}
         try:
@@ -397,8 +428,12 @@ class MultiplayerGame:
         if resolution == "ai":
             target.control = "ai"
             # The lab keeps is_player=True (still buyout-immune and
-            # explicit-defection — see ISSUES.md); only the controller changes.
-            self._lab_for(target).disposition = _takeover_disposition()
+            # explicit-defection — see ISSUES.md), but controlled_by_ai marks
+            # it AI-driven for the §10 frontier rule: it must not carry human
+            # existential potency or raise the human frontier (event.py).
+            takeover_lab = self._lab_for(target)
+            takeover_lab.disposition = _takeover_disposition()
+            takeover_lab.controlled_by_ai = True
         else:
             target.control = "auto_pass"
         target.staged_action = None
@@ -508,7 +543,17 @@ def join_game(code, raw_name, raw_ticker):
             return None, None, {"errors": ["that game is full"], "status": 409}
         seat = game.add_seat(raw_name, raw_ticker, is_creator=False)
     with _registry_lock:
-        _seats_by_token[seat.token] = (game, seat)
+        # Re-check liveness before publishing the token: between the lookup
+        # above and here, an LRU eviction (create_game) may have dropped this
+        # game — its token sweep ran before this seat existed, so publishing
+        # now would create a zombie token for a dead game (and the freed lobby
+        # code may already belong to a NEW game).
+        game_is_still_registered = _games.get(game.code) is game
+        if game_is_still_registered:
+            _seats_by_token[seat.token] = (game, seat)
+    if not game_is_still_registered:
+        return None, None, {"errors": ["that game just expired — ask the host "
+                                       "for a new code"], "status": 404}
     return seat.token, game, seat
 
 
